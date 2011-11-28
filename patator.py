@@ -706,8 +706,9 @@ Syntax:
       
     exe_grp = OptionGroup(parser, 'Execution')
     exe_grp.add_option('-x', dest='actions', action='append', default=[], metavar='arg', help='actions and conditions, see Syntax above')
-    exe_grp.add_option('--start', dest='start', type='int', default=0, metavar='N', help='start from N (resume feature)') 
-    exe_grp.add_option('--stop', dest='stop', type='int', default=None, metavar='N', help='stop at N')
+    exe_grp.add_option('--start', dest='start', type='int', default=0, metavar='N', help='start from offset N in the wordlist product')
+    exe_grp.add_option('--stop', dest='stop', type='int', default=None, metavar='N', help='stop at offset N')
+    exe_grp.add_option('--resume', dest='resume', metavar='o1[,oN]*', help='resume previous run')
     exe_grp.add_option('-e', dest='encodings', action='append', default=[], metavar='meta:encoding', help='encode everything inside meta__.+?__meta')
     exe_grp.add_option('-C', dest='combo_delim', default=':', metavar='str', help="delimiter string in combo files (default is ':')")
     exe_grp.add_option('-X', dest='condition_delim', default=',', metavar='str', help="delimiter string in conditions (default is ',')")
@@ -753,7 +754,7 @@ Syntax:
     self.failure_delay = opts.failure_delay
     self.max_retries = opts.max_retries
     self.num_threads = opts.num_threads
-    self.start, self.stop = opts.start, opts.stop
+    self.start, self.stop, self.resume = opts.start, opts.stop, opts.resume
 
     wlists = {}
     kargs = []
@@ -870,12 +871,16 @@ Syntax:
     return actions
   
   def fire(self):
-
     try:
+      self.start_time = time()
       self.start_threads()
       self.monitor_progress()
-    except SystemExit: pass
-    except KeyboardInterrupt: print
+    except SystemExit:
+      pass
+    except KeyboardInterrupt:
+      print
+    except:
+      logger.exception(exc_info()[1])
     
     self.show_final()
 
@@ -890,7 +895,15 @@ Syntax:
       done_count, self.total_size, fail_count, speed_avg, pprint_seconds(total_time, '%dh %dm %ds')))
 
     if self.total_size != done_count:
-      logger.info('To resume execution, pass --start %d' % (self.start + done_count))
+      resume = []
+      for i, p in enumerate(self.thread_progress):
+        c = p.done_count
+        if self.resume:
+          if i < len(self.resume):
+            c += self.resume[i]
+        resume.append(str(c))
+        
+      logger.info('To resume execution, pass --resume %s' % ','.join(resume))
 
   def push_final(self, resp): pass
   def show_final(self): pass
@@ -950,15 +963,31 @@ Syntax:
     else:
       self.total_size -= self.start
 
+    if self.resume:
+      self.resume = map(int, self.resume.split(','))
+      self.total_size -= sum(self.resume)
+
     logger.info('Starting Patator v%s' % __version__)
     logger.info('-' * 63)
     logger.info('%-15s | %-25s \t | %5s | %s ..' % ('code & size', 'candidate', 'num', 'mesg'))
     logger.info('-' * 63)
 
-    self.start_time = time()
     count = 0
-    for prod in islice(product(*iterables), self.start, self.stop):
-      queues[count % self.num_threads].put(map(lambda s: str(s).strip('\r\n'), prod))
+    for pp in islice(product(*iterables), self.start, self.stop):
+
+      cid = count % self.num_threads
+      prod = map(lambda s: str(s).strip('\r\n'), pp)
+
+      if self.resume:
+        idx = count % len(self.resume)
+        off = self.resume[idx]
+
+        if count < off * len(self.resume):
+          logger.debug('Skipping %d %s, resume[%d]: %s' % (count, ':'.join(prod), idx, self.resume[idx]))
+          count += 1
+          continue
+
+      queues[cid].put(prod)
       count += 1
 
     for q in queues:
@@ -1423,7 +1452,6 @@ class Telnet_login(TCP_Cache):
         trace += cmd
 
         _, _, raw = fp.expect([prompt_re], timeout=timeout)
-        raw += fp.read_very_eager()
         logger.debug('raw %d: %s' % (self.prompt_count, repr(raw)))
         trace += raw
         self.prompt_count += 1
@@ -1431,6 +1459,7 @@ class Telnet_login(TCP_Cache):
       mesg = repr(raw)[1:-1] # strip enclosing single quotes
 
     except EOFError as e:
+      logger.debug('EOFError: %s' % e)
       mesg, = e
 
     return self.Response('0', mesg, trace)

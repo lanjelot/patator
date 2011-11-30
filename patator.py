@@ -32,6 +32,7 @@ Currently it supports the following modules:
   - ftp_login     : Brute-force FTP
   - ssh_login     : Brute-force SSH
   - telnet_login  : Brute-force Telnet
+  - smtp_login    : Brute-force SMTP
   - smtp_vrfy     : Enumerate valid users using the SMTP 'VRFY' command
   - smtp_rcpt     : Enumerate valid users using the SMTP 'RCPT TO' command
   - http_fuzz     : Brute-force HTTP/HTTPS
@@ -55,7 +56,6 @@ Future modules to be implemented:
   - rdp_login
   - vmware_login (902/tcp)
   - pop3_login
-  - smtp_login
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
 "Whatever the payload to fire, always use the same launch tube"
@@ -314,8 +314,13 @@ smtp_vrfy host=10.0.0.1 user=FILE0 0=logins.txt -x ignore:fgrep='User unknown in
 
 * Use the RCPT TO command in case the VRFY command was disabled.
 ---------
-smtp_rcpt host=10.0.0.1 user=FILE0@localhost 0=logins.txt helo='EHLO mx.fb.com' mail_from=root
+smtp_rcpt host=10.0.0.1 user=FILE0@localhost 0=logins.txt helo='ehlo mx.fb.com' mail_from=root
 
+
+* Brute-force authentication.
+  (a) Send a fake hostname (by default the real hostname is sent)
+------------             (a)
+smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE1 0=logins.txt 1=passwords.txt 
 
 }}}
 {{{ HTTP
@@ -566,6 +571,7 @@ from datetime import timedelta, datetime
 from struct import unpack
 import socket
 import subprocess
+import hashlib
 
 warnings = []
 try:
@@ -613,6 +619,9 @@ def create_time_dir(top_path, desc):
 def pprint_seconds(seconds, fmt):
   return fmt % reduce(lambda x,y: divmod(x[0], y) + x[1:], [(seconds,),60,60])
 
+def md5hex(plain):
+  return hashlib.md5(plain).hexdigest()
+
 # }}}
 
 # Controller {{{
@@ -637,6 +646,7 @@ class Controller:
   available_encodings = {
     'hex': (hexlify, 'encode in hexadecimal'),
     'b64': (b64encode, 'encode in base64'),
+    'md5': (md5hex, 'hash in md5'),
     }
 
   def expand_key(self, arg):
@@ -1468,82 +1478,107 @@ class Telnet_login(TCP_Cache):
 # }}}
 
 # SMTP {{{
-from smtplib import SMTP
-class SMTP_vrfy(TCP_Cache):
+from smtplib import SMTP, SMTPAuthenticationError, SMTPHeloError, SMTPException
+class SMTP_Base(TCP_Cache):
+
+  available_options = TCP_Cache.available_options
+  available_options += (
+    ('host', 'hostnames or subnets to target'),
+    ('port', 'ports to target [25]'),
+    ('helo', 'first command to send after connect [None]'),
+    ('user', 'usernames to test'),
+    )
+
+  Response = Response_Base
+
+  cache_keys = ('host', 'port', 'helo')
+
+  def new_tcp(self, host, port, helo):
+    fp = SMTP()
+    resp = fp.connect(host, int(port or 25))
+
+    if helo:
+      cmd, name = helo.split(' ', 1)
+      
+      if cmd.lower() == 'ehlo':
+        resp = fp.ehlo(name)
+      else:
+        resp = fp.helo(name)
+
+    return fp, resp
+    
+
+class SMTP_vrfy(SMTP_Base):
   '''Enumerate valid users using SMTP VRFY'''
 
   usage_hints = (
-    '''%prog host=10.0.0.1 user=FILE0 0=logins.txt [helo='EHLO blah.example.com']'''
+    '''%prog host=10.0.0.1 user=FILE0 0=logins.txt [helo='ehlo its.me.com']'''
     ''' -x ignore:fgrep='User unknown' -x ignore,reset,retry:code=421''',
     )
 
-  available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [25]'),
-    ('user', 'usernames to test'),
-    ('helo', 'first command to send after connect'),
-    )
-  available_options += TCP_Cache.available_options
-
-  Response = Response_Base
-
-  def new_tcp(self, host, port):
-    fp = SMTP()
-    resp = fp.connect(host, int(port or 25))
-    return fp, resp
-
   def execute(self, host, port=None, helo=None, user=None, persistent='1'):
-    fp, resp = self.get_tcp(persistent, host=host, port=port)
-
-    if helo is not None and resp == '':
-      resp = fp.docmd(helo)
+    fp, resp = self.get_tcp(persistent, host=host, port=port, helo=helo)
 
     if user is not None:
-      resp = fp.docmd('VRFY ' + user)
+      resp = fp.verify(user)
 
     code, mesg = resp
     return self.Response(code, mesg)
 
-class SMTP_rcpt(TCP_Cache):
-  """Enumerate valid users using SMTP RCPT TO"""
+
+class SMTP_rcpt(SMTP_Base):
+  '''Enumerate valid users using SMTP RCPT TO'''
 
   usage_hints = (
-    '''%prog host=10.0.0.1 user=FILE0@localhost 0=logins.txt [helo='EHLO blah.example.com']'''
-    ''' [mail_from=foo@bar.org] -x ignore:fgrep='User unknown' -x ignore,reset,retry:code=421''',
+    '''%prog host=10.0.0.1 user=FILE0@localhost 0=logins.txt [helo='ehlo its.me.com']'''
+    ''' [mail_from=bar@example.com] -x ignore:fgrep='User unknown' -x ignore,reset,retry:code=421''',
     )
 
-  available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [25]'),
-    ('user', 'usernames to test'),
+  available_options = SMTP_Base.available_options
+  available_options += (
     ('mail_from', 'sender email [test@example.org]'),
-    ('helo', 'first command to send after connect'),
     )
-  available_options += TCP_Cache.available_options
-
-  Response = Response_Base
-
-  def new_tcp(self, host, port):
-    fp = SMTP()
-    resp = fp.connect(host, int(port or 25))
-    return fp, resp
 
   def execute(self, host, port=None, helo=None, mail_from='test@example.org', user=None, persistent='1'):
-    fp, resp = self.get_tcp(persistent, host=host, port=port)
-
-    if helo is not None and resp == '':
-      resp = fp.docmd(helo)
+    fp, resp = self.get_tcp(persistent, host=host, port=port, helo=helo)
 
     if mail_from:
-      resp = fp.docmd('MAIL FROM: ' + mail_from)
+      resp = fp.mail(mail_from)
 
-    if rcpt_to:
-      resp = fp.docmd('RCPT TO: ' + user)
+    if user:
+      resp = fp.rcpt(user)
 
-    fp.docmd('RSET')
+    fp.rset()
 
     code, mesg = resp
     return self.Response(code, mesg)
+
+
+class SMTP_login(SMTP_Base):
+  '''Brute-force SMTP authentication'''
+
+  usage_hints = (
+    '''%prog host=10.0.0.1 user=f.bar@dom.com password=FILE0 0=passwords.txt [helo='ehlo its.me.com']''',
+    ''' -x ignore:fgrep='Authentication failed' -x ignore,reset,retry:code=421''',
+    )
+
+  available_options = SMTP_Base.available_options
+  available_options += (
+    ('password', 'passwords to test'),
+    )
+
+  def execute(self, host, port=None, helo=None, user='', password='', persistent='1'):
+    fp, resp = self.get_tcp(persistent, host=host, port=port, helo=helo)
+    
+    try:
+      resp = fp.login(user, password)
+
+    except (SMTPHeloError,SMTPAuthenticationError,SMTPException) as resp:
+      logger.debug('SMTPError: %s' % resp)
+
+    code, mesg = resp
+    return self.Response(code, mesg)
+
 # }}}
 
 # LDAP {{{
@@ -1984,11 +2019,10 @@ class Controller_HTTP(Controller):
 
 class Response_HTTP(Response_Base):
 
-  def __init__(self, code, content_length, response, request):
-    self.code, self.content_length, \
-      self.response, self.request = code, content_length, response, request
+  def __init__(self, code, content_length, response, trace):
+    self.code, self.content_length = code, content_length
+    self.response, self.trace = response, trace
     self.size = len(self.response)
-    self.trace = '%s\n%s\n\n%s' % (self.request, '='*80, self.response)
 
   def compact(self):
     return '%s %s' % (self.code, '%d:%d' % (self.size, self.content_length))
@@ -2082,16 +2116,18 @@ class HTTP_fuzz(TCP_Cache):
     fp.setopt(pycurl.WRITEFUNCTION, noop)
 
     def debug_func(t, s):
-      if t in (pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):
-        if max_mem < 0 or response.tell() < max_mem:
-          response.write(s)
+      if max_mem > 0 and trace.tell() > max_mem:
+        return 0
 
-      elif t in (pycurl.INFOTYPE_HEADER_OUT, pycurl.INFOTYPE_DATA_OUT):
-        if max_mem < 0 or response.tell() < max_mem:
-          request.write(s)
+      if t in (pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):
+        response.write(s)
+
+      if t != pycurl.INFOTYPE_TEXT:
+        trace.write(s)
         
     max_mem = int(max_mem)
-    response, request = StringIO(), StringIO(), 
+    response, trace = StringIO(), StringIO()
+
     fp.setopt(pycurl.DEBUGFUNCTION, debug_func)
     fp.setopt(pycurl.VERBOSE, 1)
 
@@ -2158,7 +2194,7 @@ class HTTP_fuzz(TCP_Cache):
     http_code = fp.getinfo(pycurl.HTTP_CODE)
     content_length = fp.getinfo(pycurl.CONTENT_LENGTH_DOWNLOAD)
 
-    return self.Response(http_code, content_length, response.getvalue(), request.getvalue())
+    return self.Response(http_code, content_length, response.getvalue(), trace.getvalue())
 
 # }}}
 
@@ -2715,6 +2751,7 @@ modules = (
   'ftp_login', (Controller, FTP_login),
   'ssh_login', (Controller, SSH_login),
   'telnet_login', (Controller, Telnet_login),
+  'smtp_login', (Controller, SMTP_login),
   'smtp_vrfy', (Controller, SMTP_vrfy),
   'smtp_rcpt', (Controller, SMTP_rcpt),
   'http_fuzz', (Controller_HTTP, HTTP_fuzz),
@@ -2753,7 +2790,7 @@ or
 Available modules:
 %s''' % '\n'.join('  + %-13s : %s' % (k, v[1].__doc__) for k, v in modules))
     if warnings:
-      print('\nWARNING missing dependencies (see README inside)')
+      print('\nWARNING missing dependencies (see README inside for the supported versions)')
       for w in warnings:
         print('- %s' % w)
     exit(2)

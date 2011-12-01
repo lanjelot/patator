@@ -15,7 +15,7 @@ __author__  = 'Sebastien Macke'
 __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
-__version__ = '0.1'
+__version__ = '0.2'
 __license__ = 'GPLv2'
  
 # README {{{
@@ -894,12 +894,12 @@ Syntax:
     
     self.show_final()
 
-    total_time = time() - self.start_time
-    speed_avg = self.total_size / total_time 
-
     hits_count = sum(p.hits_count for p in self.thread_progress)
     done_count = sum(p.done_count for p in self.thread_progress)
     fail_count = sum(p.fail_count for p in self.thread_progress)
+
+    total_time = time() - self.start_time
+    speed_avg = done_count / total_time 
 
     logger.info('Hits/Done/Size/Fail: %d/%d/%d/%d, Avg: %d r/s, Time: %s' % (hits_count, 
       done_count, self.total_size, fail_count, speed_avg, pprint_seconds(total_time, '%dh %dm %ds')))

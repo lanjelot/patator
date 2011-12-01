@@ -534,6 +534,10 @@ NB1. SNMPv3 requires passphrases to be at least 8 characters long.
 CHANGELOG
 ---------
 
+* v0.2 2011/12/01
+    - new smtp_login module
+    - several bugs fixed
+
 * v0.1 2011/11/25 : Public release
 
 
@@ -628,6 +632,7 @@ def md5hex(plain):
 class Controller:
   actions = {}
   paused = False
+  start_time = 0
   total_size = 1
   log_dir = None
   thread_report = []
@@ -882,7 +887,6 @@ Syntax:
   
   def fire(self):
     try:
-      self.start_time = time()
       self.start_threads()
       self.monitor_progress()
     except SystemExit:
@@ -892,14 +896,14 @@ Syntax:
     except:
       logger.exception(exc_info()[1])
     
-    self.show_final()
-
     hits_count = sum(p.hits_count for p in self.thread_progress)
     done_count = sum(p.done_count for p in self.thread_progress)
     fail_count = sum(p.fail_count for p in self.thread_progress)
 
     total_time = time() - self.start_time
     speed_avg = done_count / total_time 
+
+    self.show_final()
 
     logger.info('Hits/Done/Size/Fail: %d/%d/%d/%d, Avg: %d r/s, Time: %s' % (hits_count, 
       done_count, self.total_size, fail_count, speed_avg, pprint_seconds(total_time, '%dh %dm %ds')))
@@ -982,6 +986,7 @@ Syntax:
     logger.info('%-15s | %-25s \t | %5s | %s ..' % ('code & size', 'candidate', 'num', 'mesg'))
     logger.info('-' * 63)
 
+    self.start_time = time()
     count = 0
     for pp in islice(product(*iterables), self.start, self.stop):
 

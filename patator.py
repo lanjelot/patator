@@ -1463,7 +1463,7 @@ class Telnet_login(TCP_Cache):
     try:
       for val in inputs.split(r'\n'):
         logger.debug('input: %s' % val)
-        cmd = val + '\n'
+        cmd = val + '\n' #'\r\x00'
         fp.write(cmd)
         trace += cmd
 
@@ -2014,7 +2014,11 @@ class Controller_HTTP(Controller):
   def expand_key(self, arg):
     key, val = arg.split('=', 1)
     if key == 'url':
-      g = re.match(r'(?:(?P<scheme>.+)://)?(?P<host>.+?)(?::(?P<port>[^/]+))?/(?P<path>[^?]*)(?:\?(?P<query>.*))?', val).groupdict()
+      g = re.match(r'(?:(?P<scheme>.+)://)?(?P<host>.+?)(?::(?P<port>[^/]+))?/'\
+        +  '(?P<path>[^;?#]*)'\
+        +  '(?:\;(?P<params>[^?#]*))?'\
+        +  '(?:\?(?P<query>[^#]*))?'\
+        +  '(?:\#(?P<fragment>.*))?' , val).groupdict()
       if g['scheme'] == 'https' and not g['port']:
         g['port'] = '443'
       for k, v in g.iteritems():
@@ -2105,7 +2109,7 @@ class HTTP_fuzz(TCP_Cache):
 
     return fp, None
 
-  def execute(self, host, port=None, scheme='http', path='/', query='', body='', header='', method='GET', user_pass='', auth_type='basic',
+  def execute(self, host, port=None, scheme='http', path='/', params='', query='', fragment='', body='', header='', method='GET', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1', 
     before_urls='', after_urls='', max_mem='-1'):
     
@@ -2124,11 +2128,12 @@ class HTTP_fuzz(TCP_Cache):
       if max_mem > 0 and trace.tell() > max_mem:
         return 0
 
-      if t in (pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):
-        response.write(s)
-
-      if t != pycurl.INFOTYPE_TEXT:
+      if t in (pycurl.INFOTYPE_HEADER_OUT, pycurl.INFOTYPE_DATA_OUT):
         trace.write(s)
+
+      elif t in (pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):
+        trace.write(s)
+        response.write(s)
         
     max_mem = int(max_mem)
     response, trace = StringIO(), StringIO()
@@ -2187,7 +2192,7 @@ class HTTP_fuzz(TCP_Cache):
     query = urlencode(parse_qsl(query, True))
     body = urlencode(parse_qsl(body, True))
 
-    url = urlunparse((scheme, '%s:%s' % (host, port or '80'), path, None, query, None))
+    url = urlunparse((scheme, '%s:%s' % (host, port or '80'), path, params, query, fragment))
     setup_fp(fp, method, url)
     fp.perform()
 

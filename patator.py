@@ -375,12 +375,12 @@ http_fuzz url=http://10.0.0.1/ header=@headers.txt 0=vhosts.txt 1=agents.txt
 
 
 * Brute-force logon using GET requests.
-  (a) Encode everything surrounded by the tags ENC__ and __ENC in hexadecimal.
+  (a) Encode everything surrounded by the two tags _@@_ in hexadecimal.
   (b) Ignore HTTP 200 responses with a content size (header+body) within given range
       and that also contain the given string.
   (c) Use a different delimiter string (the comma cannot be escaped, yet).
----------                                                           (a)
-http_fuzz url='http://localhost/login?username=admin&password=ENC__FILE0__ENC' encoding=ENC:hex
+---------                                                          (a)             (a)
+http_fuzz url='http://localhost/login?username=admin&password=_@@_FILE0_@@_' -e _@@_:hex
  0=words.txt follow=1 -x ignore:'code=200|size=100-500|fgrep=Welcome, unauthenticated user' -X'|'
                          (b)                                                                (c)
 }}}
@@ -626,6 +626,9 @@ def pprint_seconds(seconds, fmt):
 def md5hex(plain):
   return hashlib.md5(plain).hexdigest()
 
+def sha1hex(plain):
+  return hashlib.sha1(plain).hexdigest()
+
 # }}}
 
 # Controller {{{
@@ -652,6 +655,7 @@ class Controller:
     'hex': (hexlify, 'encode in hexadecimal'),
     'b64': (b64encode, 'encode in base64'),
     'md5': (md5hex, 'hash in md5'),
+    'sha1': (sha1hex, 'hash in sha1'),
     }
 
   def expand_key(self, arg):
@@ -693,7 +697,8 @@ Module options:
 
     usage += '''
 Syntax:
- -x arg        := actions:conditions
+ -x actions:conditions
+
     actions    := action[,action]*
     action     := "%s"
     conditions := condition=value[,condition=value]*
@@ -709,12 +714,22 @@ Syntax:
          '\n'.join('    %-12s: %s' % (k, v) for k, v in available_conditions))
 
     usage += '''
- -e meta:encoding
+For example, to ignore all redirects to the home page:
+... -x ignore:code=302,fgrep='Location: /home.html'
 
-    encoding    := "%s"
+ -e tag:encoding
+
+    tag        := any unique string (eg. T@G or _@@_ or ...)
+    encoding   := "%s"
 
 %s''' % ('" | "'.join(k for k in self.available_encodings),
        '\n'.join('    %-12s: %s' % (k, v) for k, (f, v) in self.available_encodings.iteritems()))
+
+    usage += '''
+
+For example, to encode every password in base64:
+... host=10.0.0.1 user=admin password=_@@_FILE0_@@_ -e _@@_:b64
+'''
 
 
     parser.usage = usage.replace('%prog', name)
@@ -723,8 +738,8 @@ Syntax:
     exe_grp.add_option('-x', dest='actions', action='append', default=[], metavar='arg', help='actions and conditions, see Syntax above')
     exe_grp.add_option('--start', dest='start', type='int', default=0, metavar='N', help='start from offset N in the wordlist product')
     exe_grp.add_option('--stop', dest='stop', type='int', default=None, metavar='N', help='stop at offset N')
-    exe_grp.add_option('--resume', dest='resume', metavar='o1[,oN]*', help='resume previous run')
-    exe_grp.add_option('-e', dest='encodings', action='append', default=[], metavar='meta:encoding', help='encode everything inside meta__.+?__meta')
+    exe_grp.add_option('--resume', dest='resume', metavar='r1[,rN]*', help='resume previous run')
+    exe_grp.add_option('-e', dest='encodings', action='append', default=[], metavar='arg', help='encode everything between two tags, see Syntax above')
     exe_grp.add_option('-C', dest='combo_delim', default=':', metavar='str', help="delimiter string in combo files (default is ':')")
     exe_grp.add_option('-X', dest='condition_delim', default=',', metavar='str', help="delimiter string in conditions (default is ',')")
 
@@ -796,7 +811,7 @@ Syntax:
 
       for e in opts.encodings:
         meta, enc = e.split(':')
-        if re.search(r'{0}__.+?__{0}'.format(meta), v):
+        if re.search(r'{0}.+?{0}'.format(meta), v):
           self.enc_keys.append((k, meta, self.available_encodings[enc][0]))
 
       for i in self.find_file_keys(v):
@@ -1033,7 +1048,7 @@ Syntax:
             payload[k] = payload[k].replace('MOD%d' %i, prod[i])
 
       for k, m, e in self.enc_keys:
-        payload[k] = re.sub(r'{0}__(.+?)__{0}'.format(m), lambda m: e(m.group(1)), payload[k])
+        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(m.group(1)), payload[k])
   
       pp_prod = ':'.join(prod)
       logger.debug('pp_prod: %s' % pp_prod)
@@ -2065,22 +2080,22 @@ class HTTP_fuzz(TCP_Cache):
   usage_hints = [
     """%prog url=http://10.0.0.1/FILE0 0=paths.txt -x ignore:code=404 -x ignore,retry:code=500""",
 
-    """%prog url=http://NET0/manager/html user_pass=FILE1:FILE2 persistent=0 0=10.0.0.0/24 1=logins.txt 2=passwords.txt"""
+    """%prog url=http://10.0.0.1/manager/html user_pass=COMBO00:COMBO01 0=combos.txt"""
     """ -x ignore:code=401""",
 
     """%prog url=http://10.0.0.1/phpmyadmin/index.php method=POST"""
-    """ body='pma_username=COMBO00&pma_password=COMBO01&server=1&lang=en' 0=combos.txt follow=1 accept_cookie=1"""
-    """ -x ignore:fgrep='Cannot log in to the MySQL server'""",
+    """ body='pma_username=root&pma_password=FILE0&server=1&lang=en' 0=passwords.txt follow=1"""
+    """ accept_cookie=1 -x ignore:fgrep='Cannot log in to the MySQL server'""",
     ]
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target'),
-    ('scheme', 'scheme [http | https]'),
-    ('path', 'web path [/]'),
-    ('query', 'query string'),
+    ('url', 'main url to target (scheme://host[:port]/path?query)'),
+    #('host', 'hostnames or subnets to target'),
+    #('port', 'ports to target'),
+    #('scheme', 'scheme [http | https]'),
+    #('path', 'web path [/]'),
+    #('query', 'query string'),
     ('body', 'body data'),
-    ('url', 'main url to target (scheme://host(:port)?/path?query)'),
     ('header', 'use custom headers, delimited with "\\r\\n"'),
     ('method', 'method to use [GET | POST | HEAD | ...]'),
     ('user_pass', 'username and password for HTTP authentication (user:pass)'),
@@ -2103,6 +2118,7 @@ class HTTP_fuzz(TCP_Cache):
   def new_tcp(self, host, port):
     fp = pycurl.Curl()
     fp.setopt(pycurl.SSL_VERIFYPEER, 0)
+    fp.setopt(pycurl.SSL_VERIFYHOST, 0)
     fp.setopt(pycurl.HEADER, 1)
     fp.setopt(pycurl.USERAGENT, 'Mozilla/5.0')
     fp.setopt(pycurl.NOSIGNAL, 1)

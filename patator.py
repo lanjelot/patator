@@ -129,7 +129,7 @@ pydns            | DNS            | http://pydns.sourceforge.net/               
 --------------------------------------------------------------------------------------------------
 pysnmp           | SNMP           | http://pysnmp.sf.net/                              | 4.1.16a |
 --------------------------------------------------------------------------------------------------
-IPy              | NETx keywords  | https://github.com/haypo/python-ipy/wiki           |    0.75 |
+IPy              | NETx keywords  | https://github.com/haypo/python-ipy                |    0.75 |
 --------------------------------------------------------------------------------------------------
 
 * Shortcuts (optionnal)
@@ -580,8 +580,9 @@ import hashlib
 warnings = []
 try:
   from IPy import IP
+  has_ipy = True
 except ImportError:
-  warnings.append('IPy (https://github.com/haypo/python-ipy/wiki) is required for using NETx keywords.')
+  has_ipy = False
 
 # imports }}}
 
@@ -769,13 +770,18 @@ For example, to encode every password in base64:
       logger.setLevel(logging.DEBUG)
 
     if not len(args) > 0:
-      parser.error('wrong usage')
+      parser.print_help()
+      print('\nERROR: wrong usage. Please read the README inside for more information.')
+      exit(2)
 
     return opts, args
 
   def __init__(self, module, argv):
     self.module = module
     opts, args = self.parse_usage(argv)
+
+    logger.info('Starting Patator v%s (%s) at %s'
+      % (__version__, __git__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
 
     self.combo_delim = opts.combo_delim
     self.condition_delim = opts.condition_delim
@@ -824,6 +830,11 @@ For example, to encode every password in base64:
           if i not in self.iter_keys:
             self.iter_keys[i] = ('NET', iter_vals[i], [])
           self.iter_keys[i][2].append(k)
+
+          if not has_ipy:
+            logger.warn('IPy (https://github.com/haypo/python-ipy) is required for using NETx keywords.')
+            logger.warn('Please read the README inside for more information.')
+            exit(3)
 
         else:
           for i, j in self.find_combo_keys(v):
@@ -996,9 +1007,8 @@ For example, to encode every password in base64:
       self.resume = map(int, self.resume.split(','))
       self.total_size -= sum(self.resume)
 
-    logger.info('Starting Patator v%s' % __version__)
-    logger.info('-' * 63)
-    logger.info('%-15s | %-25s \t | %5s | %s ..' % ('code & size', 'candidate', 'num', 'mesg'))
+    logger.info('')
+    logger.info('%-15s | %-25s \t | %5s | %s' % ('code & size', 'candidate', 'num', 'mesg'))
     logger.info('-' * 63)
 
     self.start_time = time()
@@ -1382,7 +1392,7 @@ try:
   l.setLevel(logging.CRITICAL)
   l.addHandler(handler)
 except ImportError:
-  warnings.append('paramiko (http://www.lag.net/paramiko/) is required for SSH.')
+  warnings.append('paramiko')
 
 class SSH_login(TCP_Cache):
   '''Brute-force SSH authentication'''
@@ -1651,7 +1661,7 @@ class LDAP_login:
 try:
   from impacket import smb as impacket_smb
 except ImportError:
-  warnings.append('impacket (http://oss.coresecurity.com/projects/impacket.html) is required for SMB.')
+  warnings.append('impacket')
 
 class SMB_login(TCP_Cache):
   '''Brute-force SMB authentication'''
@@ -1810,7 +1820,7 @@ class POP_passd:
 try:
   import _mysql
 except ImportError:
-  warnings.append('mysql-python (http://sourceforge.net/projects/mysql-python/) is required for MySQL.')
+  warnings.append('mysql-python')
 
 class MySQL_login:
   '''Brute-force MySQL authentication'''
@@ -1943,7 +1953,7 @@ class MSSQL_login:
 try:
   import cx_Oracle
 except ImportError:
-  warnings.append('cx_Oracle (http://cx-oracle.sourceforge.net/) is required for Oracle.')
+  warnings.append('cx_Oracle')
 
 class Oracle_login:
   '''Brute-force Oracle authentication'''
@@ -1981,7 +1991,7 @@ class Oracle_login:
 try:
   import psycopg2
 except ImportError:
-  warnings.append('psycopg2 (http://initd.org/psycopg/) is required for PostgreSQL.')
+  warnings.append('psycopg')
 
 class Pgsql_login:
   '''Brute-force PostgreSQL authentication'''
@@ -2018,7 +2028,7 @@ from urlparse import urlunparse, parse_qsl
 try:
   import pycurl
 except ImportError:
-  warnings.append('pycurl (http://pycurl.sourceforge.net/) is required for HTTP.')
+  warnings.append('pycurl')
  
 try:
   from cStringIO import StringIO
@@ -2109,7 +2119,7 @@ class HTTP_fuzz(TCP_Cache):
     ('timeout', 'seconds to wait for a HTTP response [20]'),
     ('before_urls', 'comma-separated URLs to query before main url'),
     ('after_urls', 'comma-separated URLs to query after main url'),
-    ('max_mem', 'store no more than N bytes of request or response data in memory [-1 (unlimited)]'), 
+    ('max_mem', 'store no more than N bytes of request+response data in memory [-1 (unlimited)]'), 
     )
   available_options += TCP_Cache.available_options
 
@@ -2228,7 +2238,7 @@ class HTTP_fuzz(TCP_Cache):
 try:
   from Crypto.Cipher import DES
 except ImportError:
-  warnings.append('dev-python/pycrypto (http://www.dlitz.net/software/pycrypto/) is required for VNC.')
+  warnings.append('pycrypto')
 
 class VNC_Error(Exception): pass
 class VNC:
@@ -2513,7 +2523,7 @@ def generate_srv():
 try:
   from DNS import DnsRequest, DNSError
 except ImportError:
-  warnings.append('pydns (http://pydns.sourceforge.net/) is required for DNS.')
+  warnings.append('pydns')
 
 class DNS_reverse:
   '''Reverse lookup subnets'''
@@ -2629,7 +2639,7 @@ class DNS_forward:
 try:
   from pysnmp.entity.rfc3413.oneliner import cmdgen
 except ImportError:
-  warnings.append('pysnmp (http://pysnmp.sf.net/) is required for SNMP')
+  warnings.append('pysnmp')
 
 class SNMP_login:
   '''Brute-force SNMP v1/2/3 authentication'''
@@ -2799,6 +2809,17 @@ modules = (
   'keystore_pass', (Controller, Keystore_pass),
   )
 
+module_deps = {
+  'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/'],
+  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/'],
+  'impacket': [('smb_login',), 'http://oss.coresecurity.com/projects/impacket.html'],
+  'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/'],
+  'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/'],
+  'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/'],
+  'pycrypto': [('vnc_login',), 'http://www.dlitz.net/software/pycrypto/'],
+  'pydns': [('dns_reverse', 'dns_forward'), 'http://pydns.sourceforge.net/'],
+  'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/'],
+  }
 # }}}
 
 # main {{{
@@ -2815,12 +2836,10 @@ or
 
 Available modules:
 %s''' % '\n'.join('  + %-13s : %s' % (k, v[1].__doc__) for k, v in modules))
-    if warnings:
-      print('\nWARNING missing dependencies (see README inside for the supported versions)')
-      for w in warnings:
-        print('- %s' % w)
+
     exit(2)
 
+  # module name
   modules = zip(modules[0::2], modules[1::2])
   available = dict((k, v) for k, v in modules)
 
@@ -2833,6 +2852,19 @@ Available modules:
       show_usage()
     argv = argv[1:]
 
+  # dependencies
+  abort = False
+  for w in warnings:
+    mods, url = module_deps[w]
+    if name in mods:
+      print('ERROR: %s (%s) is required to run %s.' % (w, url, name))
+      abort = True
+
+  if abort:
+    print('Please read the README inside for more information.')
+    exit(3)
+
+  # start
   ctrl, module = available[name]
   powder = ctrl(module, [name] + argv[1:])
   powder.fire()

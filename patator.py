@@ -105,9 +105,9 @@ FEATURES
 INSTALL
 -------
 
-* Prerequisites
+* Dependencies (best tested versions)
 
-   Dependency    |  Required for  |                        URL                         | Version |
+                 |  Required for  |                        URL                         | Version |
 --------------------------------------------------------------------------------------------------
 paramiko         | SSH            | http://www.lag.net/paramiko/                       | 1.7.7.1 |
 --------------------------------------------------------------------------------------------------
@@ -130,6 +130,12 @@ pydns            | DNS            | http://pydns.sourceforge.net/               
 pysnmp           | SNMP           | http://pysnmp.sf.net/                              | 4.1.16a |
 --------------------------------------------------------------------------------------------------
 IPy              | NETx keywords  | https://github.com/haypo/python-ipy                |    0.75 |
+--------------------------------------------------------------------------------------------------
+unzip            | ZIP passwords  | http://www.info-zip.org/                           |     6.0 |
+--------------------------------------------------------------------------------------------------
+Java             | keystore files | http://www.oracle.com/technetwork/java/javase/     |    6u29 |
+--------------------------------------------------------------------------------------------------
+python           |                | http://www.python.org/                             |   2.6.6 |
 --------------------------------------------------------------------------------------------------
 
 * Shortcuts (optionnal)
@@ -587,6 +593,22 @@ except ImportError:
 # imports }}}
 
 # utils {{{
+def which(program):
+  def is_exe(fpath):
+    return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+
+  fpath, fname = os.path.split(program)
+  if fpath:
+    if is_exe(program):
+      return program
+  else:
+    for path in os.environ["PATH"].split(os.pathsep):
+      exe_file = os.path.join(path, program)
+      if is_exe(exe_file):
+        return exe_file
+
+  return None
+
 def create_dir(top_path):
   top_path = os.path.abspath(top_path)
   if os.path.isdir(top_path):
@@ -753,7 +775,7 @@ For example, to encode every password in base64:
 
     log_grp = OptionGroup(parser, 'Logging')
     log_grp.add_option('-l', dest='log_dir', metavar='DIR', help="save output and response data into DIR ")
-    log_grp.add_option('-L', dest='auto_log', metavar='SFX', help="automatically save into DIR/yyyy-mm-dd/h:m:s_SFX (DIR defaults to '/tmp/patator')") 
+    log_grp.add_option('-L', dest='auto_log', metavar='SFX', help="automatically save into DIR/yyyy-mm-dd/hh:mm:ss_SFX (DIR defaults to '/tmp/patator')") 
 
     dbg_grp = OptionGroup(parser, 'Debugging')
     dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='enable debug messages')
@@ -1612,6 +1634,9 @@ class SMTP_login(SMTP_Base):
 # }}}
 
 # LDAP {{{
+if not which('ldapsearch'):
+  warnings.append('openldap')
+
 class Response_LDAP(Response_Base):
   def __init__(self, resp):
     self.code, self.out, self.err = resp
@@ -2697,6 +2722,9 @@ class SNMP_login:
 # }}}
 
 # Unzip {{{
+if not which('unzip'):
+  warnings.append('unzip')
+
 class Response_Unzip(Response_Base):
   def __init__(self, resp):
     self.code, self.out, self.err = resp
@@ -2741,6 +2769,9 @@ class Unzip_pass:
 # }}}
 
 # Keystore {{{
+if not which('keytool'):
+  warnings.append('java')
+
 class Response_Keystore(Response_Base):
   def __init__(self, resp):
     self.code, self.out, self.err = resp
@@ -2812,6 +2843,7 @@ modules = (
 module_deps = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/'],
   'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/'],
+  'openldap': [('ldap_login',), 'http://www.openldap.org/'],
   'impacket': [('smb_login',), 'http://oss.coresecurity.com/projects/impacket.html'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/'],
   'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/'],
@@ -2819,6 +2851,8 @@ module_deps = {
   'pycrypto': [('vnc_login',), 'http://www.dlitz.net/software/pycrypto/'],
   'pydns': [('dns_reverse', 'dns_forward'), 'http://pydns.sourceforge.net/'],
   'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/'],
+  'unzip': [('unzip_pass',), 'http://www.info-zip.org/'],
+  'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/'],
   }
 # }}}
 

@@ -1102,7 +1102,7 @@ For example, to encode every password in base64:
         if self.rate_limit:
           sleep(self.rate_limit)
 
-        logger.debug('Trying: %s' % payload)
+        logger.debug('payload: %s' % payload)
 
         try:
           rate_count += 1
@@ -1249,8 +1249,24 @@ For example, to encode every password in base64:
 # Response_Base {{{
 def match_size(size, val):
   if '-' in val:
-    size_min, size_max = map(int, val.split('-'))
-    return size_min <= size <= size_max
+    size_min, size_max = val.split('-')
+
+    if not size_min and not size_max:
+      raise ValueError, 'Invalid interval'
+
+    elif not size_min: # size == -N
+      return size <= int(size_max)
+
+    elif not size_max: # size == N-
+      return size >= int(size_min)
+
+    else:
+      size_min, size_max = int(size_min), int(size_max)
+      if size_min >= size_max:
+        raise ValueError, 'Invalid interval'
+
+      return size_min <= size <= size_max
+
   else:
     return size == int(val)
 
@@ -1258,7 +1274,7 @@ class Response_Base:
 
   available_conditions = (
     ('code', 'match status code'),
-    ('size', 'match size (N or N-N)'),
+    ('size', 'match size (N or N-M)'),
     ('mesg', 'match message'),
     ('fgrep', 'search for string'),
     ('egrep', 'search for regex'),
@@ -2049,7 +2065,7 @@ class Pgsql_login:
 
 # HTTP {{{
 from urllib import quote, urlencode
-from urlparse import urlunparse, parse_qsl
+from urlparse import urlparse, urlunparse, parse_qsl
 try:
   import pycurl
 except ImportError:
@@ -2064,15 +2080,19 @@ class Controller_HTTP(Controller):
   def expand_key(self, arg):
     key, val = arg.split('=', 1)
     if key == 'url':
-      g = re.match(r'(?:(?P<scheme>.+)://)?(?P<host>.+?)(?::(?P<port>[^/]+))?/'\
+      m = re.match(r'(?:(?P<scheme>.+)://)?(?P<host>.+?)(?::(?P<port>[^/]+))?/'\
         +  '(?P<path>[^;?#]*)'\
         +  '(?:\;(?P<params>[^?#]*))?'\
         +  '(?:\?(?P<query>[^#]*))?'\
-        +  '(?:\#(?P<fragment>.*))?' , val).groupdict()
-      if g['scheme'] == 'https' and not g['port']:
-        g['port'] = '443'
-      for k, v in g.iteritems():
-        if v: yield (k, v)
+        +  '(?:\#(?P<fragment>.*))?' , val)
+
+      if not m:
+        yield (key, val)
+
+      else:
+        for k, v in m.groupdict().iteritems():
+          if v is not None:
+            yield (k, v)
     else:
       yield (key, val)
 
@@ -2106,7 +2126,7 @@ class Response_HTTP(Response_Base):
 
   available_conditions = Response_Base.available_conditions
   available_conditions += (
-    ('clen', 'match Content-Length header (N or N-N)'),
+    ('clen', 'match Content-Length header (N or N-M)'),
     )
 
 class HTTP_fuzz(TCP_Cache):
@@ -2150,7 +2170,8 @@ class HTTP_fuzz(TCP_Cache):
 
   Response = Response_HTTP
 
-  def new_tcp(self, host, port):
+  cache_keys = ('host', 'port', 'scheme')
+  def new_tcp(self, host, port, scheme):
     fp = pycurl.Curl()
     fp.setopt(pycurl.SSL_VERIFYPEER, 0)
     fp.setopt(pycurl.SSL_VERIFYHOST, 0)
@@ -2160,11 +2181,17 @@ class HTTP_fuzz(TCP_Cache):
 
     return fp, None
 
-  def execute(self, host, port=None, scheme='http', path='/', params='', query='', fragment='', body='', header='', method='GET', user_pass='', auth_type='basic',
+  def execute(self, url=None, host=None, port=None, scheme='http', path='/', params='', query='', fragment='', body='', header='', method='GET', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1', 
     before_urls='', after_urls='', max_mem='-1'):
     
-    fp, _ = self.get_tcp(persistent, host=host, port=port)
+    if url:
+      scheme, host, path, params, query, fragment = urlparse(url)
+      if ':' in host:
+        host, port = host.split(':')
+      del url
+
+    fp, _ = self.get_tcp(persistent, host=host, port=port, scheme=scheme)
 
     fp.setopt(pycurl.FOLLOWLOCATION, int(follow))
     fp.setopt(pycurl.MAXREDIRS, int(max_follow))
@@ -2232,6 +2259,7 @@ class HTTP_fuzz(TCP_Cache):
       else:
         fp.setopt(pycurl.CUSTOMREQUEST, method)
 
+      #logger.debug('url: %s' % url)
       fp.setopt(pycurl.URL, url) 
 
     if before_urls:
@@ -2243,7 +2271,10 @@ class HTTP_fuzz(TCP_Cache):
     query = urlencode(parse_qsl(query, True))
     body = urlencode(parse_qsl(body, True))
 
-    url = urlunparse((scheme, '%s:%s' % (host, port or '80'), path, params, query, fragment))
+    if port:
+      host = '%s:%s' % (host, port)
+
+    url = urlunparse((scheme, host, path, params, query, fragment))
     setup_fp(fp, method, url)
     fp.perform()
 

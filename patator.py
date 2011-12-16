@@ -341,9 +341,9 @@ http_fuzz url=http://localhost/FILE0 0=words.txt header='Cookie: SESSID=A2FD8B2D
  follow=1 -x ignore:code=404 -x ignore,retry:code=500
  (b)            (c)                  (d)
 
-NB. To go 10 times faster, you should use webef (http://www.hsc.fr/ressources/outils/webef/).
-    It is the fastest HTTP brute-forcer I know, yet at the moment it still lacks useful
-    features, that will prevent you from performing the following attacks.
+NB. You may be able to go 10 times faster using webef (http://www.hsc.fr/ressources/outils/webef/).
+    It is the fastest HTTP brute-forcer I know, yet at the moment it still lacks useful features
+    that will prevent you from performing the following attacks.
 
 * Brute-force phpMyAdmin logon.
   (a) Use POST requests.
@@ -360,35 +360,41 @@ http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST follow=1 accept_c
   (b) Save matching responses into directory.
 ---------
 http_fuzz url=http://NET0/FILE1 0=10.0.0.0/24 1=dirs.txt -x ignore:fgrep!='Index of'
- -l /tmp/dirlist                                                        (a)
+ -l /tmp/directory_listings                                             (a)
       (b)  
 
 * Brute-force Basic authentication.
   (a) Single mode (login == password).
-  (b) Do not use persistent connections (otherwise the Tomcat will crash).
+  (b) Do not report failed login attempts.
 ---------
-http_fuzz url=http://10.0.0.1/manager/html user_pass=FILE0:FILE0 0=logins.txt
- -x ignore:code=401 persistent=0                         (a)
-                       (b)
+http_fuzz url=http://10.0.0.1/manager/html user_pass=FILE0:FILE0 0=logins.txt -x ignore:code=401
+                                                   (a)                                (b)
 
 * Find hidden virtual hosts.
   (a) Read template from file.
   (b) Fuzz both the Host and User-Agent headers.
 ---------
 echo -e 'Host: FILE0\nUser-Agent: FILE1' > headers.txt
-                                    (a)                       (b)
 http_fuzz url=http://10.0.0.1/ header=@headers.txt 0=vhosts.txt 1=agents.txt
-
+                                    (a)                       (b)
 
 * Brute-force logon using GET requests.
   (a) Encode everything surrounded by the two tags _@@_ in hexadecimal.
   (b) Ignore HTTP 200 responses with a content size (header+body) within given range
       and that also contain the given string.
-  (c) Use a different delimiter string (the comma cannot be escaped, yet).
+  (c) Use a different delimiter string because the comma cannot be escaped.
 ---------                                                          (a)             (a)
 http_fuzz url='http://localhost/login?username=admin&password=_@@_FILE0_@@_' -e _@@_:hex
- 0=words.txt follow=1 -x ignore:'code=200|size=100-500|fgrep=Welcome, unauthenticated user' -X'|'
-                         (b)                                                                (c)
+ 0=words.txt -x ignore:'code=200|size=1500-|fgrep=Welcome, unauthenticated user' -X'|'
+                (b)                                                              (c)
+
+* Test the OPTIONS method against a list of URLs.
+  (a) Ignore URLs that only allow the HEAD and GET methods.
+  (b) Header end of line is '\r\n'.
+  (c) Use a different delimiter string because the comma cannot be escaped.
+---------
+http_fuzz url=FILE0 0=urls.txt method=OPTIONS -x ignore:egrep='^Allow: HEAD, GET\r$' -X '|'
+                                                            (a)                 (b)  (c)
 }}}
 {{{ LDAP
 
@@ -802,9 +808,6 @@ For example, to encode every password in base64:
     self.module = module
     opts, args = self.parse_usage(argv)
 
-    logger.info('Starting Patator v%s (%s) at %s'
-      % (__version__, __git__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
-
     self.combo_delim = opts.combo_delim
     self.condition_delim = opts.condition_delim
     self.rate_reset = opts.rate_reset
@@ -830,10 +833,8 @@ For example, to encode every password in base64:
           kargs.append((k, v)) 
 
     iter_vals = [v for k, v in sorted(wlists.iteritems())]
-    logger.debug('iter_vals: %s' % iter_vals)
-    logger.debug('kargs: %s' % kargs) 
-    # iter_vals == ['10.0.0.0/24', 'combos.txt', 'TLD']
-    # kargs == [('host', 'NET0'), ('user', 'COMBO10'), ('password', 'COMBO11'), ('domain', 'MOD2')]
+    logger.debug('iter_vals: %s' % iter_vals) # ['10.0.0.0/24', 'combos.txt', 'TLD']
+    logger.debug('kargs: %s' % kargs) # [('host', 'NET0'), ('user', 'COMBO10'), ('password', 'COMBO11'), ('domain', 'MOD2')]
 
     for k, v in kargs:
 
@@ -873,10 +874,9 @@ For example, to encode every password in base64:
             else:
               self.payload[k] = v
 
+    # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['domain'])
     logger.debug('iter_keys: %s' % self.iter_keys)
-# { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['domain'])
-    logger.debug('enc_keys: %s' % self.enc_keys)
-# [('password', 'ENC', hexlify), ('header', 'B64', b64encode), ...
+    logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hexlify), ('header', 'B64', b64encode), ...
     logger.debug('payload: %s' % self.payload)
 
     for k, _ in self.builtin_actions:
@@ -934,6 +934,9 @@ For example, to encode every password in base64:
     return actions
   
   def fire(self):
+    logger.info('Starting Patator v%s (%s) at %s'
+      % (__version__, __git__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
+
     try:
       self.start_threads()
       self.monitor_progress()
@@ -1274,7 +1277,7 @@ class Response_Base:
 
   available_conditions = (
     ('code', 'match status code'),
-    ('size', 'match size (N or N-M)'),
+    ('size', 'match size (N or N-M or N- or -N)'),
     ('mesg', 'match message'),
     ('fgrep', 'search for string'),
     ('egrep', 'search for regex'),
@@ -2122,11 +2125,11 @@ class Response_HTTP(Response_Base):
     return val in self.response
 
   def match_egrep(self, val):
-    return re.search(val, self.response)
+    return re.search(val, self.response, re.M)
 
   available_conditions = Response_Base.available_conditions
   available_conditions += (
-    ('clen', 'match Content-Length header (N or N-M)'),
+    ('clen', 'match Content-Length header (N or N-M or N- or -N)'),
     )
 
 class HTTP_fuzz(TCP_Cache):

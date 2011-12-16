@@ -15,7 +15,7 @@ __author__  = 'Sebastien Macke'
 __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
-__version__ = '0.2'
+__version__ = '0.3'
 __license__ = 'GPLv2'
  
 # README {{{
@@ -545,6 +545,11 @@ NB1. SNMPv3 requires passphrases to be at least 8 characters long.
 
 CHANGELOG
 ---------
+
+* v0.3 2011/12/16
+    - minor bugs fixed in http_fuzz
+    - option -e better implemented
+    - better warnings about missing dependencies
 
 * v0.2 2011/12/01
     - new smtp_login module

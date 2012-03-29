@@ -383,10 +383,18 @@ http_fuzz url=http://10.0.0.1/ header=@headers.txt 0=vhosts.txt 1=agents.txt
   (b) Ignore HTTP 200 responses with a content size (header+body) within given range
       and that also contain the given string.
   (c) Use a different delimiter string because the comma cannot be escaped.
----------                                                          (a)             (a)
-http_fuzz url='http://localhost/login?username=admin&password=_@@_FILE0_@@_' -e _@@_:hex
+---------                                                         (a)             (a)
+http_fuzz url='http://10.0.0.1/login?username=admin&password=_@@_FILE0_@@_' -e _@@_:hex
  0=words.txt -x ignore:'code=200|size=1500-|fgrep=Welcome, unauthenticated user' -X'|'
                 (b)                                                              (c)
+
+* Brute-force logon that enforces a random nonce to be submitted along every POST.
+  (a) Request page that provides the nonce as a hidden input field using GET.
+  (b) Use regex to extract the nonce that is to be submitted by the main request.
+---------
+http_fuzz url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce=_@@_' accept_cookie=1
+ before_urls=http://10.0.0.1/index before_egrep=_@@_:'nput type="hidden" name="nonce" value="(\w+)"/>'
+           (a)                                    (b)
 
 * Test the OPTIONS method against a list of URLs.
   (a) Ignore URLs that only allow the HEAD and GET methods.
@@ -577,13 +585,12 @@ logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
 import re
-from time import sleep, time
 from Queue import Queue, Empty, Full
 from threading import Thread, active_count
 from select import select
 from sys import stdin, exc_info, exit
 import os
-from time import localtime, strftime, sleep
+from time import localtime, strftime, sleep, time
 from itertools import product, chain, islice
 from string import ascii_lowercase
 from binascii import hexlify
@@ -600,6 +607,7 @@ try:
   has_ipy = True
 except ImportError:
   has_ipy = False
+  warnings.append('IPy')
 
 # imports }}}
 
@@ -1194,7 +1202,7 @@ For example, to encode every password in base64:
 
     i, _, _ = select([stdin], [], [], .1)
     if not i: return
-    command = stdin.readline().strip()
+    command = i[0].readline().strip()
 
     if command == 'h':
       logger.info('''Available commands:
@@ -2149,6 +2157,10 @@ class HTTP_fuzz(TCP_Cache):
     """%prog url=http://10.0.0.1/phpmyadmin/index.php method=POST"""
     """ body='pma_username=root&pma_password=FILE0&server=1&lang=en' 0=passwords.txt follow=1"""
     """ accept_cookie=1 -x ignore:fgrep='Cannot log in to the MySQL server'""",
+
+    """%prog url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce=_@@_'"""
+    """ 0=passwords.txt accept_cookie=1 before_urls=http://10.0.0.1/index"""
+    """ before_egrep=_@@_:'<input type="hidden" name="nonce" value="(\w+)">'"""
     ]
 
   available_options = (
@@ -2170,8 +2182,9 @@ class HTTP_fuzz(TCP_Cache):
     ('ssl_cert', 'client SSL certificate file (cert+key in PEM format)'),
     ('timeout_tcp', 'seconds to wait for a TCP handshake [10]'),
     ('timeout', 'seconds to wait for a HTTP response [20]'),
-    ('before_urls', 'comma-separated URLs to query before main url'),
-    ('after_urls', 'comma-separated URLs to query after main url'),
+    ('before_urls', 'comma-separated URLs to query before the main request'),
+    ('before_egrep', 'extract substring from the before_urls responses to include it in the main request'),
+    ('after_urls', 'comma-separated URLs to query after the main request'),
     ('max_mem', 'store no more than N bytes of request+response data in memory [-1 (unlimited)]'), 
     )
   available_options += TCP_Cache.available_options
@@ -2191,7 +2204,7 @@ class HTTP_fuzz(TCP_Cache):
 
   def execute(self, url=None, host=None, port=None, scheme='http', path='/', params='', query='', fragment='', body='', header='', method='GET', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1', 
-    before_urls='', after_urls='', max_mem='-1'):
+    before_urls='', before_egrep='', after_urls='', max_mem='-1'):
     
     if url:
       scheme, host, path, params, query, fragment = urlparse(url)
@@ -2241,19 +2254,16 @@ class HTTP_fuzz(TCP_Cache):
     if ssl_cert:
       fp.setopt(pycurl.SSLCERT, ssl_cert)
 
-    headers = [h.strip('\r') for h in header.split('\n') if h]
-    fp.setopt(pycurl.HTTPHEADER, headers) # warning: this disables the use of "Expect: 100-continue" header
-
     if accept_cookie == '1':
       fp.setopt(pycurl.COOKIEFILE, '') 
       # warning: do not pass a Cookie: header into HTTPHEADER if using COOKIEFILE as it will 
       # produce requests with more than one Cookie: header
       # and the server will process only one of them (eg. Apache only reads the last one)
 
-    #if rrange: # commented out because the user may instead pass header='Range: -1024'
-    #  fp.setopt(pycurl.RANGE, rrange)
+    def perform_fp(fp, method, url, header='', body=''):
+      #logger.debug('perform: %s' % url)
+      fp.setopt(pycurl.URL, url) 
 
-    def setup_fp(fp, method, url):
       if method == 'GET':
         fp.setopt(pycurl.HTTPGET, 1)
 
@@ -2267,13 +2277,22 @@ class HTTP_fuzz(TCP_Cache):
       else:
         fp.setopt(pycurl.CUSTOMREQUEST, method)
 
-      #logger.debug('url: %s' % url)
-      fp.setopt(pycurl.URL, url) 
+      headers = [h.strip('\r') for h in header.split('\n') if h]
+      fp.setopt(pycurl.HTTPHEADER, headers) # warning: this disables the use of "Expect: 100-continue" header
+
+      fp.perform()
 
     if before_urls:
       for before_url in before_urls.split(','):
-        setup_fp(fp, 'GET', before_url)
-        fp.perform()
+        perform_fp(fp, 'GET', before_url)
+
+      if before_egrep:
+        mark, regex = before_egrep.split(':', 1)
+        val = re.search(regex, response.getvalue(), re.M).group(1)
+
+        header = header.replace(mark, val)
+        query = query.replace(mark, val)
+        body = body.replace(mark, val)
 
     path = quote(path)
     query = urlencode(parse_qsl(query, True))
@@ -2283,13 +2302,11 @@ class HTTP_fuzz(TCP_Cache):
       host = '%s:%s' % (host, port)
 
     url = urlunparse((scheme, host, path, params, query, fragment))
-    setup_fp(fp, method, url)
-    fp.perform()
+    perform_fp(fp, method, url, header, body)
 
     if after_urls:
       for after_url in after_urls.split(','):
-        setup_fp(fp, 'GET', after_url)
-        fp.perform()
+        perform_fp(fp, 'GET', after_url)
 
     http_code = fp.getinfo(pycurl.HTTP_CODE)
     content_length = fp.getinfo(pycurl.CONTENT_LENGTH_DOWNLOAD)
@@ -2889,6 +2906,7 @@ module_deps = {
   'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/'],
   'pycrypto': [('vnc_login',), 'http://www.dlitz.net/software/pycrypto/'],
   'pydns': [('dns_reverse', 'dns_forward'), 'http://pydns.sourceforge.net/'],
+  'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy'],
   'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/'],
   'unzip': [('unzip_pass',), 'http://www.info-zip.org/'],
   'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/'],

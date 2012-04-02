@@ -265,6 +265,12 @@ ftp_login ... --rate-reset 3 -x ignore:mesg='Login incorrect.' -x reset:fgrep='L
 ftp_login ... -x ignore,reset,retry:code=500 -x quit:fgrep='Login successful'
 
 
+* Same as before, but stop testing a user after his password is found.
+---------
+ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt
+ -x ignore,reset,retry:code=500 -x reset,free=user:fgrep='Login successful'
+
+
 * Find anonymous FTP servers on a subnet.
 ---------
 ftp_login host=NET0 user=anonymous password=test@example.com 0=10.0.0.0/24
@@ -289,6 +295,20 @@ NB. If you get errors like "Error reading SSH protocol banner ... Connection res
       retry last password.
 ---------             (a)                                (b)
 ssh_login ... -x ignore:mesg='Authentication failed.' -x ignore,reset,retry:mesg='No existing session'
+
+
+* Same as before, but stop testing a host after a valid password is found.
+---------
+ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
+ -x ignore:mesg='Authentication failed.' -x ignore,reset,retry:mesg='No existing session'
+ -x reset,free=host:code=0
+
+
+* Same as before, but stop testing a user on a host after his password is found.
+---------
+ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
+ ...
+ -x reset,free=host+user:code=0
 
 }}}
 {{{ Telnet
@@ -676,6 +696,7 @@ def sha1hex(plain):
 # Controller {{{
 class Controller:
   actions = {}
+  free_list = []
   paused = False
   start_time = 0
   total_size = 1
@@ -690,6 +711,7 @@ class Controller:
   builtin_actions = (
     ('ignore', 'do not report'),
     ('retry', 'try payload again'),
+    ('free', 'dismiss future types of payloads'),
     ('quit', 'terminate execution now'),
     )
 
@@ -892,12 +914,8 @@ For example, to encode every password in base64:
     logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hexlify), ('header', 'B64', b64encode), ...
     logger.debug('payload: %s' % self.payload)
 
-    for k, _ in self.builtin_actions:
-      self.actions[k] = [] 
-
+    self.available_actions = [k for k, _ in self.builtin_actions + self.module.available_actions]
     self.module_actions = [k for k, _ in self.module.available_actions]
-    for k in self.module_actions:
-      self.actions[k] = []
 
     for x in opts.actions:
       self.update_actions(x)
@@ -929,12 +947,23 @@ For example, to encode every password in base64:
         key, val = cond.split('=', 1)
         new_cond.append((key, val))
      
-      self.actions[action].append(new_cond)
+      if '=' in action:
+        name, opts = action.split('=')
+      else:
+        name, opts = action, None
+
+      if name not in self.available_actions:
+        raise NotImplementedError('Unsupported action: %s' % n)
+
+      if name not in self.actions:
+        self.actions[name] = []
+
+      self.actions[name].append((new_cond, opts))
 
   def lookup_actions(self, resp):
-    actions = []
+    actions = {}
     for action, conditions in self.actions.iteritems():
-      for condition in conditions:
+      for condition, opts in conditions:
         for key, val in condition:
           if key[-1] == '!':
             if resp.match(key[:-1], val):
@@ -943,8 +972,24 @@ For example, to encode every password in base64:
             if not resp.match(key, val):
               break
         else:
-          actions.append(action)
+          actions[action] = opts
     return actions
+
+  def check_free(self, payload):
+    # free_list: 'host=10.0.0.1', 'user=anonymous', 'host=10.0.0.7,user=test', ...
+    for m in self.free_list:
+      args = m.split(',', 1)
+      for arg in args:
+        k, v = arg.split('=', 1)
+        if payload[k] != v:
+          break
+      else:
+        return True
+
+    return False
+
+  def register_free(self, payload, opts):
+    self.free_list.append(','.join('%s=%s' % (k, payload[k]) for k in opts.split('+')))
   
   def fire(self):
     logger.info('Starting Patator v%s (%s) at %s'
@@ -962,6 +1007,7 @@ For example, to encode every password in base64:
     
     hits_count = sum(p.hits_count for p in self.thread_progress)
     done_count = sum(p.done_count for p in self.thread_progress)
+    skip_count = sum(p.skip_count for p in self.thread_progress)
     fail_count = sum(p.fail_count for p in self.thread_progress)
 
     total_time = time() - self.start_time
@@ -969,10 +1015,10 @@ For example, to encode every password in base64:
 
     self.show_final()
 
-    logger.info('Hits/Done/Size/Fail: %d/%d/%d/%d, Avg: %d r/s, Time: %s' % (hits_count, 
-      done_count, self.total_size, fail_count, speed_avg, pprint_seconds(total_time, '%dh %dm %ds')))
+    logger.info('Hits/Done/Skip/Fail/Size: %d/%d/%d/%d/%d, Avg: %d r/s, Time: %s' % (hits_count, 
+      done_count, skip_count, fail_count, self.total_size, speed_avg, pprint_seconds(total_time, '%dh %dm %ds')))
 
-    if self.total_size != done_count:
+    if self.total_size != done_count+skip_count:
       resume = []
       for i, p in enumerate(self.thread_progress):
         c = p.done_count
@@ -999,6 +1045,7 @@ For example, to encode every password in base64:
         self.current = ''
         self.done_count = 0
         self.hits_count = 0
+        self.skip_count = 0
         self.fail_count = 0
         self.seconds = [1]*25 # avoid division by zero early bug condition
 
@@ -1101,6 +1148,10 @@ For example, to encode every password in base64:
       pp_prod = ':'.join(prod)
       logger.debug('pp_prod: %s' % pp_prod)
 
+      if self.check_free(payload):
+        pqueue.put_nowait(('skip', pp_prod, None, 0))
+        continue
+
       num_try = 0
       start_time = time() 
       while num_try < self.max_retries or self.max_retries < 0:
@@ -1136,9 +1187,13 @@ For example, to encode every password in base64:
         actions = self.lookup_actions(resp)
         pqueue.put_nowait((actions, pp_prod, resp, time() - start_time))
 
-        for a in self.module_actions:
-          if a in actions:
-            getattr(module, a)(**payload)
+        for name in self.module_actions:
+          if name in actions:
+            getattr(module, name)(**payload)
+
+        if 'free' in actions:
+          opts = actions['free']
+          self.register_free(payload, opts)
 
         if 'retry' in actions:
           logger.debug('Retry %d/%d: %s' % (num_try, self.max_retries, resp))
@@ -1159,6 +1214,8 @@ For example, to encode every password in base64:
 
   def report_progress(self):
     for i, pq in enumerate(self.thread_report):
+      p = self.thread_progress[i]
+
       while True:
 
         try:
@@ -1168,7 +1225,10 @@ For example, to encode every password in base64:
         except Empty: 
           break
 
-        p = self.thread_progress[i]
+        if actions == 'skip':
+          p.skip_count += 1
+          continue
+
         offset = (self.start + p.done_count * self.num_threads) + i + 1
         p.current = current
         p.seconds[p.done_count % len(p.seconds)] = seconds

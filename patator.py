@@ -239,36 +239,23 @@ second before trying again the same payload (--failure-delay defaults to 0.5).
 {{{ FTP
 
 * Brute-force authentication.
-  (a) Establish a new TCP connection for every login attempt (slow).
----------                                                                          (a)
-ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt persistent=0
+  (a) Do not report wrong passwords.
+  (b) Do not report everytime the server shuts down the TCP connection (ie. max login attempts
+      reached), reconnect and retry last login/password.
+  (c) Reconnect when a valid password is found (need to logoff before testing other passwords).
+---------
+ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt
+  -x ignore:mesg='Login incorrect.' -x ignore,reset,retry:code=500 -x reset:fgrep='Login success'
+  (a)                              (b)                             (c)
 
 NB. If you get errors like "too many connections from your IP address", try
     decreasing the number of threads, the server may be enforcing a maximum
     number of concurrent connections.
 
 
-* Same as before, but without persistent=0 in order to re-use the TCP connection (faster).
-  (a) Establish a new TCP connection after 3 login attempts were done using the same TCP connection.
-  (b) Do not report wrong passwords.
-  (c) Reconnect when a valid password is found (need to logoff before testing other passwords).
----------       (a)                  (b)                              (c)
-ftp_login ... --rate-reset 3 -x ignore:mesg='Login incorrect.' -x reset:fgrep='Login successful'
-
-
-* Same as before, but without --rate-reset as we automatically detect when the server has
-  closed the connection.
-  (a) Do not report everytime the server shuts down the TCP connection, reconnect and
-      retry last login/password.
-  (b) Exit execution as soon as a valid password is found.
----------        (a)                            (b)
-ftp_login ... -x ignore,reset,retry:code=500 -x quit:fgrep='Login successful'
-
-
 * Same as before, but stop testing a user after his password is found.
 ---------
-ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt
- -x ignore,reset,retry:code=500 -x reset,free=user:fgrep='Login successful'
+ftp_login ... -x reset,free=user:fgrep='Login success'
 
 
 * Find anonymous FTP servers on a subnet.
@@ -278,33 +265,28 @@ ftp_login host=NET0 user=anonymous password=test@example.com 0=10.0.0.0/24
 }}}
 {{{ SSH
 * Brute-force authentication.
-  (a) Test 3 passwords within the same SSH session before reconnecting.
-  (b) Reconnect when a valid password is found (need to logoff before testing other passwords).
----------                                                          (a)             (b)
-ssh_login host=10.0.0.1 user=root password=FILE0 0=passwords.txt --rate-reset 3 -x reset:code=0
+  (a) Do not report wrong passwords.
+  (b) Do not report everytime the server shuts down the TCP connection (ie. max login attempts
+      reached), reconnect and retry last login/password.
+  (c) Reconnect when a valid password is found (need to logoff before testing other passwords).
+---------                                                      (a)
+ssh_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:mesg='Authentication failed.'
+ -x ignore,reset,retry:mesg='No existing session' -x reset:code=0
+ (b)                                              (c)
 
 NB. If you get errors like "Error reading SSH protocol banner ... Connection reset by peer",
     try decreasing the number of threads, the server may be enforcing a maximum
     number of concurrent connections (eg. MaxStartups in OpenSSH).
 
 
-* Same as before, but without --rate-reset as we automatically detect when we have reached
-  the maximum number of login attempts permitted per connection (eg. MaxAuthTries > 3 in OpenSSH).
-  (a) Do not report wrong passwords.
-  (b) Do not report everytime the server shuts down the TCP connection, reconnect and
-      retry last password.
----------             (a)                                (b)
-ssh_login ... -x ignore:mesg='Authentication failed.' -x ignore,reset,retry:mesg='No existing session'
-
-
-* Same as before, but stop testing a host after a valid password is found.
+* Brute-force several hosts and stop testing a host after a valid password is found.
 ---------
 ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
  -x ignore:mesg='Authentication failed.' -x ignore,reset,retry:mesg='No existing session'
  -x reset,free=host:code=0
 
 
-* Same as before, but stop testing a user on a host after his password is found.
+* Same as previous, but stop testing a user on a host after his password is found.
 ---------
 ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
  ...
@@ -1466,7 +1448,7 @@ class FTP_login(TCP_Cache):
 
   usage_hints = (
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt"""
-    """ -x ignore:mesg='Login incorrect.' -x ignore,reset,retry:code=500 -x reset:fgrep='Login successful'""",
+    """ -x ignore:mesg='Login incorrect.' -x ignore,reset,retry:code=500 -x reset:fgrep='Login success'""",
     )
 
   available_options = (

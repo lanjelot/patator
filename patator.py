@@ -117,7 +117,7 @@ openldap         | LDAP           | http://www.openldap.org/                    
 --------------------------------------------------------------------------------------------------
 impacket         | SMB            | http://oss.coresecurity.com/projects/impacket.html | svn#414 |
 --------------------------------------------------------------------------------------------------
-cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   5.0.4 |
+cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   5.1.1 |
 --------------------------------------------------------------------------------------------------
 mysql-python     | MySQL          | http://sourceforge.net/projects/mysql-python/      |   1.2.3 |
 --------------------------------------------------------------------------------------------------
@@ -605,12 +605,12 @@ logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
 import re
-from Queue import Queue, Empty, Full
+import os
+from sys import stdin, exc_info, exit
+from time import localtime, strftime, sleep, time
+from functools import reduce
 from threading import Thread, active_count
 from select import select
-from sys import stdin, exc_info, exit
-import os
-from time import localtime, strftime, sleep, time
 from itertools import product, chain, islice
 from string import ascii_lowercase
 from binascii import hexlify
@@ -620,6 +620,17 @@ from struct import unpack
 import socket
 import subprocess
 import hashlib
+try:
+  # python3+
+  from queue import Queue, Empty, Full
+  from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl
+  from io import StringIO
+except ImportError:
+  # python2.6+
+  from Queue import Queue, Empty, Full
+  from urllib import quote, urlencode
+  from urlparse import urlparse, urlunparse, parse_qsl
+  from cStringIO import StringIO
 
 warnings = []
 try:
@@ -775,7 +786,7 @@ Syntax:
 
 %s
 ''' % ('\n'.join('    %-12s: %s' % (k, v) for k, v in available_actions),
-         '\n'.join('    %-12s: %s' % (k, v) for k, v in available_conditions))
+       '\n'.join('    %-12s: %s' % (k, v) for k, v in available_conditions))
 
     usage += '''
 For example, to ignore all redirects to the home page:
@@ -787,7 +798,7 @@ For example, to ignore all redirects to the home page:
     encoding   := "%s"
 
 %s''' % ('" | "'.join(k for k in self.available_encodings),
-       '\n'.join('    %-12s: %s' % (k, v) for k, (f, v) in self.available_encodings.iteritems()))
+       '\n'.join('    %-12s: %s' % (k, v) for k, (f, v) in self.available_encodings.items()))
 
     usage += '''
 
@@ -867,7 +878,7 @@ For example, to encode every password in base64:
             v = open(p).read()
           kargs.append((k, v)) 
 
-    iter_vals = [v for k, v in sorted(wlists.iteritems())]
+    iter_vals = [v for k, v in sorted(wlists.items())]
     logger.debug('iter_vals: %s' % iter_vals) # ['10.0.0.0/24', 'combos.txt', 'TLD']
     logger.debug('kargs: %s' % kargs) # [('host', 'NET0'), ('user', 'COMBO10'), ('password', 'COMBO11'), ('domain', 'MOD2')]
 
@@ -962,7 +973,7 @@ For example, to encode every password in base64:
 
   def lookup_actions(self, resp):
     actions = {}
-    for action, conditions in self.actions.iteritems():
+    for action, conditions in self.actions.items():
       for condition, opts in conditions:
         for key, val in condition:
           if key[-1] == '!':
@@ -1061,13 +1072,13 @@ For example, to encode every password in base64:
   def produce(self, queues):
 
     iterables = []
-    for t, v, _ in self.iter_keys.itervalues():
+    for _, (t, v, _) in self.iter_keys.items():
 
       if t in ('FILE', 'COMBO'):
         #iterable, size = self.builtin_keywords[t](v)
-        files = map(os.path.expanduser, v.split(','))
+        files = [os.path.expanduser(f) for f in v.split(',')]
         size = sum(sum(1 for _ in open(f)) for f in files)
-        iterable = chain(*map(open, files))
+        iterable = chain(*[open(f) for f in files])
 
       elif t == 'NET':
         subnets = [IP(n, make_net=True) for n in v.split(',')]
@@ -1089,7 +1100,7 @@ For example, to encode every password in base64:
       self.total_size -= self.start
 
     if self.resume:
-      self.resume = map(int, self.resume.split(','))
+      self.resume = [int(i) for i in self.resume.split(',')]
       self.total_size -= sum(self.resume)
 
     logger.info('')
@@ -1099,9 +1110,10 @@ For example, to encode every password in base64:
     self.start_time = time()
     count = 0
     for pp in islice(product(*iterables), self.start, self.stop):
+      logger.debug('pp: %s' % repr(pp))
 
       cid = count % self.num_threads
-      prod = map(lambda s: str(s).strip('\r\n'), pp)
+      prod = [str(p).strip('\r\n') for p in pp]
 
       if self.resume:
         idx = count % len(self.resume)
@@ -1128,7 +1140,7 @@ For example, to encode every password in base64:
       
       payload = self.payload.copy()
  
-      for i, (t, _, keys) in self.iter_keys.iteritems():
+      for i, (t, _, keys) in self.iter_keys.items():
         if t == 'FILE':
           for k in keys:
             payload[k] = payload[k].replace('FILE%d' % i, prod[i])
@@ -1328,7 +1340,7 @@ def match_size(size, val):
     size_min, size_max = val.split('-')
 
     if not size_min and not size_max:
-      raise ValueError, 'Invalid interval'
+      raise ValueError('Invalid interval')
 
     elif not size_min: # size == -N
       return size <= int(size_max)
@@ -1339,7 +1351,7 @@ def match_size(size, val):
     else:
       size_min, size_max = int(size_min), int(size_max)
       if size_min >= size_max:
-        raise ValueError, 'Invalid interval'
+        raise ValueError('Invalid interval')
 
       return size_min <= size <= size_max
 
@@ -1362,7 +1374,7 @@ class Response_Base:
     self.trace = trace
 
   def compact(self):
-    return '%s %s' % (self.code, self.size)
+    return '%s %d' % (self.code, self.size)
 
   def __str__(self):
     return self.mesg
@@ -1483,7 +1495,8 @@ class FTP_login(TCP_Cache):
 
       logger.debug('No error: %s' % resp)
 
-    except FTP_Error as (resp,): 
+    except FTP_Error as e: 
+      resp = str(e)
       logger.debug('FTP_Error: %s' % resp)
 
     except EOFError:
@@ -1551,12 +1564,12 @@ class SSH_login(TCP_Cache):
       code, mesg = '0', resp
 
     except paramiko.AuthenticationException as e:
-      logger.debug('AuthenticationException: %s' % e)
       code, mesg = '1', str(e)
+      logger.debug('AuthenticationException: %s' % mesg)
 
     except paramiko.SSHException as e:
-      logger.debug('SSHException: %s' % e)
       code, mesg = '1', str(e)
+      logger.debug('SSHException: %s' % mesg)
 
     return self.Response(code, mesg)
 
@@ -1877,7 +1890,7 @@ class Passd:
 
     code, _ = self.unparse(resp)
     if not code.startswith('2'):
-      raise Passd_Error, resp
+      raise Passd_Error(resp)
 
     return resp
 
@@ -1921,7 +1934,8 @@ class POP_passd:
         resp = fp.sendcmd(cmd)
         trace += '\r\n'.join((cmd, resp))
 
-    except Passd_Error as (resp,):
+    except Passd_Error as e:
+      resp = str(e)
       logger.debug('Passd_Error: %s' % resp)
       trace += '\r\n'.join((cmd, resp))
 
@@ -1962,7 +1976,7 @@ class MySQL_login:
       fp = _mysql.connect(host=host, port=int(port or 3306), user=user, passwd=password)
       resp = '0', fp.get_server_info()
 
-    except _mysql.Error, resp: pass
+    except _mysql.Error as resp: pass
 
     code, mesg = resp
     return self.Response(code, mesg)
@@ -2037,7 +2051,7 @@ class MSSQL:
 
       i = size + 3
     
-    raise Exception, 'Failed to parse response'
+    raise Exception('Failed to parse response')
 
 class MSSQL_login:
   '''Brute-force MSSQL authentication'''
@@ -2097,8 +2111,8 @@ class Oracle_login:
       fp = cx_Oracle.connect(user, password, dsn)
       code, mesg = '0', fp.version
 
-    except cx_Oracle.DatabaseError as (e,):
-      code, mesg = e.message[:-1].split(': ', 1)
+    except cx_Oracle.DatabaseError as e:
+      code, mesg = e[0].message[:-1].split(': ', 1)
       
     return self.Response(code, mesg)
 
@@ -2140,17 +2154,10 @@ class Pgsql_login:
 # }}}
 
 # HTTP {{{
-from urllib import quote, urlencode
-from urlparse import urlparse, urlunparse, parse_qsl
 try:
   import pycurl
 except ImportError:
   warnings.append('pycurl')
- 
-try:
-  from cStringIO import StringIO
-except ImportError:
-  from StringIO import StringIO
 
 class Controller_HTTP(Controller):
   def expand_key(self, arg):
@@ -2166,7 +2173,7 @@ class Controller_HTTP(Controller):
         yield (key, val)
 
       else:
-        for k, v in m.groupdict().iteritems():
+        for k, v in m.groupdict().items():
           if v is not None:
             yield (k, v)
     else:
@@ -2389,7 +2396,7 @@ class VNC:
     self.version = resp[:11]
 
     if len(resp) > 12:
-      raise VNC_Error, self.version + ' ' + resp[20:]
+      raise VNC_Error(self.version + ' ' + resp[20:])
 
     return self.version
 
@@ -2421,23 +2428,23 @@ class VNC:
 
     if minor == '3':
       if len(resp) < 4:
-        raise VNC_Error, 'Unexpected response size (%d > 4): %s' % (len(resp), repr(resp))
+        raise VNC_Error('Unexpected response size (%d > 4): %s' % (len(resp), repr(resp)))
     
       code = ord(resp[3])
       if code == 0:
-        raise VNC_Error, 'Session setup failed: %s' % repr(resp)
+        raise VNC_Error('Session setup failed: %s' % repr(resp))
 
       elif code == 1:
-        raise VNC_Error, 'No authentication required: %s' % repr(resp)
+        raise VNC_Error('No authentication required: %s' % repr(resp))
 
       elif code == 2:
         if len(resp) != 20:
-          raise VNC_Error, 'Unexpected challenge size (unsupported authentication type ?): %s' % repr(resp)
+          raise VNC_Error('Unexpected challenge size (unsupported authentication type ?): %s' % repr(resp))
 
         resp = resp[4:20]
 
       else:
-        raise VNC_Error, 'Session setup unknown response'
+        raise VNC_Error('Session setup unknown response')
 
     pw = (password + '\0' * 8)[:8] # make sure it is 8 chars long, zero padded
     key = self.gen_key(pw)
@@ -2461,7 +2468,7 @@ class VNC:
       return code, mesg or 'OK'
 
     else:
-      raise VNC_Error, 'Unknown response: %s (code: %s)' % (repr(resp), code)
+      raise VNC_Error('Unknown response: %s (code: %s)' % (repr(resp), code))
          
 
   def gen_key(self, key):
@@ -2501,9 +2508,9 @@ class VNC_login:
       if password is not None:
         code, mesg = self.m.login(password)
 
-    except VNC_Error as (e,):
-      logger.debug('VNC_Error: %s' % e)
-      code, mesg = '2', e
+    except VNC_Error as e:
+      code, mesg = '2', str(e)
+      logger.debug('VNC_Error: %s' % mesg)
 
     return self.Response(code, mesg)
 
@@ -2551,7 +2558,7 @@ class Controller_DNS(Controller):
     ipmap = {'1.2.3.4': {'name': ['www.example.com', 'ftp.example.com'], 'alias': ('www2.example.com')}}
     noips = ['cms.example.com -> www.mistake.com', ...]
     '''
-    for name, hinfo in self.hostmap.iteritems(): 
+    for name, hinfo in self.hostmap.items(): 
       logger.debug('%s -> %s' % (name, hinfo))
       if not hinfo.ip: # orphan CNAME hostnames (with no IP address) may be still valid virtual hosts
         for alias in hinfo.alias:
@@ -2573,7 +2580,7 @@ class Controller_DNS(Controller):
           print('%34s %s' % (info, key))
    
     print('Hostmap ' + '-'*42)
-    for ip, hinfo in sorted(ipmap.iteritems()):
+    for ip, hinfo in sorted(ipmap.items()):
       pprint_info( ip, hinfo.name)
       pprint_info('.', hinfo.alias)
           
@@ -2582,14 +2589,14 @@ class Controller_DNS(Controller):
     print('Domains ' + '-'*42)
     domains = {}
     networks = {}
-    for ip, hinfo in ipmap.iteritems():
+    for ip, hinfo in ipmap.items():
       for name in hinfo.name:
         i = 1 if name.count('.') > 1 else 0
         d = '.'.join(name.split('.')[i:])
         if d not in domains: domains[d] = 0
         domains[d] += 1
 
-    for domain, count in sorted(domains.iteritems(), key=lambda a:a[0].split('.')[-1::-1]):
+    for domain, count in sorted(domains.items(), key=lambda a:a[0].split('.')[-1::-1]):
       print('%34s %d' % (domain, count))
 
     print('Networks ' + '-'*41)
@@ -2602,7 +2609,7 @@ class Controller_DNS(Controller):
         if n not in nets: nets[n] = []
         nets[n].append(ip)
 
-    for net, ips in sorted(nets.iteritems()):
+    for net, ips in sorted(nets.items()):
       if len(ips) == 1:
         print(' '*10 + '%39s' % ips[0])
       else:
@@ -2611,7 +2618,7 @@ class Controller_DNS(Controller):
   # }}}
 
   def push_final(self, resp):
-    for name, hinfo in resp.hostmap.iteritems():
+    for name, hinfo in resp.hostmap.items():
       if name not in self.hostmap:
         self.hostmap[name] = hinfo
       else:
@@ -2767,7 +2774,7 @@ class DNS_forward:
 
     code = result.header['rcode']
     status = result.header['status']
-    mesg = '%s %s' % (status, ' | '.join('%s / %s' % (k, v) for k, v in hostmap.iteritems()))
+    mesg = '%s %s' % (status, ' | '.join('%s / %s' % (k, v) for k, v in hostmap.items()))
 
     resp = self.Response(code, mesg)
     resp.hostmap = hostmap
@@ -2930,33 +2937,33 @@ class Keystore_pass:
 # }}}
 
 # modules {{{
-modules = (
-  'ftp_login', (Controller, FTP_login),
-  'ssh_login', (Controller, SSH_login),
-  'telnet_login', (Controller, Telnet_login),
-  'smtp_login', (Controller, SMTP_login),
-  'smtp_vrfy', (Controller, SMTP_vrfy),
-  'smtp_rcpt', (Controller, SMTP_rcpt),
-  'http_fuzz', (Controller_HTTP, HTTP_fuzz),
-  'pop_passd', (Controller, POP_passd),
-  'smb_login', (Controller, SMB_login),
-  'ldap_login', (Controller, LDAP_login),
-  'mssql_login', (Controller, MSSQL_login),
-  'oracle_login', (Controller, Oracle_login),
-  'mysql_login', (Controller, MySQL_login),
-  #'rdp_login', '',
-  'pgsql_login', (Controller, Pgsql_login),
-  'vnc_login', (Controller, VNC_login),
+modules = [
+  ('ftp_login', (Controller, FTP_login)),
+  ('ssh_login', (Controller, SSH_login)),
+  ('telnet_login', (Controller, Telnet_login)),
+  ('smtp_login', (Controller, SMTP_login)),
+  ('smtp_vrfy', (Controller, SMTP_vrfy)),
+  ('smtp_rcpt', (Controller, SMTP_rcpt)),
+  ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
+  ('pop_passd', (Controller, POP_passd)),
+  ('smb_login', (Controller, SMB_login)),
+  ('ldap_login', (Controller, LDAP_login)),
+  ('mssql_login', (Controller, MSSQL_login)),
+  ('oracle_login', (Controller, Oracle_login)),
+  ('mysql_login', (Controller, MySQL_login)),
+  #'rdp_login', 
+  ('pgsql_login', (Controller, Pgsql_login)),
+  ('vnc_login', (Controller, VNC_login)),
 
-  'dns_reverse', (Controller_DNS, DNS_reverse),
-  'dns_forward', (Controller_DNS, DNS_forward),
-  'snmp_login', (Controller, SNMP_login),
+  ('dns_reverse', (Controller_DNS, DNS_reverse)),
+  ('dns_forward', (Controller_DNS, DNS_forward)),
+  ('snmp_login', (Controller, SNMP_login)),
   
-  'unzip_pass', (Controller, Unzip_pass),
-  'keystore_pass', (Controller, Keystore_pass),
-  )
+  ('unzip_pass', (Controller, Unzip_pass)),
+  ('keystore_pass', (Controller, Keystore_pass)),
+  ]
 
-module_deps = {
+dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/'],
   'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/'],
@@ -2990,23 +2997,23 @@ Available modules:
 
     exit(2)
 
-  # module name
-  modules = zip(modules[0::2], modules[1::2])
-  available = dict((k, v) for k, v in modules)
-
+  available = dict(modules)
   name = basename(argv[0]).lower()
+
   if name not in available:
     if len(argv) == 1:
       show_usage()
+
     name = basename(argv[1]).lower()
     if name not in available:
       show_usage()
+
     argv = argv[1:]
 
   # dependencies
   abort = False
   for w in warnings:
-    mods, url = module_deps[w]
+    mods, url = dependencies[w]
     if name in mods:
       print('ERROR: %s (%s) is required to run %s.' % (w, url, name))
       abort = True

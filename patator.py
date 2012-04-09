@@ -2458,7 +2458,7 @@ class VNC:
       return code, mesg or 'Authentication failure'
 
     elif code == 0:
-      return mesg or 'OK'
+      return code, mesg or 'OK'
 
     else:
       raise VNC_Error, 'Unknown response: %s (code: %s)' % (repr(resp), code)

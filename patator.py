@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (C) 2011 Sebastien MACKE
+# Copyright (C) 2012 Sebastien MACKE
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License version 2, as published by the
@@ -15,7 +15,7 @@ __author__  = 'Sebastien Macke'
 __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
-__version__ = '0.3'
+__version__ = '0.4-beta'
 __license__ = 'GPLv2'
  
 # README {{{
@@ -1092,7 +1092,6 @@ For example, to encode every password in base64:
     self.start_time = time()
     count = 0
     for pp in islice(product(*iterables), self.start, self.stop):
-      logger.debug('pp: %s' % repr(pp))
 
       cid = count % self.num_threads
       prod = [str(p).strip('\r\n') for p in pp]
@@ -1401,8 +1400,10 @@ class TCP_Cache:
     self.cache = {} # {'10.0.0.1:21': fp, ...}
 
   def __del__(self):
-    for k in self.cache.keys():
-      self.del_tcp(k)
+    for k in self.cache:
+      fp = self.cache[k]
+      try: fp.close()
+      except: pass
 
   def get_key(self, **kwargs):
     keys = []

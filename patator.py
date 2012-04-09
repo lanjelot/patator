@@ -17,6 +17,7 @@ __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
 __version__ = '0.4-beta'
 __license__ = 'GPLv2'
+__banner__  = 'Patator v%s (%s)' % (__version__, __git__)
  
 # README {{{
 
@@ -733,26 +734,33 @@ class Controller:
   def usage_parser(self, name):
     from optparse import OptionParser
     from optparse import OptionGroup
+    from optparse import IndentedHelpFormatter
+    class MyFormatter(IndentedHelpFormatter):
+      def format_epilog(self, epilog):
+        return epilog
 
-    usage_hints = self.module.usage_hints
+      def format_heading(self, heading):
+        if self.current_indent == 0 and heading == 'Options':
+          heading = 'Global options'
+        return "%*s%s:\n" % (self.current_indent, "", heading)
+
+      def format_usage(self, usage):
+        return '%s\nUsage: %s\n' % (__banner__, usage)
 
     available_actions = self.builtin_actions + self.module.available_actions
     available_conditions = self.module.Response.available_conditions
 
-    parser = OptionParser()
-    usage = '''
-%s''' % '\n'.join(usage_hints)
+    usage = '''%%prog <module-options ...> [global-options ...]
+
+Examples:
+  %s''' % '\n  '.join(self.module.usage_hints)
 
     usage += '''
 
 Module options:
-%s
-
-* Allowed format in ()
-* Allowed values in [] with the default value always listed first
-''' % ('\n'.join('  %-14s: %s' % (k, v) for k, v in self.module.available_options))
-
-    usage += '''
+%s ''' % ('\n'.join('  %-14s: %s' % (k, v) for k, v in self.module.available_options))
+   
+    epilog = '''
 Syntax:
  -x actions:conditions
 
@@ -763,14 +771,14 @@ Syntax:
 ''' % ('" | "'.join(k for k, v in available_actions), 
        '" | "'.join(k for k, v in available_conditions))
 
-    usage += '''
+    epilog += '''
 %s
 
 %s
 ''' % ('\n'.join('    %-12s: %s' % (k, v) for k, v in available_actions),
        '\n'.join('    %-12s: %s' % (k, v) for k, v in available_conditions))
 
-    usage += '''
+    epilog += '''
 For example, to ignore all redirects to the home page:
 ... -x ignore:code=302,fgrep='Location: /home.html'
 
@@ -782,21 +790,22 @@ For example, to ignore all redirects to the home page:
 %s''' % ('" | "'.join(k for k in self.available_encodings),
        '\n'.join('    %-12s: %s' % (k, v) for k, (f, v) in self.available_encodings.items()))
 
-    usage += '''
+    epilog += '''
 
 For example, to encode every password in base64:
 ... host=10.0.0.1 user=admin password=_@@_FILE0_@@_ -e _@@_:b64
+
+Please read the README inside for more examples and usage information.
 '''
 
+    parser = OptionParser(usage=usage, prog=name, epilog=epilog, version=__banner__, formatter=MyFormatter())
 
-    parser.usage = usage.replace('%prog', name)
-      
     exe_grp = OptionGroup(parser, 'Execution')
-    exe_grp.add_option('-x', dest='actions', action='append', default=[], metavar='arg', help='actions and conditions, see Syntax above')
+    exe_grp.add_option('-x', dest='actions', action='append', default=[], metavar='arg', help='actions and conditions, see Syntax below')
     exe_grp.add_option('--start', dest='start', type='int', default=0, metavar='N', help='start from offset N in the wordlist product')
     exe_grp.add_option('--stop', dest='stop', type='int', default=None, metavar='N', help='stop at offset N')
     exe_grp.add_option('--resume', dest='resume', metavar='r1[,rN]*', help='resume previous run')
-    exe_grp.add_option('-e', dest='encodings', action='append', default=[], metavar='arg', help='encode everything between two tags, see Syntax above')
+    exe_grp.add_option('-e', dest='encodings', action='append', default=[], metavar='arg', help='encode everything between two tags, see Syntax below')
     exe_grp.add_option('-C', dest='combo_delim', default=':', metavar='str', help="delimiter string in combo files (default is ':')")
     exe_grp.add_option('-X', dest='condition_delim', default=',', metavar='str', help="delimiter string in conditions (default is ',')")
 
@@ -826,8 +835,8 @@ For example, to encode every password in base64:
       logger.setLevel(logging.DEBUG)
 
     if not len(args) > 0:
-      parser.print_help()
-      print('\nERROR: wrong usage. Please read the README inside for more information.')
+      parser.print_usage()
+      print('ERROR: wrong usage. Please read the README inside for more information.')
       exit(2)
 
     return opts, args
@@ -985,8 +994,8 @@ For example, to encode every password in base64:
     self.free_list.append(','.join('%s=%s' % (k, payload[k]) for k in opts.split('+')))
   
   def fire(self):
-    logger.info('Starting Patator v%s (%s) at %s'
-      % (__version__, __git__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
+    logger.info('Starting %s at %s'
+      % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
 
     try:
       self.start_threads()
@@ -1698,7 +1707,7 @@ class SMTP_login(SMTP_Base):
   '''Brute-force SMTP authentication'''
 
   usage_hints = (
-    '''%prog host=10.0.0.1 user=f.bar@dom.com password=FILE0 0=passwords.txt [helo='ehlo its.me.com']''',
+    '''%prog host=10.0.0.1 user=f.bar@dom.com password=FILE0 0=passwords.txt [helo='ehlo its.me.com']'''
     ''' -x ignore:fgrep='Authentication failed' -x ignore,reset,retry:code=421''',
     )
 
@@ -2207,10 +2216,6 @@ class HTTP_fuzz(TCP_Cache):
     """%prog url=http://10.0.0.1/phpmyadmin/index.php method=POST"""
     """ body='pma_username=root&pma_password=FILE0&server=1&lang=en' 0=passwords.txt follow=1"""
     """ accept_cookie=1 -x ignore:fgrep='Cannot log in to the MySQL server'""",
-
-    """%prog url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce=_@@_'"""
-    """ 0=passwords.txt accept_cookie=1 before_urls=http://10.0.0.1/index"""
-    """ before_egrep=_@@_:'<input type="hidden" name="nonce" value="(\w+)">'"""
     ]
 
   available_options = (
@@ -2969,11 +2974,8 @@ if __name__ == '__main__':
   from os.path import basename
 
   def show_usage():
-    print('''Usage:
-  $ ./patator.py module --help
-or
-  $ ln -s patator.py module
-  $ ./module --help
+    print(__banner__)
+    print('''Usage: patator.py module --help
 
 Available modules:
 %s''' % '\n'.join('  + %-13s : %s' % (k, v[1].__doc__) for k, v in modules))

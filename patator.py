@@ -692,6 +692,7 @@ class Controller:
   actions = {}
   free_list = []
   paused = False
+  from_stdin = False
   start_time = 0
   total_size = 1
   log_dir = None
@@ -994,12 +995,13 @@ Please read the README inside for more examples and usage information.
     self.free_list.append(','.join('%s=%s' % (k, payload[k]) for k in opts.split('+')))
   
   def fire(self):
-    logger.info('Starting %s at %s'
-      % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
+    logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
 
     try:
+      tryok = False
       self.start_threads()
       self.monitor_progress()
+      tryok = True
     except SystemExit:
       pass
     except KeyboardInterrupt:
@@ -1015,12 +1017,19 @@ Please read the README inside for more examples and usage information.
     total_time = time() - self.start_time
     speed_avg = done_count / total_time 
 
+    if self.from_stdin:
+      if tryok:
+        self.total_size = done_count+skip_count
+      else:
+        self.total_size = -1
+
     self.show_final()
 
-    logger.info('Hits/Done/Skip/Fail/Size: %d/%d/%d/%d/%d, Avg: %d r/s, Time: %s' % (hits_count, 
-      done_count, skip_count, fail_count, self.total_size, speed_avg, pprint_seconds(total_time, '%dh %dm %ds')))
+    logger.info('Hits/Done/Skip/Fail/Size: %d/%d/%d/%d/%d, Avg: %d r/s, Time: %s' % (hits_count,
+      done_count, skip_count, fail_count, self.total_size, speed_avg,
+      pprint_seconds(total_time, '%dh %dm %ds')))
 
-    if self.total_size != done_count+skip_count:
+    if not tryok:
       resume = []
       for i, p in enumerate(self.thread_progress):
         c = p.done_count
@@ -1066,10 +1075,22 @@ Please read the README inside for more examples and usage information.
     for _, (t, v, _) in self.iter_keys.items():
 
       if t in ('FILE', 'COMBO'):
-        #iterable, size = self.builtin_keywords[t](v)
-        files = [os.path.expanduser(f) for f in v.split(',')]
-        size = sum(sum(1 for _ in open(f)) for f in files)
-        iterable = chain(*[open(f) for f in files])
+        size = 0
+        fds = []
+
+        for f in v.split(','):
+          if f == '-': # stdin
+            from sys import maxint
+            size += maxint
+            fds.append(stdin)
+            self.from_stdin = True
+
+          else:
+            f = os.path.expanduser(f)
+            size += sum(1 for _ in open(f))
+            fds.append(open(f))
+
+        iterable = chain(*fds)
 
       elif t == 'NET':
         subnets = [IP(n, make_net=True) for n in v.split(',')]
@@ -1210,7 +1231,9 @@ Please read the README inside for more examples and usage information.
   def monitor_progress(self):
     while active_count() > 1:
       self.report_progress()
-      self.monitor_interaction()
+
+      if not self.from_stdin:
+        self.monitor_interaction()
 
     self.report_progress()
 

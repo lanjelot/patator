@@ -589,7 +589,7 @@ logger.addHandler(handler)
 
 import re
 import os
-from sys import stdin, exc_info, exit
+from sys import stdin, exc_info, exit, version_info
 from time import localtime, strftime, sleep, time
 from functools import reduce
 from threading import Thread, active_count
@@ -2403,74 +2403,72 @@ class VNC_Error(Exception): pass
 class VNC:
   def connect(self, host, port):
     self.fp = socket.create_connection((host, port))
-    resp = self.fp.recv(1024) # banner
-    self.version = resp[:11]
+    resp = self.fp.recv(99) # banner
+
+    logger.debug('banner: %s' % repr(resp))
+    self.version = resp[:11].decode('ascii')
 
     if len(resp) > 12:
-      raise VNC_Error(self.version + ' ' + resp[20:])
+      raise VNC_Error('%s %s' % (self.version, resp[12:].decode('ascii', 'ignore')))
 
     return self.version
 
   def login(self, password):
-    logger.debug("Remote version: %s" % self.version)
+    logger.debug('Remote version: %s' % self.version)
     major, minor = self.version[6], self.version[10]
 
-    if major == '3' and minor == '8':
-      proto = 'RFB 003.008\n'
+    if (major, minor) in [('3', '8'), ('4', '1')]:
+      proto = b'RFB 003.008\n'
 
-    elif major == '3' and minor == '7':
-      proto = 'RFB 003.007\n'
+    elif (major, minor) == ('3', '7'):
+      proto = b'RFB 003.007\n'
 
     else:
-      proto = 'RFB 003.003\n'
+      proto = b'RFB 003.003\n'
 
     logger.debug('Client version: %s' % proto[:-1])
     self.fp.sendall(proto)
 
+    sleep(0.5)
+
+    resp = self.fp.recv(99)
+    logger.debug('Security types supported: %s' % repr(resp))
+
     if minor in ('7', '8'):
-    # send security type
-      resp = self.fp.recv(1024)
-      logger.debug("Security types supported: %s" % repr(resp))
-      self.fp.sendall('\x02') # always use classic VNC authentication
-
-    # read server challenge
-    resp = self.fp.recv(1024)
-    logger.debug('Remote challenge: %s' % repr(resp))
-
-    if minor == '3':
-      if len(resp) < 4:
-        raise VNC_Error('Unexpected response size (%d > 4): %s' % (len(resp), repr(resp)))
-    
-      code = ord(resp[3])
+      code = ord(resp[0:1])
       if code == 0:
-        raise VNC_Error('Session setup failed: %s' % repr(resp))
+        raise VNC_Error('Session setup failed: %s' % resp.decode('ascii', 'ignore'))
 
-      elif code == 1:
-        raise VNC_Error('No authentication required: %s' % repr(resp))
+      self.fp.sendall(b'\x02') # always use classic VNC authentication
+      resp = self.fp.recv(99)
 
-      elif code == 2:
-        if len(resp) != 20:
-          raise VNC_Error('Unexpected challenge size (unsupported authentication type ?): %s' % repr(resp))
+    else: # minor == '3':
+      code = ord(resp[3:4])
+      if code != 2:
+        raise VNC_Error('Session setup failed: %s' % resp.decode('ascii', 'ignore'))
 
-        resp = resp[4:20]
+      resp = resp[-16:]
 
-      else:
-        raise VNC_Error('Session setup unknown response')
+    if len(resp) != 16:
+      raise VNC_Error('Unexpected challenge size (unsupported authentication type ?)')
 
-    pw = (password + '\0' * 8)[:8] # make sure it is 8 chars long, zero padded
+    logger.debug('challenge: %s' % repr(resp))
+    pw = password.ljust(8, '\x00')[:8] # make sure it is 8 chars long, zero padded
+
     key = self.gen_key(pw)
     logger.debug('key: %s' % repr(key))
 
     des = DES.new(key, DES.MODE_ECB)
     enc = des.encrypt(resp)
-    logger.debug('enc: %s' % repr(enc))
 
+    logger.debug('enc: %s' % repr(enc))
     self.fp.sendall(enc)
-    resp = self.fp.recv(1024)
+
+    resp = self.fp.recv(99)
     logger.debug('resp: %s' % repr(resp))
 
-    code = ord(resp[3])
-    mesg = resp[8:]
+    code = ord(resp[3:4])
+    mesg = resp[8:].decode('ascii', 'ignore')
 
     if code == 1:
       return code, mesg or 'Authentication failure'
@@ -2490,15 +2488,19 @@ class VNC:
       for i in range(8):
         if bsrc & (1 << i):
           btgt = btgt | (1 << 7-i)
-      newkey.append(chr(btgt))
-    return ''.join(newkey)
+      newkey.append(btgt)
+
+    if version_info[0] == 2:
+      return ''.join(chr(c) for c in newkey)
+    else:
+      return bytes(newkey)
 
 
 class VNC_login:
   '''Brute-force VNC authentication'''
 
   usage_hints = (
-    """%prog host=10.0.0.1 password=FILE0 0=passwords.txt -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0""",
+    """%prog host=10.0.0.1 password=FILE0 0=passwords.txt -t 1 -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0""",
     )
   
   available_options = (
@@ -2514,13 +2516,13 @@ class VNC_login:
     self.m = VNC()
   def execute(self, host, port=None, password=None):
     try:
-      code, mesg = '0', self.m.connect(host, int(port or 5900))
+      code, mesg = 0, self.m.connect(host, int(port or 5900))
 
       if password is not None:
         code, mesg = self.m.login(password)
 
     except VNC_Error as e:
-      code, mesg = '2', str(e)
+      code, mesg = 2, str(e)
       logger.debug('VNC_Error: %s' % mesg)
 
     return self.Response(code, mesg)
@@ -3037,4 +3039,4 @@ Available modules:
 
 # }}}
 
-# vim: ts=2 sw=2 sts=2 et fdm=marker
+# vim: ts=2 sw=2 sts=2 et fdm=marker bg=dark

@@ -2127,7 +2127,7 @@ class Oracle_login:
       code, mesg = '0', fp.version
 
     except cx_Oracle.DatabaseError as e:
-      code, mesg = e[0].message[:-1].split(': ', 1)
+      code, mesg = e.args[0].message[:-1].split(': ', 1)
       
     return self.Response(code, mesg)
 

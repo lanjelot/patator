@@ -698,6 +698,7 @@ class Controller:
   log_dir = None
   thread_report = []
   thread_progress = []
+  stop_now = False
 
   payload = {}
   iter_keys = {}
@@ -1008,7 +1009,15 @@ Please read the README inside for more examples and usage information.
       print
     except:
       logger.exception(exc_info()[1])
-    
+
+    if not tryok:
+      self.stop_now = True
+      while True:
+        try:
+          if active_count() == 1: break
+          sleep(.1)
+        except KeyboardInterrupt: pass
+
     hits_count = sum(p.hits_count for p in self.thread_progress)
     done_count = sum(p.done_count for p in self.thread_progress)
     skip_count = sum(p.skip_count for p in self.thread_progress)
@@ -1135,7 +1144,15 @@ Please read the README inside for more examples and usage information.
           count += 1
           continue
 
-      queues[cid].put(prod)
+      while True:
+        if self.stop_now: return
+
+        try:
+          queues[cid].put_nowait(prod)
+          break
+        except Full:
+          sleep(.1)
+
       count += 1
 
     for q in queues:
@@ -1146,6 +1163,8 @@ Please read the README inside for more examples and usage information.
     rate_count = 0 
 
     while True:
+      if self.stop_now: return
+
       prod = gqueue.get()
       if not prod: return
       
@@ -1180,8 +1199,10 @@ Please read the README inside for more examples and usage information.
       while num_try < self.max_retries or self.max_retries < 0:
         num_try += 1
 
-        while self.paused: 
+        while self.paused and not self.stop_now:
           sleep(1)
+
+        if self.stop_now: return
 
         if self.rate_reset > 0:
           if rate_count >= self.rate_reset:
@@ -2959,8 +2980,8 @@ modules = [
   ('smtp_rcpt', (Controller, SMTP_rcpt)),
   ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
   ('pop_passd', (Controller, POP_passd)),
-  ('smb_login', (Controller, SMB_login)),
   ('ldap_login', (Controller, LDAP_login)),
+  ('smb_login', (Controller, SMB_login)),
   ('mssql_login', (Controller, MSSQL_login)),
   ('oracle_login', (Controller, Oracle_login)),
   ('mysql_login', (Controller, MySQL_login)),

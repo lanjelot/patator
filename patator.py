@@ -1012,11 +1012,11 @@ Please read the README inside for more examples and usage information.
 
     if not tryok:
       self.stop_now = True
-      while True:
-        try:
-          if active_count() == 1: break
+      try:
+        while active_count() > 1:
           sleep(.1)
-        except KeyboardInterrupt: pass
+      except KeyboardInterrupt:
+        pass
 
     hits_count = sum(p.hits_count for p in self.thread_progress)
     done_count = sum(p.done_count for p in self.thread_progress)

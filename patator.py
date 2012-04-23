@@ -40,6 +40,7 @@ Currently it supports the following modules:
   - pop_passd     : Brute-force poppassd (not POP3)
   - ldap_login    : Brute-force LDAP
   - smb_login     : Brute-force SMB
+  - smb_lookupsid : Brute-force SMB SID-lookup
   - mssql_login   : Brute-force MSSQL
   - oracle_login  : Brute-force Oracle
   - mysql_login   : Brute-force MySQL
@@ -128,7 +129,9 @@ pycrypto         | VNC            | http://www.dlitz.net/software/pycrypto/     
 --------------------------------------------------------------------------------------------------
 pydns            | DNS            | http://pydns.sourceforge.net/                      |   2.3.4 |
 --------------------------------------------------------------------------------------------------
-pysnmp           | SNMP           | http://pysnmp.sf.net/                              | 4.1.16a |
+pysnmp           | SNMP           | http://pysnmp.sourceforge.net/                     |   4.2.1 |
+--------------------------------------------------------------------------------------------------
+pyasn1           | SNMP           | http://sourceforge.net/projects/pyasn1/            |   0.1.2 |
 --------------------------------------------------------------------------------------------------
 IPy              | NETx keywords  | https://github.com/haypo/python-ipy                |    0.75 |
 --------------------------------------------------------------------------------------------------
@@ -1826,6 +1829,7 @@ class LDAP_login:
 # SMB {{{
 try:
   from impacket import smb as impacket_smb
+  from impacket.dcerpc import dcerpc, transport, lsarpc
 except ImportError:
   warnings.append('impacket')
 
@@ -1870,7 +1874,8 @@ class SMB_login(TCP_Cache):
   }
   
   def new_tcp(self, host, port):
-    fp = impacket_smb.SMB("*SMBSERVER", host, sess_port=int(port or 139))
+    # if port == 445, impacket will use <host> instead of '*SMBSERVER' as the remote_name
+    fp = impacket_smb.SMB('*SMBSERVER', host, sess_port=int(port or 139))
     return fp, fp.get_server_name()
 
   def execute(self, host, port=None, user=None, password=None, password_hash=None, domain='', persistent='1'):
@@ -1902,6 +1907,62 @@ class SMB_login(TCP_Cache):
           mesg += ' - %s' % class_str
 
     return self.Response(code, mesg)
+
+class SMB_lookupsid(TCP_Cache):
+  '''Brute-force SMB SID-lookup'''
+
+  usage_hints = (
+    '''seq 500 2000 | %prog host=10.0.0.1 sid=S-1-5-21-1234567890-1234567890-1234567890 rid=FILE0 0=- -x ignore:code=1''',
+    )
+
+  available_options = (
+    ('host', 'hostnames or subnets to target'),
+    ('port', 'ports to target [139]'),
+    ('sid', 'SID to test'),
+    ('rid', 'RID to test'),
+    )
+  available_options += TCP_Cache.available_options
+
+  Response = Response_Base
+
+  cache_keys = ('host', 'port', 'user', 'password')
+  def new_tcp(self, host, port, user, password):
+    smbt = transport.SMBTransport(host, int(port or 139), r'\lsarpc', user, password)
+
+    dce = dcerpc.DCERPC_v5(smbt)
+    dce.connect()
+    dce.bind(lsarpc.MSRPC_UUID_LSARPC)
+
+    fp = lsarpc.DCERPCLsarpc(dce)
+    return fp, ''
+
+  # http://msdn.microsoft.com/en-us/library/windows/desktop/hh448528%28v=vs.85%29.aspx
+  SID_NAME_USER = [0, 'User', 'Group', 'Domain', 'Alias', 'WellKnownGroup', 'DeletedAccount', 'Invalid', 'Unknown', 'Computer', 'Label']
+
+  def execute(self, host, port=None, user='', password='', sid=None, rid=None, persistent='1'):
+    fp, mesg = self.get_tcp(persistent, host=host, port=port, user=user, password=password)
+
+    if rid:
+      sid = '%s-%s' % (sid, rid)
+
+    op2 = fp.LsarOpenPolicy2('\\', access_mask=0x02000000)
+    res = fp.LsarLookupSids(op2['ContextHandle'], [sid])
+
+    if res['ErrorCode'] == 0:
+      code, names = 0, []
+
+      for d in res.formatDict():
+
+        if 'types' in d: # http://code.google.com/p/impacket/issues/detail?id=10
+          names.append(','.join('%s\\%s (%s)' % (d['domain'], n, self.SID_NAME_USER[t]) for n, t in zip(d['names'], d['types'])))
+        else:
+          names.append(','.join('%s\\%s' % (d['domain'], n) for n in d['names']))
+
+    else:
+      code, names = 1, ['unknown'] # STATUS_SOME_NOT_MAPPED
+
+    return self.Response(code, ', '.join(names))
+
 
 # }}}
 
@@ -2982,6 +3043,7 @@ modules = [
   ('pop_passd', (Controller, POP_passd)),
   ('ldap_login', (Controller, LDAP_login)),
   ('smb_login', (Controller, SMB_login)),
+  ('smb_lookupsid', (Controller, SMB_lookupsid)),
   ('mssql_login', (Controller, MSSQL_login)),
   ('oracle_login', (Controller, Oracle_login)),
   ('mysql_login', (Controller, MySQL_login)),
@@ -3001,7 +3063,7 @@ dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/'],
   'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/'],
-  'impacket': [('smb_login',), 'http://oss.coresecurity.com/projects/impacket.html'],
+  'impacket': [('smb_login','smb_lookupsid'), 'http://oss.coresecurity.com/projects/impacket.html'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/'],
   'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/'],
   'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/'],

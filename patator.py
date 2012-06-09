@@ -417,7 +417,7 @@ http_fuzz url=FILE0 0=urls.txt method=OPTIONS -x ignore:egrep='^Allow: HEAD, GET
   (a) Do not report wrong passwords.
   (b) Talk SSL/TLS to port 636.
 ---------
-ldap_login host=10.0.0.1 bindn='cn=FILE0,dc=example,dc=com' 0=logins.txt bindpw=FILE1 1=passwords.txt
+ldap_login host=10.0.0.1 binddn='cn=FILE0,dc=example,dc=com' 0=logins.txt bindpw=FILE1 1=passwords.txt
  -x ignore:mesg='ldap_bind: Invalid credentials (49)' ssl=1 port=636
          (a)                                              (b)
 }}}
@@ -647,13 +647,14 @@ def which(program):
 
   return None
 
-def create_dir(top_path):
+def create_dir(top_path, from_stdin=False):
   top_path = os.path.abspath(top_path)
   if os.path.isdir(top_path):
     files = os.listdir(top_path)
     if files:
-      if raw_input("Directory '%s' is not empty, do you want to wipe it ? [Y/n]: " % top_path) == 'n':
-        exit(0)
+      if not from_stdin:
+        if raw_input("Directory '%s' is not empty, do you want to wipe it ? [Y/n]: " % top_path) == 'n':
+          exit(0)
       for root, dirs, files in os.walk(top_path):
         if dirs:
           print("Directory '%s' contains sub-directories, safely aborting..." % root)
@@ -818,8 +819,7 @@ Please read the README inside for more examples and usage information.
 
     opt_grp = OptionGroup(parser, 'Optimization')
     opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between tests (default is 0)')
-    opt_grp.add_option('--rate-reset', dest='rate_reset', type='int', default=0, metavar='N', help='reset module every N tests (default is 0: never reset)')
-    opt_grp.add_option('--failure-delay', dest='failure_delay', type='float', default=0.5, metavar='N', help='wait N seconds after a failure (default is 0.5)')
+    opt_grp.add_option('--failure-delay', dest='failure_delay', type='float', default=0.1, metavar='N', help='wait N seconds after a failure (default is 0.1)')
     opt_grp.add_option('--max-retries', dest='max_retries', type='int', default=5, metavar='N', help='skip payload after N failures (default is 5) (-1 for unlimited)')
     opt_grp.add_option('-t', '--threads', dest='num_threads', type='int', default=10, metavar='N', help='number of threads (default is 10)')
 
@@ -854,7 +854,6 @@ Please read the README inside for more examples and usage information.
 
     self.combo_delim = opts.combo_delim
     self.condition_delim = opts.condition_delim
-    self.rate_reset = opts.rate_reset
     self.rate_limit = opts.rate_limit
     self.failure_delay = opts.failure_delay
     self.max_retries = opts.max_retries
@@ -863,12 +862,15 @@ Please read the README inside for more examples and usage information.
 
     wlists = {}
     kargs = []
-    for arg in args: # ('host=NET0', '0=10.0.0.0/24', 'user=COMBO10', 'password=COMBO11', '1=combos.txt', 'domain=MOD2', '2=TLD')
+    for arg in args: # ('host=NET0', '0=10.0.0.0/24', 'user=COMBO10', 'password=COMBO11', '1=combos.txt', 'domain=google.MOD2', '2=TLD')
       for k, v in self.expand_key(arg):
         logger.debug('k: %s, v: %s' % (k, v))
 
         if k.isdigit():
           wlists[k] = v
+
+          if v == '-':
+            self.from_stdin = True
 
         else:
           if v.startswith('@'):
@@ -877,8 +879,8 @@ Please read the README inside for more examples and usage information.
           kargs.append((k, v)) 
 
     iter_vals = [v for k, v in sorted(wlists.items())]
-    logger.debug('iter_vals: %s' % iter_vals) # ['10.0.0.0/24', 'combos.txt', 'TLD']
     logger.debug('kargs: %s' % kargs) # [('host', 'NET0'), ('user', 'COMBO10'), ('password', 'COMBO11'), ('domain', 'MOD2')]
+    logger.debug('iter_vals: %s' % iter_vals) # ['10.0.0.0/24', 'combos.txt', 'TLD']
 
     for k, v in kargs:
 
@@ -918,8 +920,7 @@ Please read the README inside for more examples and usage information.
             else:
               self.payload[k] = v
 
-    # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['domain'])
-    logger.debug('iter_keys: %s' % self.iter_keys)
+    logger.debug('iter_keys: %s' % self.iter_keys) # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['domain'])
     logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hexlify), ('header', 'B64', b64encode), ...
     logger.debug('payload: %s' % self.payload)
 
@@ -934,7 +935,7 @@ Please read the README inside for more examples and usage information.
     if opts.auto_log:
       self.log_dir = create_time_dir(opts.log_dir or '/tmp/patator', opts.auto_log)
     elif opts.log_dir:
-      self.log_dir = create_dir(opts.log_dir)
+      self.log_dir = create_dir(opts.log_dir, self.from_stdin)
     
     if self.log_dir:
       log_file = os.path.join(self.log_dir, 'RUNTIME.log')
@@ -949,12 +950,8 @@ Please read the README inside for more examples and usage information.
     actions, conditions = arg.split(':', 1)
 
     for action in actions.split(','):
-      conds = conditions.split(self.condition_delim)
-      new_cond = []
 
-      for cond in conds:
-        key, val = cond.split('=', 1)
-        new_cond.append((key, val))
+      conds = [c.split('=', 1) for c in conditions.split(self.condition_delim)]
      
       if '=' in action:
         name, opts = action.split('=')
@@ -967,7 +964,8 @@ Please read the README inside for more examples and usage information.
       if name not in self.actions:
         self.actions[name] = []
 
-      self.actions[name].append((new_cond, opts))
+      self.actions[name].append((conds, opts))
+
 
   def lookup_actions(self, resp):
     actions = {}
@@ -999,6 +997,7 @@ Please read the README inside for more examples and usage information.
 
   def register_free(self, payload, opts):
     self.free_list.append(','.join('%s=%s' % (k, payload[k]) for k in opts.split('+')))
+    logger.debug('Updated free_list: %s' % self.free_list)
   
   def fire(self):
     logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
@@ -1019,9 +1018,12 @@ Please read the README inside for more examples and usage information.
       self.stop_now = True
       try:
         while active_count() > 1:
+          logger.debug('active_count: %s' % active_count())
           sleep(.1)
       except KeyboardInterrupt:
         pass
+
+    self.report_progress()
 
     hits_count = sum(p.hits_count for p in self.thread_progress)
     done_count = sum(p.done_count for p in self.thread_progress)
@@ -1039,14 +1041,14 @@ Please read the README inside for more examples and usage information.
 
     self.show_final()
 
-    logger.info('Hits/Done/Skip/Fail/Size: %d/%d/%d/%d/%d, Avg: %d r/s, Time: %s' % (hits_count,
-      done_count, skip_count, fail_count, self.total_size, speed_avg,
+    logger.info('Hits/Done/Skip/Fail/Size: %d/%d/%d/%d/%d, Avg: %d r/s, Time: %s' % (
+      hits_count, done_count, skip_count, fail_count, self.total_size, speed_avg,
       pprint_seconds(total_time, '%dh %dm %ds')))
 
     if not tryok:
       resume = []
       for i, p in enumerate(self.thread_progress):
-        c = p.done_count
+        c = p.done_count + p.skip_count
         if self.resume:
           if i < len(self.resume):
             c += self.resume[i]
@@ -1097,7 +1099,6 @@ Please read the README inside for more examples and usage information.
             from sys import maxint
             size += maxint
             fds.append(stdin)
-            self.from_stdin = True
 
           else:
             f = os.path.expanduser(f)
@@ -1150,7 +1151,8 @@ Please read the README inside for more examples and usage information.
           continue
 
       while True:
-        if self.stop_now: return
+        if self.stop_now:
+          return
 
         try:
           queues[cid].put_nowait(prod)
@@ -1165,13 +1167,14 @@ Please read the README inside for more examples and usage information.
 
   def consume(self, gqueue, pqueue):
     module = self.module()
-    rate_count = 0 
 
     while True:
-      if self.stop_now: return
+      if self.stop_now:
+        return
 
       prod = gqueue.get()
-      if not prod: return
+      if not prod:
+        return
       
       payload = self.payload.copy()
  
@@ -1192,44 +1195,38 @@ Please read the README inside for more examples and usage information.
       for k, m, e in self.enc_keys:
         payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(m.group(1)), payload[k])
   
+      logger.debug('product: %s' % prod)
       pp_prod = ':'.join(prod)
-      logger.debug('pp_prod: %s' % pp_prod)
 
       if self.check_free(payload):
         pqueue.put_nowait(('skip', pp_prod, None, 0))
         continue
 
-      num_try = 0
+      try_count = 0
       start_time = time() 
-      while num_try < self.max_retries or self.max_retries < 0:
-        num_try += 1
+
+      while try_count < self.max_retries or self.max_retries < 0:
 
         while self.paused and not self.stop_now:
           sleep(1)
 
-        if self.stop_now: return
-
-        if self.rate_reset > 0:
-          if rate_count >= self.rate_reset:
-            logger.debug('Reset module')
-            module = self.module()
-            rate_count = 0
+        if self.stop_now:
+          return
 
         if self.rate_limit:
           sleep(self.rate_limit)
 
-        logger.debug('payload: %s' % payload)
-
         try:
-          rate_count += 1
+          try_count += 1
+          logger.debug('payload: %s' % payload)
           resp = module.execute(**payload)
 
         except:
           e_type, e_value, _ = exc_info()
           resp = '%s, %s' % (e_type, e_value.args)
           logger.debug('except: %s' % resp)
+
           module = self.module()
-          rate_count = 0
           sleep(self.failure_delay)
           continue
 
@@ -1241,12 +1238,9 @@ Please read the README inside for more examples and usage information.
             getattr(module, name)(**payload)
 
         if 'free' in actions:
-          opts = actions['free']
-          self.register_free(payload, opts)
+          self.register_free(payload, actions['free'])
 
         if 'retry' in actions:
-          logger.debug('Retry %d/%d: %s' % (num_try, self.max_retries, resp))
-          sleep(self.failure_delay)
           continue
         
         break
@@ -1261,8 +1255,6 @@ Please read the README inside for more examples and usage information.
       if not self.from_stdin:
         self.monitor_interaction()
 
-    self.report_progress()
-
   def report_progress(self):
     for i, pq in enumerate(self.thread_report):
       p = self.thread_progress[i]
@@ -1271,7 +1263,7 @@ Please read the README inside for more examples and usage information.
 
         try:
           actions, current, resp, seconds = pq.get_nowait()
-          logger.debug('actions: %s' % actions)
+          logger.debug('Reported actions: %s' % actions)
 
         except Empty: 
           break
@@ -1859,7 +1851,7 @@ class LDAP_login:
   '''Brute-force LDAP authentication'''
 
   usage_hints = (
-    """%prog host=10.0.0.1 bindn='cn=Directory Manager' bindpw=FILE0 0=passwords.txt"""
+    """%prog host=10.0.0.1 binddn='cn=Directory Manager' bindpw=FILE0 0=passwords.txt"""
     """ -x ignore:mesg='ldap_bind: Invalid credentials (49)'""",
     )
 
@@ -2228,12 +2220,10 @@ class MSSQL_login:
 
   Response = Response_Base
 
-  def __init__(self):
-    self.m = MSSQL()
-
   def execute(self, host, port=None, user='', password=''):
-    self.m.connect(host, int(port or 1433))
-    code, mesg = self.m.login(user, password)
+    m = MSSQL()
+    m.connect(host, int(port or 1433))
+    code, mesg = m.login(user, password)
     return self.Response(code, mesg)
 
 # }}}
@@ -2655,18 +2645,18 @@ class VNC_login:
 
   Response = Response_Base
 
-  def __init__(self):
-    self.m = VNC()
   def execute(self, host, port=None, password=None):
+    v = VNC()
+
     try:
-      code, mesg = 0, self.m.connect(host, int(port or 5900))
+      code, mesg = 0, v.connect(host, int(port or 5900))
 
       if password is not None:
-        code, mesg = self.m.login(password)
+        code, mesg = v.login(password)
 
     except VNC_Error as e:
+      logger.debug('VNC_Error: %s' % e)
       code, mesg = 2, str(e)
-      logger.debug('VNC_Error: %s' % mesg)
 
     return self.Response(code, mesg)
 

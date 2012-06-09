@@ -36,6 +36,7 @@ Currently it supports the following modules:
   - smtp_login    : Brute-force SMTP
   - smtp_vrfy     : Enumerate valid users using the SMTP 'VRFY' command
   - smtp_rcpt     : Enumerate valid users using the SMTP 'RCPT TO' command
+  - finger_lookup : Enumerate valid users using Finger
   - http_fuzz     : Brute-force HTTP/HTTPS
   - pop_passd     : Brute-force poppassd (not POP3)
   - ldap_login    : Brute-force LDAP
@@ -577,6 +578,7 @@ TODO
   * SSL support for SMTP, MySQL, ... (use socat in the meantime)
   * new option -e ns like in Medusa (not likely to be implemented due to design)
   * replace PyDNS|paramiko|IPy with a better module (scapy|libssh2|... ?)
+  * rewrite itertools.product that eats too much memory when processing large wordlists
 '''
 
 # }}}
@@ -1775,6 +1777,65 @@ class SMTP_login(SMTP_Base):
     code, mesg = resp
     return self.Response(code, mesg)
 
+# }}}
+
+# Finger {{{
+class Controller_Finger(Controller):
+
+  user_list = []
+
+  def push_final(self, resp):
+   for l in resp.lines:
+      if l not in self.user_list:
+        self.user_list.append(l)
+
+  def show_final(self):
+    print('\n'.join(self.user_list))
+
+class Finger_lookup:
+  '''Enumerate valid users using Finger'''
+
+  usage_hints = (
+    """%prog host=10.0.0.1 user=FILE0 0=words.txt -x ignore:fgrep='no such user'""",
+    )
+
+  available_options = (
+    ('host', 'hostnames or subnets to target'),
+    ('port', 'ports to target [79]'),
+    ('user', 'usernames to test'),
+    ('timeout', 'seconds to wait on socket operations [5]'),
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, host, port=None, user='', timeout='5'):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(int(timeout))
+
+    s.connect((host, int(port or 79)))
+    if user:
+      s.send(user)
+    s.send('\r\n')
+
+    data = ''
+    while True:
+      raw = s.recv(1024)
+      if not raw:
+        break
+      data += raw
+
+    s.close()
+
+    logger.debug('recv: %s' % repr(data))
+
+    data = data.strip()
+    mesg = repr(data)
+
+    resp = self.Response(0, mesg, data)
+    resp.lines = [l.strip('\r\n') for l in data.split('\n')]
+
+    return resp
 # }}}
 
 # LDAP {{{
@@ -3039,6 +3100,7 @@ modules = [
   ('smtp_login', (Controller, SMTP_login)),
   ('smtp_vrfy', (Controller, SMTP_vrfy)),
   ('smtp_rcpt', (Controller, SMTP_rcpt)),
+  ('finger_lookup', (Controller_Finger, Finger_lookup)),
   ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
   ('pop_passd', (Controller, POP_passd)),
   ('ldap_login', (Controller, LDAP_login)),

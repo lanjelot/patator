@@ -185,7 +185,7 @@ For instance, this would be the classic order:
 10.0.0.2 root password
 ...
 
-When a better way may be:
+While a smarter way might be:
 ---------
 ./module host=FILE2 password=FILE1 user=FILE0 0=logins.txt 1=passwords.txt 2=hosts.txt 
 10.0.0.1 root password
@@ -214,9 +214,9 @@ Scan subnets to just grab version banners.
 
 Use the -x option to do specific actions upon receiving expected results. For instance:
 
-To ignore responses with status code 301 *AND* a size within a range.
+To ignore responses with status code 200 *AND* a size within a range.
 ---------
-./module host=10.0.0.1 user=FILE0 -x ignore:code=301,size=57-74
+./module host=10.0.0.1 user=FILE0 -x ignore:code=200,size=57-74
 
 To ignore responses with status code 500 *OR* containing "Internal error".
 ---------
@@ -226,41 +226,34 @@ Remember that conditions are ANDed within the same -x option, use multiple -x op
 specify ORed conditions.
 
 
-* Failures (--failure-delay and --max-retries options)
+* Failures
 
 During execution, failures may happen, such as a TCP connect timeout for
 instance. A failure is actually an exception that is not caught by the module,
-and as a result the exception is caught upstream by the controller. By default,
-such exceptions, or failures, are not reported to the user, the controller will
-try 5 more times before reporting the failed payload with the code "xxx"
-(--max-retries defaults to 5).
+and as a result the exception is caught upstream by the controller.
 
-After catching a failure, the controller will discard the module instance that
-may be in a dubious state to create a brand new one, and then sleep for 0.5
-second before trying again the same payload (--failure-delay defaults to 0.5).
+By default, such exceptions, or failures, are not reported to the user, the
+controller will try 5 more times before reporting the failed payload with the
+code "xxx" (--max-retries defaults to 5).
 
 
 * Read carefully the following examples to get a good understanding of how patator works.
 {{{ FTP
 
-* Brute-force authentication.
-  (a) Do not report wrong passwords.
-  (b) Do not report everytime the server shuts down the TCP connection (ie. max login attempts
-      reached), reconnect and retry last login/password.
-  (c) Reconnect when a valid password is found (need to logoff before testing other passwords).
+* Brute-force authentication. Do not report wrong passwords.
 ---------
-ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt
-  -x ignore:mesg='Login incorrect.' -x ignore,reset,retry:code=500 -x reset:fgrep='Login success'
-  (a)                              (b)                             (c)
+ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:mesg='Login incorrect.'
 
-NB. If you get errors like "too many connections from your IP address", try
-    decreasing the number of threads, the server may be enforcing a maximum
-    number of concurrent connections.
+NB0. If you get errors like "500 OOPS: priv_sock_get_cmd", try passing -x ignore,reset,retry:code=500
+     in order to retry the last login/password with a new TCP connection. Odd servers like vsftpd
+     return this when they shut down the TCP connection (ie. max login attempts reached).
 
+NB1. If you get errors like "too many connections from your IP address", try decreasing the number of
+     threads, the server may be enforcing a maximum number of concurrent connections.
 
 * Same as before, but stop testing a user after his password is found.
 ---------
-ftp_login ... -x reset,free=user:fgrep='Login success'
+ftp_login ... -x free=user:code=0
 
 
 * Find anonymous FTP servers on a subnet.
@@ -269,33 +262,23 @@ ftp_login host=NET0 user=anonymous password=test@example.com 0=10.0.0.0/24
 
 }}}
 {{{ SSH
-* Brute-force authentication.
-  (a) Do not report wrong passwords.
-  (b) Do not report everytime the server shuts down the TCP connection (ie. max login attempts
-      reached), reconnect and retry last login/password.
-  (c) Reconnect when a valid password is found (need to logoff before testing other passwords).
----------                                                      (a)
+* Brute-force authentication. Do not report wrong passwords.
+---------
 ssh_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:mesg='Authentication failed.'
- -x ignore,reset,retry:mesg='No existing session' -x reset:code=0
- (b)                                              (c)
 
 NB. If you get errors like "Error reading SSH protocol banner ... Connection reset by peer",
-    try decreasing the number of threads, the server may be enforcing a maximum
+    try decreasing the max_conn option (default is 10), the server may be enforcing a maximum
     number of concurrent connections (eg. MaxStartups in OpenSSH).
 
 
 * Brute-force several hosts and stop testing a host after a valid password is found.
 ---------
-ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
- -x ignore:mesg='Authentication failed.' -x ignore,reset,retry:mesg='No existing session'
- -x reset,free=host:code=0
+ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt -x free=host:code=0
 
 
 * Same as previous, but stop testing a user on a host after his password is found.
 ---------
-ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
- ...
- -x reset,free=host+user:code=0
+ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt -x free=host+user:code=0
 
 }}}
 {{{ Telnet
@@ -306,12 +289,11 @@ ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwo
   (c) Reconnect when we get no login prompt back (max number of tries reached or successful login).
 ------------                    (a)
 telnet_login host=10.0.0.1 inputs='FILE0\nFILE1' 0=logins.txt 1=passwords.txt
- prompt_re='Username:|Password:' -x reset:egrep!='% Login failed!.+Username:'
+ prompt_re='tux login:|Password:' -x reset:egrep!='Login incorrect.+tux login:'
  (b)                             (c)
  
-NB. If you get errors like "telnet connection closed", this is because they occur
-    at TCP connect time, so try decreasing the number of threads, the server may
-    be enforcing a maximum number of concurrent connections.
+NB. If you get errors like "telnet connection closed", try decreasing the number of threads,
+    the server may be enforcing a maximum number of concurrent connections.
 
 }}}
 {{{ SMTP
@@ -424,12 +406,8 @@ ldap_login host=10.0.0.1 binddn='cn=FILE0,dc=example,dc=com' 0=logins.txt bindpw
 {{{ SMB
 
 * Brute-force authentication.
-  (a) Do not report wrong passwords.
-  (b) Reconnect when a valid password is found (need to logoff before testing other passwords).
 ---------
-smb_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt
- -x ignore:fgrep=STATUS_LOGON_FAILURE -x reset:code=0
-         (a)                                 (b)
+smb_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:fgrep=STATUS_LOGON_FAILURE
 
 NB. If you suddenly get STATUS_ACCOUNT_LOCKED_OUT errors for an account
     although it is not the first password you test on this account, then you must
@@ -439,9 +417,9 @@ NB. If you suddenly get STATUS_ACCOUNT_LOCKED_OUT errors for an account
 * Pass-the-hash.
   (a) Test a list of hosts.
   (b) Test every user (each line := login:rid:LM hash:NT hash).
----------    (a)                                         (b)
+---------
 smb_login host=FILE0 0=hosts.txt user=COMBO10 password_hash=COMBO12:COMBO13 1=pwdump.txt -x ...
-
+             (a)                                         (b)
 }}}
 {{{ MSSQL
 
@@ -486,8 +464,7 @@ mysql_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:fgrep
 
 * Brute-force authentication.
 -----------
-pgsql_login host=10.0.0.1 user=postgres password=FILE0 0=passwords.txt
- -x ignore:fgrep='password authentication failed for user'
+pgsql_login host=10.0.0.1 user=postgres password=FILE0 0=passwords.txt -x ignore:fgrep='password authentication failed'
 
 }}}
 {{{ VNC
@@ -510,7 +487,7 @@ vnc_login host=10.0.0.1 password=FILE0 0=passwords.txt --threads 1
 }}}
 {{{ Unzip
 
-* Brute-force the ZIP file password.
+* Brute-force the ZIP file password (cracking older pkzip encryption used to be not supported in JtR).
 ----------
 unzip_pass zipfile=path/to/file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
 
@@ -597,7 +574,7 @@ import os
 from sys import stdin, exc_info, exit, version_info
 from time import localtime, strftime, sleep, time
 from functools import reduce
-from threading import Thread, active_count
+from threading import Thread, active_count, Lock
 from select import select
 from itertools import product, chain, islice
 from string import ascii_lowercase
@@ -695,20 +672,6 @@ def sha1hex(plain):
 
 # Controller {{{
 class Controller:
-  actions = {}
-  free_list = []
-  paused = False
-  from_stdin = False
-  start_time = 0
-  total_size = 1
-  log_dir = None
-  thread_report = []
-  thread_progress = []
-  stop_now = False
-
-  payload = {}
-  iter_keys = {}
-  enc_keys = []
 
   builtin_actions = (
     ('ignore', 'do not report'),
@@ -743,6 +706,7 @@ class Controller:
     from optparse import OptionParser
     from optparse import OptionGroup
     from optparse import IndentedHelpFormatter
+
     class MyFormatter(IndentedHelpFormatter):
       def format_epilog(self, epilog):
         return epilog
@@ -819,7 +783,6 @@ Please read the README inside for more examples and usage information.
 
     opt_grp = OptionGroup(parser, 'Optimization')
     opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between tests (default is 0)')
-    opt_grp.add_option('--failure-delay', dest='failure_delay', type='float', default=0.1, metavar='N', help='wait N seconds after a failure (default is 0.1)')
     opt_grp.add_option('--max-retries', dest='max_retries', type='int', default=5, metavar='N', help='skip payload after N failures (default is 5) (-1 for unlimited)')
     opt_grp.add_option('-t', '--threads', dest='num_threads', type='int', default=10, metavar='N', help='number of threads (default is 10)')
 
@@ -849,13 +812,27 @@ Please read the README inside for more examples and usage information.
     return opts, args
 
   def __init__(self, module, argv):
+    self.actions = {}
+    self.free_list = []
+    self.paused = False
+    self.from_stdin = False
+    self.start_time = 0
+    self.total_size = 1
+    self.stop_now = False
+    self.log_dir = None
+    self.thread_report = []
+    self.thread_progress = []
+
+    self.payload = {}
+    self.iter_keys = {}
+    self.enc_keys = []
+
     self.module = module
     opts, args = self.parse_usage(argv)
 
     self.combo_delim = opts.combo_delim
     self.condition_delim = opts.condition_delim
     self.rate_limit = opts.rate_limit
-    self.failure_delay = opts.failure_delay
     self.max_retries = opts.max_retries
     self.num_threads = opts.num_threads
     self.start, self.stop, self.resume = opts.start, opts.stop, opts.resume
@@ -966,7 +943,6 @@ Please read the README inside for more examples and usage information.
 
       self.actions[name].append((conds, opts))
 
-
   def lookup_actions(self, resp):
     actions = {}
     for action, conditions in self.actions.items():
@@ -997,7 +973,7 @@ Please read the README inside for more examples and usage information.
 
   def register_free(self, payload, opts):
     self.free_list.append(','.join('%s=%s' % (k, payload[k]) for k in opts.split('+')))
-    logger.debug('Updated free_list: %s' % self.free_list)
+    logger.debug('free_list updated: %s' % self.free_list)
   
   def fire(self):
     logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
@@ -1008,7 +984,7 @@ Please read the README inside for more examples and usage information.
       self.monitor_progress()
       tryok = True
     except SystemExit:
-      pass
+      logger.info('Quitting')
     except KeyboardInterrupt:
       print
     except:
@@ -1018,7 +994,6 @@ Please read the README inside for more examples and usage information.
       self.stop_now = True
       try:
         while active_count() > 1:
-          logger.debug('active_count: %s' % active_count())
           sleep(.1)
       except KeyboardInterrupt:
         pass
@@ -1205,7 +1180,7 @@ Please read the README inside for more examples and usage information.
       try_count = 0
       start_time = time() 
 
-      while try_count < self.max_retries or self.max_retries < 0:
+      while True:
 
         while self.paused and not self.stop_now:
           sleep(1)
@@ -1216,21 +1191,34 @@ Please read the README inside for more examples and usage information.
         if self.rate_limit:
           sleep(self.rate_limit)
 
-        try:
+
+        if try_count < self.max_retries or self.max_retries < 0:
+
+          actions = {}
           try_count += 1
-          logger.debug('payload: %s' % payload)
-          resp = module.execute(**payload)
 
-        except:
-          e_type, e_value, _ = exc_info()
-          resp = '%s, %s' % (e_type, e_value.args)
-          logger.debug('except: %s' % resp)
+          try:
+            logger.debug('payload: %s' % payload)
+            resp = module.execute(**payload)
 
-          module = self.module()
-          sleep(self.failure_delay)
-          continue
+          except:
+            e_type, e_value, _ = exc_info()
+            mesg = '%s %s' % (e_type, e_value.args)
 
-        actions = self.lookup_actions(resp)
+            #logger.exception(exc_info()[1])
+
+            logger.debug('except: %s' % mesg)
+            resp = self.module.Response('xxx', mesg)
+
+            if hasattr(module, 'reset'):
+              module.reset()
+
+            continue
+
+        else:
+          actions = {'fail': None}
+
+        actions.update(self.lookup_actions(resp))
         pqueue.put_nowait((actions, pp_prod, resp, time() - start_time))
 
         for name in self.module_actions:
@@ -1240,14 +1228,11 @@ Please read the README inside for more examples and usage information.
         if 'free' in actions:
           self.register_free(payload, actions['free'])
 
-        if 'retry' in actions:
+        if 'retry' in actions and 'fail' not in actions:
           continue
         
         break
        
-      else:
-        pqueue.put_nowait((['fail'], pp_prod, resp, time() - start_time))
-
   def monitor_progress(self):
     while active_count() > 1:
       self.report_progress()
@@ -1263,7 +1248,7 @@ Please read the README inside for more examples and usage information.
 
         try:
           actions, current, resp, seconds = pq.get_nowait()
-          logger.debug('Reported actions: %s' % actions)
+          #logger.debug('actions reported: %s' % actions)
 
         except Empty: 
           break
@@ -1275,12 +1260,6 @@ Please read the README inside for more examples and usage information.
         offset = (self.start + p.done_count * self.num_threads) + i + 1
         p.current = current
         p.seconds[p.done_count % len(p.seconds)] = seconds
-
-        if 'fail' in actions:
-          p.fail_count += 1
-          p.done_count += 1
-          logger.warn('%-15s | %-25s \t | %5d | %s' % ('xxx', current, offset, resp))
-          continue
 
         if 'ignore' not in actions:
           p.hits_count += 1
@@ -1296,8 +1275,10 @@ Please read the README inside for more examples and usage information.
         if 'retry' not in actions:
           p.done_count += 1
 
+        if 'fail' in actions:
+          p.fail_count += 1
+
         if 'quit' in actions:
-          logger.info('Quitting (user match condition)')
           raise SystemExit
 
 
@@ -1340,7 +1321,7 @@ Please read the README inside for more examples and usage information.
       self.update_actions(arg)
 
     else: # show progress
-      total_count = sum(p.done_count for p in self.thread_progress)
+      total_count = sum(p.done_count+p.skip_count for p in self.thread_progress)
       speed_avg = self.num_threads / (sum(sum(p.seconds) / len(p.seconds) for p in self.thread_progress) / self.num_threads)
       remain_seconds = (self.total_size - total_count) / speed_avg
       etc_time = datetime.now() + timedelta(seconds = remain_seconds)
@@ -1356,10 +1337,11 @@ Please read the README inside for more examples and usage information.
 
       if command == 'f':
         for i, p in enumerate(self.thread_progress):
+          total_count = p.done_count + p.skip_count
           logger.info(' #{0}: {1:>3}% ({2}/{3}) {4}'.format(
             i,
-            p.done_count * 100/(self.total_size/self.num_threads), 
-            p.done_count,
+            total_count * 100/(self.total_size/self.num_threads),
+            total_count,
             self.total_size/self.num_threads,
             p.current))
 
@@ -1399,10 +1381,11 @@ class Response_Base:
     ('egrep', 'search for regex'),
     )
 
-  def __init__(self, code, mesg, trace=''):
-    self.code, self.mesg = code, mesg
-    self.size = len(self.mesg)
+  def __init__(self, code, mesg, trace=None):
+    self.code = code
+    self.mesg = mesg
     self.trace = trace
+    self.size = len(self.mesg)
 
   def compact(self):
     return '%s %d' % (self.code, self.size)
@@ -1434,6 +1417,15 @@ class Response_Base:
 # }}}
 
 # TCP_Cache {{{
+class TCP_Connection:
+
+  def __init__(self, fp, banner=None):
+    self.fp = fp
+    self.banner = banner
+
+  def close(self):
+    self.fp.close()
+
 class TCP_Cache:
 
   available_actions = (
@@ -1444,51 +1436,33 @@ class TCP_Cache:
     ('persistent', 'use persistent connections [1|0]'),
     )
 
-  cache_keys = ('host', 'port')
-
   def __init__(self):
-    self.cache = {} # {'10.0.0.1:21': fp, ...}
+    self.cache = {}
+    self.conn = None
 
   def __del__(self):
-    for k in self.cache:
-      fp = self.cache[k]
-      try: fp.close()
-      except: pass
+    for _, c in self.cache.items():
+      c.close()
 
-  def get_key(self, **kwargs):
-    keys = []
-    for k in self.cache_keys:
-      if k in kwargs:
-        keys.append(kwargs[k])
-    return ':'.join(k for k in keys if k is not None), keys
+  def bind(self, *args):
 
-  def get_tcp(self, persistent, **kwargs):
-    k, z = self.get_key(**kwargs)
-    if k not in self.cache:
-
-      logger.debug('New connection: %s' % k)
-      fp, banner = self.new_tcp(*z)
-
-      if persistent == '1':
-        self.cache[k] = fp
-
+    key = ':'.join(args)
+    if key not in self.cache:
+      self.conn = self.cache[key] = self.connect(*args)
     else:
-      fp, banner = self.cache[k], ''
+      self.conn = self.cache[key]
 
-    return fp, banner
-
-  def del_tcp(self, k):
-    if k in self.cache:
-      logger.debug('Delete connection: %s' % k)
-      fp = self.cache[k]
-      try: fp.close()
-      except: pass
-      del self.cache[k]
+    return self.conn.fp, self.conn.banner
 
   def reset(self, **kwargs):
-    k, _ = self.get_key(**kwargs)
-    logger.debug('Reset connection: %s' % k)
-    self.del_tcp(k) 
+    if self.conn:
+      for k, v in self.cache.items():
+        if v == self.conn:
+          del self.cache[k]
+          break
+
+      self.conn.close()
+      self.conn = None
 
 # }}}
 
@@ -1499,7 +1473,7 @@ class FTP_login(TCP_Cache):
 
   usage_hints = (
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt"""
-    """ -x ignore:mesg='Login incorrect.' -x ignore,reset,retry:code=500 -x reset:fgrep='Login success'""",
+    """ -x ignore:mesg='Login incorrect.' -x ignore,reset,retry:code=500""",
     )
 
   available_options = (
@@ -1512,33 +1486,31 @@ class FTP_login(TCP_Cache):
 
   Response = Response_Base
 
-  def new_tcp(self, host, port):
+  def connect(self, host, port):
     fp = FTP()
-    resp = fp.connect(host, int(port or 21))
-    return fp, resp
+    banner = fp.connect(host, int(port))
 
-  def execute(self, host, port=None, user=None, password=None, persistent='1'):
+    return TCP_Connection(fp, banner)
+
+  def execute(self, host, port='21', user=None, password=None, persistent='1'):
+
+    fp, resp = self.bind(host, port)
+
     try:
-      fp, resp = self.get_tcp(persistent, host=host, port=port)
-
       if user is not None:
         resp = fp.sendcmd('USER ' + user)
       if password is not None:
         resp = fp.sendcmd('PASS ' + password)
 
       logger.debug('No error: %s' % resp)
+      self.reset()
 
     except FTP_Error as e: 
       resp = str(e)
       logger.debug('FTP_Error: %s' % resp)
 
-    except EOFError:
-      logger.debug('EOFError')
-      resp = '500 Connection reset by peer'
-
-    except socket.error:
-      logger.debug('socket.error')
-      resp = '500 Connection reset by peer'
+    if persistent == '0':
+      self.reset()
 
     code, mesg = resp.split(' ', 1)
     return self.Response(code, mesg)
@@ -1554,12 +1526,78 @@ try:
 except ImportError:
   warnings.append('paramiko')
 
-class SSH_login(TCP_Cache):
+class SSH_Connection(TCP_Connection):
+
+  def __init__(self, host, port, user, fp):
+    self.host = host
+    self.port = port
+    self.fp = fp
+    self.banner = fp.remote_version
+
+    self.user = user
+    self.ctime = time()
+
+class SSH_Cache(TCP_Cache):
+
+  lock = Lock()
+  count = {} # '10.0.0.1:22': 9, '10.0.0.2:222': 10
+
+  def __del__(self):
+    for k, pool in self.cache.items():
+      for u, c in pool.items():
+        with self.lock: self.count[k] -= 1
+        c.close()
+
+  def bind(self, host, port, user, max_conn):
+
+    hp = '%s:%s' % (host, port)
+    if hp not in self.cache:
+      self.cache[hp] = {}
+
+      with self.lock:
+        if hp not in self.count:
+          self.count[hp] = 0
+
+    while True:
+      with self.lock:
+        if self.count[hp] < int(max_conn):
+          if user not in self.cache[hp]:
+            self.count[hp] += 1
+          break
+
+      if self.cache[hp]:
+        candidates = [(k, c.ctime) for k, c in self.cache[hp].items() if k != user]
+        if candidates:
+          u, _ = min(candidates, key=lambda x: x[1])
+          c = self.cache[hp].pop(u)
+          c.close()
+        break
+
+    if user not in self.cache[hp]:
+      self.conn = self.cache[hp][user] = self.connect(host, port, user)
+    else:
+      self.conn = self.cache[hp][user]
+
+    return self.conn.fp, self.conn.banner
+
+  def reset(self, **kwargs):
+    if self.conn:
+      hp = '%s:%s' % (self.conn.host, self.conn.port)
+
+      if self.conn.user in self.cache[hp]:
+        with self.lock:
+          self.count[hp] -= 1
+
+        self.cache[hp].pop(self.conn.user)
+
+      self.conn.close()
+      self.conn = None
+
+class SSH_login(SSH_Cache):
   '''Brute-force SSH authentication'''
 
   usage_hints = (
-    """%prog host=10.0.0.1 user=root password=FILE0 0=passwords.txt"""
-    """ -x ignore:mesg='Authentication failed.' -x ignore,reset,retry:mesg='No existing session' -x reset:code=0""",
+    """%prog host=10.0.0.1 user=root password=FILE0 0=passwords.txt -x ignore:mesg='Authentication failed.'""",
     )
 
   available_options = (
@@ -1568,21 +1606,23 @@ class SSH_login(TCP_Cache):
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('auth_type', 'auth type to use [password|keyboard-interactive]'),
+    ('max_conn', 'maximum concurrent connections per host:port tuple [10]'),
     )
-  available_options += TCP_Cache.available_options
+  available_options += SSH_Cache.available_options
 
   Response = Response_Base
 
-  cache_keys = ('host', 'port', 'user')
-  def new_tcp(self, host, port, user):
-    fp = paramiko.Transport('%s:%s' % (host, int(port or 22)))
+  def connect(self, host, port, user):
+    fp = paramiko.Transport('%s:%s' % (host, int(port)))
     fp.start_client()
-    return fp, fp.remote_version
 
-  def execute(self, host, port=None, user=None, password=None, persistent='1', auth_type='password'):
+    return SSH_Connection(host, port, user, fp)
+
+  def execute(self, host, port='22', user=None, password=None, auth_type='password', persistent='1', max_conn='10'):
+
+    fp, banner = self.bind(host, port, user, max_conn)
+
     try:
-      fp, resp = self.get_tcp(persistent, host=host, port=port, user=user)
-
       if user is not None and password is not None:
         if auth_type == 'password':
           fp.auth_password(user, password, fallback=False)
@@ -1594,15 +1634,16 @@ class SSH_login(TCP_Cache):
           raise NotImplementedError("Incorrect auth_type '%s'" % auth_type)
 
       logger.debug('No error')
-      code, mesg = '0', resp
+      code, mesg = '0', banner
+
+      self.reset()
 
     except paramiko.AuthenticationException as e:
+      logger.debug('AuthenticationException: %s' % e)
       code, mesg = '1', str(e)
-      logger.debug('AuthenticationException: %s' % mesg)
 
-    except paramiko.SSHException as e:
-      code, mesg = '1', str(e)
-      logger.debug('SSHException: %s' % mesg)
+    if persistent == '0':
+      self.reset()
 
     return self.Response(code, mesg)
 
@@ -1629,13 +1670,15 @@ class Telnet_login(TCP_Cache):
 
   Response = Response_Base
 
-  def new_tcp(self, host, port):
-    fp = Telnet(host, int(port or 23))
+  def connect(self, host, port):
     self.prompt_count = 0
-    return fp, None
-  
-  def execute(self, host, port=None, inputs=None, prompt_re='\w+:', timeout='20', persistent='1'):
-    fp, _ = self.get_tcp(persistent, host=host, port=port)
+    fp = Telnet(host, int(port))
+
+    return TCP_Connection(fp)
+
+  def execute(self, host, port='23', inputs=None, prompt_re='\w+:', timeout='20', persistent='1'):
+
+    fp, _ = self.bind(host, port)
     trace = ''
     timeout = int(timeout)
 
@@ -1645,7 +1688,7 @@ class Telnet_login(TCP_Cache):
       trace += raw
       self.prompt_count += 1
   
-    try:
+    if inputs is not None:
       for val in inputs.split(r'\n'):
         logger.debug('input: %s' % val)
         cmd = val + '\n' #'\r\x00'
@@ -1657,13 +1700,11 @@ class Telnet_login(TCP_Cache):
         trace += raw
         self.prompt_count += 1
 
-      mesg = repr(raw)[1:-1] # strip enclosing single quotes
+    if persistent == '0':
+      self.reset()
 
-    except EOFError as e:
-      mesg = 'EOFError: %s' % e
-      logger.debug(mesg)
-
-    return self.Response('0', mesg, trace)
+    mesg = repr(raw)[1:-1] # strip enclosing single quotes
+    return self.Response(0, mesg, trace)
 
 # }}}
 
@@ -1681,11 +1722,9 @@ class SMTP_Base(TCP_Cache):
 
   Response = Response_Base
 
-  cache_keys = ('host', 'port', 'helo')
-
-  def new_tcp(self, host, port, helo):
+  def connect(self, host, port, helo):
     fp = SMTP()
-    resp = fp.connect(host, int(port or 25))
+    resp = fp.connect(host, int(port))
 
     if helo:
       cmd, name = helo.split(' ', 1)
@@ -1695,7 +1734,7 @@ class SMTP_Base(TCP_Cache):
       else:
         resp = fp.helo(name)
 
-    return fp, resp
+    return TCP_Connection(fp, resp)
     
 
 class SMTP_vrfy(SMTP_Base):
@@ -1706,11 +1745,15 @@ class SMTP_vrfy(SMTP_Base):
     ''' -x ignore:fgrep='User unknown' -x ignore,reset,retry:code=421''',
     )
 
-  def execute(self, host, port=None, helo=None, user=None, persistent='1'):
-    fp, resp = self.get_tcp(persistent, host=host, port=port, helo=helo)
+  def execute(self, host, port='25', helo='', user=None, persistent='1'):
+
+    fp, resp = self.bind(host, port, helo)
 
     if user is not None:
       resp = fp.verify(user)
+
+    if persistent == '0':
+      self.reset()
 
     code, mesg = resp
     return self.Response(code, mesg)
@@ -1729,8 +1772,9 @@ class SMTP_rcpt(SMTP_Base):
     ('mail_from', 'sender email [test@example.org]'),
     )
 
-  def execute(self, host, port=None, helo=None, mail_from='test@example.org', user=None, persistent='1'):
-    fp, resp = self.get_tcp(persistent, host=host, port=port, helo=helo)
+  def execute(self, host, port='25', helo='', mail_from='test@example.org', user=None, persistent='1'):
+
+    fp, resp = self.bind(host, port, helo)
 
     if mail_from:
       resp = fp.mail(mail_from)
@@ -1739,6 +1783,9 @@ class SMTP_rcpt(SMTP_Base):
       resp = fp.rcpt(user)
 
     fp.rset()
+
+    if persistent == '0':
+      self.reset()
 
     code, mesg = resp
     return self.Response(code, mesg)
@@ -1757,14 +1804,22 @@ class SMTP_login(SMTP_Base):
     ('password', 'passwords to test'),
     )
 
-  def execute(self, host, port=None, helo=None, user='', password='', persistent='1'):
-    fp, resp = self.get_tcp(persistent, host=host, port=port, helo=helo)
+  def execute(self, host, port='25', helo=None, user=None, password=None, persistent='1'):
+
+    fp, resp = self.bind(host, port, helo)
     
     try:
-      resp = fp.login(user, password)
+      if user is not None and password is not None:
+        resp = fp.login(user, password)
+
+      logger.debug('No error: %s' % resp)
+      self.reset()
 
     except (SMTPHeloError,SMTPAuthenticationError,SMTPException) as resp:
       logger.debug('SMTPError: %s' % resp)
+
+    if persistent == '0':
+      self.reset()
 
     code, mesg = resp
     return self.Response(code, mesg)
@@ -1801,11 +1856,11 @@ class Finger_lookup:
 
   Response = Response_Base
 
-  def execute(self, host, port=None, user='', timeout='5'):
+  def execute(self, host, port='79', user='', timeout='5'):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(int(timeout))
 
-    s.connect((host, int(port or 79)))
+    s.connect((host, int(port)))
     if user:
       s.send(user)
     s.send('\r\n')
@@ -1834,15 +1889,6 @@ class Finger_lookup:
 if not which('ldapsearch'):
   warnings.append('openldap')
 
-class Response_LDAP(Response_Base):
-  def __init__(self, resp):
-    self.code, self.out, self.err = resp
-    self.size = len(self.out + self.err)
-    self.mesg = ', '.join(p.strip() for p in self.out.splitlines() + self.err.splitlines())
-
-  def dump(self):
-    return '\n'.join(['out:', self.out, 'err:', self.err])
-
 # Because python-ldap-2.4.4 did not allow using a PasswordPolicyControl
 # during bind authentication (cf. http://article.gmane.org/gmane.comp.python.ldap/1003),
 # I chose to wrap around ldapsearch with "-e ppolicy".
@@ -1865,7 +1911,7 @@ class LDAP_login:
     )
   available_actions = ()
 
-  Response = Response_LDAP
+  Response = Response_Base
 
   def execute(self, host, port='389', binddn='', bindpw='', basedn='', ssl='0'):
     uri = 'ldap%s://%s:%s' % ('s' if ssl != '0' else '', host, port)
@@ -1873,9 +1919,12 @@ class LDAP_login:
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={'LDAPTLS_REQCERT': 'never'})
     out = p.stdout.read()
     err = p.stderr.read()
-    code = p.wait()
 
-    return self.Response((code, out, err))
+    code = p.wait()
+    mesg = repr((out + err).strip())[1:-1]
+    trace = '[out]\n%s\n[err]\n%s' % (out, err)
+
+    return self.Response(code, mesg, trace)
 
 # }}}
 
@@ -1886,12 +1935,17 @@ try:
 except ImportError:
   warnings.append('impacket')
 
+class SMB_Connection(TCP_Connection):
+
+  def close(self):
+    self.fp.get_socket().close()
+
 class SMB_login(TCP_Cache):
   '''Brute-force SMB authentication'''
 
   usage_hints = (
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt"""
-    """ -x ignore:fgrep=STATUS_LOGON_FAILURE -x reset:code=0""",
+    """ -x ignore:fgrep=STATUS_LOGON_FAILURE""",
     )
   
   available_options = (
@@ -1926,13 +1980,15 @@ class SMB_login(TCP_Cache):
     0x01: 'AS400_STATUS_LOGON_FAILURE',
   }
   
-  def new_tcp(self, host, port):
+  def connect(self, host, port):
     # if port == 445, impacket will use <host> instead of '*SMBSERVER' as the remote_name
-    fp = impacket_smb.SMB('*SMBSERVER', host, sess_port=int(port or 139))
-    return fp, fp.get_server_name()
+    fp = impacket_smb.SMB('*SMBSERVER', host, sess_port=int(port))
 
-  def execute(self, host, port=None, user=None, password=None, password_hash=None, domain='', persistent='1'):
-    fp, mesg = self.get_tcp(persistent, host=host, port=port)
+    return SMB_Connection(fp)
+
+  def execute(self, host, port='139', user=None, password=None, password_hash=None, domain='', persistent='1'):
+
+    fp, _ = self.bind(host, port)
 
     try:
       if user is not None:
@@ -1943,7 +1999,10 @@ class SMB_login(TCP_Cache):
           lmhash, nthash = password_hash.split(':')
           fp.login(user, '', domain, lmhash, nthash)
 
-      code = '0'
+      logger.debug('No error')
+      code, mesg = '0', fp.get_server_name()
+
+      self.reset()
 
     except impacket_smb.SessionError as e:
       code = '%x-%x' % (e.error_class, e.error_code)
@@ -1959,7 +2018,20 @@ class SMB_login(TCP_Cache):
         else:
           mesg += ' - %s' % class_str
 
+    if persistent == '0':
+      self.reset()
+
     return self.Response(code, mesg)
+
+
+class DCE_Connection(TCP_Connection):
+
+  def __init__(self, fp, smbt):
+    self.fp = fp
+    self.smbt = smbt
+
+  def close(self):
+    self.smbt.get_socket().close()
 
 class SMB_lookupsid(TCP_Cache):
   '''Brute-force SMB SID-lookup'''
@@ -1978,22 +2050,22 @@ class SMB_lookupsid(TCP_Cache):
 
   Response = Response_Base
 
-  cache_keys = ('host', 'port', 'user', 'password')
-  def new_tcp(self, host, port, user, password):
-    smbt = transport.SMBTransport(host, int(port or 139), r'\lsarpc', user, password)
+  def connect(self, host, port, user, password):
+    smbt = transport.SMBTransport(host, int(port), r'\lsarpc', user, password)
 
     dce = dcerpc.DCERPC_v5(smbt)
     dce.connect()
     dce.bind(lsarpc.MSRPC_UUID_LSARPC)
 
     fp = lsarpc.DCERPCLsarpc(dce)
-    return fp, ''
+    return DCE_Connection(fp, smbt)
 
   # http://msdn.microsoft.com/en-us/library/windows/desktop/hh448528%28v=vs.85%29.aspx
   SID_NAME_USER = [0, 'User', 'Group', 'Domain', 'Alias', 'WellKnownGroup', 'DeletedAccount', 'Invalid', 'Unknown', 'Computer', 'Label']
 
-  def execute(self, host, port=None, user='', password='', sid=None, rid=None, persistent='1'):
-    fp, mesg = self.get_tcp(persistent, host=host, port=port, user=user, password=password)
+  def execute(self, host, port='139', user='', password='', sid=None, rid=None, persistent='1'):
+
+    fp, _ = self.bind(host, port, user, password)
 
     if rid:
       sid = '%s-%s' % (sid, rid)
@@ -2014,9 +2086,10 @@ class SMB_lookupsid(TCP_Cache):
     else:
       code, names = 1, ['unknown'] # STATUS_SOME_NOT_MAPPED
 
+    if persistent == '0':
+      self.reset()
+
     return self.Response(code, ', '.join(names))
-
-
 # }}}
 
 # POP {{{
@@ -2068,12 +2141,12 @@ class POP_passd:
 
   Response = Response_Base
 
-  def execute(self, host, port=None, user=None, password=None):
-    try:
-      fp = Passd()
-      resp = fp.connect(host, int(port or 106)) 
-      trace = resp
+  def execute(self, host, port='106', user=None, password=None):
+    fp = Passd()
+    resp = fp.connect(host, int(port))
+    trace = resp
 
+    try:
       if user is not None:
         cmd = 'user %s' % user
         resp = fp.sendcmd(cmd)
@@ -2120,10 +2193,10 @@ class MySQL_login:
 
   Response = Response_Base
 
-  def execute(self, host, port=None, user='anony', password=''):
+  def execute(self, host, port='3306', user='anony', password=''):
 
     try:
-      fp = _mysql.connect(host=host, port=int(port or 3306), user=user, passwd=password)
+      fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password)
       resp = '0', fp.get_server_info()
 
     except _mysql.Error as resp: pass
@@ -2220,9 +2293,9 @@ class MSSQL_login:
 
   Response = Response_Base
 
-  def execute(self, host, port=None, user='', password=''):
+  def execute(self, host, port='1433', user='', password=''):
     m = MSSQL()
-    m.connect(host, int(port or 1433))
+    m.connect(host, int(port))
     code, mesg = m.login(user, password)
     return self.Response(code, mesg)
 
@@ -2253,8 +2326,8 @@ class Oracle_login:
 
   Response = Response_Base
 
-  def execute(self, host, port=None, user='', password='', sid=''):
-    dsn = cx_Oracle.makedsn(host, port or '1521', sid)
+  def execute(self, host, port='1521', user='', password='', sid=''):
+    dsn = cx_Oracle.makedsn(host, port, sid)
     try:
       fp = cx_Oracle.connect(user, password, dsn)
       code, mesg = '0', fp.version
@@ -2290,9 +2363,9 @@ class Pgsql_login:
 
   Response = Response_Base
 
-  def execute(self, host, port=None, user=None, password=None, database='postgres', ssl='disable'):
+  def execute(self, host, port='5432', user=None, password=None, database='postgres', ssl='disable'):
     try:
-      psycopg2.connect(host=host, port=int(port or 5432), user=user, password=password, database=database, sslmode=ssl)
+      psycopg2.connect(host=host, port=int(port), user=user, password=password, database=database, sslmode=ssl)
       code, mesg = '0', 'OK'
     except psycopg2.OperationalError as e:
       code, mesg = '1', str(e)[:-1]
@@ -2329,31 +2402,30 @@ class Controller_HTTP(Controller):
 
 class Response_HTTP(Response_Base):
 
-  def __init__(self, code, content_length, response, trace):
-    self.code, self.content_length = code, content_length
-    self.response, self.trace = response, trace
-    self.size = len(self.response)
+  def __init__(self, code, response, trace=None, content_length=-1):
+    self.content_length = content_length
+    Response_Base.__init__(self, code, response, trace)
 
   def compact(self):
     return '%s %s' % (self.code, '%d:%d' % (self.size, self.content_length))
 
   def __str__(self):
-    i = self.response.rfind('HTTP/', 0, 5000)
+    i = self.mesg.rfind('HTTP/', 0, 5000)
     if i == -1:
-      return ''
+      return self.mesg
     else:
-      j = self.response.find('\n', i)
-      line = self.response[i:j]
+      j = self.mesg.find('\n', i)
+      line = self.mesg[i:j]
       return line.strip()
 
   def match_clen(self, val):
     return match_size(self.content_length, val)
 
   def match_fgrep(self, val):
-    return val in self.response
+    return val in self.mesg
 
   def match_egrep(self, val):
-    return re.search(val, self.response, re.M)
+    return re.search(val, self.mesg, re.M)
 
   available_conditions = Response_Base.available_conditions
   available_conditions += (
@@ -2402,8 +2474,7 @@ class HTTP_fuzz(TCP_Cache):
 
   Response = Response_HTTP
 
-  cache_keys = ('host', 'port', 'scheme')
-  def new_tcp(self, host, port, scheme):
+  def connect(self, host, port, scheme):
     fp = pycurl.Curl()
     fp.setopt(pycurl.SSL_VERIFYPEER, 0)
     fp.setopt(pycurl.SSL_VERIFYHOST, 0)
@@ -2411,9 +2482,9 @@ class HTTP_fuzz(TCP_Cache):
     fp.setopt(pycurl.USERAGENT, 'Mozilla/5.0')
     fp.setopt(pycurl.NOSIGNAL, 1)
 
-    return fp, None
+    return TCP_Connection(fp)
 
-  def execute(self, url=None, host=None, port=None, scheme='http', path='/', params='', query='', fragment='', body='', header='', method='GET', user_pass='', auth_type='basic',
+  def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='', header='', method='GET', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1', 
     before_urls='', before_egrep='', after_urls='', max_mem='-1'):
     
@@ -2423,7 +2494,7 @@ class HTTP_fuzz(TCP_Cache):
         host, port = host.split(':')
       del url
 
-    fp, _ = self.get_tcp(persistent, host=host, port=port, scheme=scheme)
+    fp, _ = self.bind(host, port, scheme)
 
     fp.setopt(pycurl.FOLLOWLOCATION, int(follow))
     fp.setopt(pycurl.MAXREDIRS, int(max_follow))
@@ -2522,7 +2593,10 @@ class HTTP_fuzz(TCP_Cache):
     http_code = fp.getinfo(pycurl.HTTP_CODE)
     content_length = fp.getinfo(pycurl.CONTENT_LENGTH_DOWNLOAD)
 
-    return self.Response(http_code, content_length, response.getvalue(), trace.getvalue())
+    if persistent == '0':
+      self.reset()
+
+    return self.Response(http_code, response.getvalue(), trace.getvalue(), content_length)
 
 # }}}
 
@@ -2994,21 +3068,6 @@ class SNMP_login:
 if not which('unzip'):
   warnings.append('unzip')
 
-class Response_Unzip(Response_Base):
-  def __init__(self, resp):
-    self.code, self.out, self.err = resp
-    self.size = len(self.out + self.err)
-    if '\n' in self.out:
-      self.mesg = self.out.splitlines()[-1]
-    else:
-      self.mesg = self.out
-
-  def __str__(self):
-    return '%s [%s] %s' % (self.code, self.size, self.mesg)
-
-  def dump(self):
-    return 'out: %s\n\nerr: %s' % (self.out, self.err)
-
 class Unzip_pass:
   '''Brute-force the password of encrypted ZIP files'''
 
@@ -3023,7 +3082,7 @@ class Unzip_pass:
 
   available_actions = ()
 
-  Response = Response_Unzip
+  Response = Response_Base
 
   def execute(self, zipfile, password):
     zipfile = os.path.abspath(zipfile)
@@ -3031,27 +3090,18 @@ class Unzip_pass:
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out = p.stdout.read()
     err = p.stderr.read()
-    code = p.wait()
 
-    return self.Response((code, out, err))
+    code = p.wait()
+    mesg = repr(out.strip())[1:-1]
+    trace = '[out]\n%s\n[err]\n%s' % (out, err)
+
+    return self.Response(code, mesg, trace)
       
 # }}}
 
 # Keystore {{{
 if not which('keytool'):
   warnings.append('java')
-
-class Response_Keystore(Response_Base):
-  def __init__(self, resp):
-    self.code, self.out, self.err = resp
-    self.size = len(self.out + self.err)
-    self.mesg = self.out.replace('\n', ' ')
-
-  def __str__(self):
-    return '%s [%s] %s' % (self.code, self.size, self.mesg)
-
-  def dump(self):
-    return 'out: %s\nerr: %s' % (self.out, self.err)
 
 class Keystore_pass:
   '''Brute-force the password of Java keystore files'''
@@ -3068,7 +3118,7 @@ class Keystore_pass:
 
   available_actions = ()
 
-  Response = Response_Keystore
+  Response = Response_Base
 
   def execute(self, keystore, password, storetype='jks'):
     keystore = os.path.abspath(keystore)
@@ -3076,9 +3126,12 @@ class Keystore_pass:
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out = p.stdout.read()
     err = p.stderr.read()
-    code = p.wait()
 
-    return self.Response((code, out, err))
+    code = p.wait()
+    mesg = repr(out.strip())[1:-1]
+    trace = '[out]\n%s\n[err]\n%s' % (out, err)
+
+    return self.Response(code, mesg, trace)
 
 # }}}
 

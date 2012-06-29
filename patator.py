@@ -2194,18 +2194,20 @@ class MySQL_login:
     ('port', 'ports to target [3306]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
+    ('timeout', 'seconds to wait for a response [10]'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, port='3306', user='anony', password=''):
+  def execute(self, host, port='3306', user='anony', password='', timeout='10'):
 
     try:
-      fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password)
+      fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password, connect_timeout=int(timeout))
       resp = '0', fp.get_server_info()
 
-    except _mysql.Error as resp: pass
+    except _mysql.Error as resp:
+      logger.debug('MysqlError: %s' % resp)
 
     code, mesg = resp
     return self.Response(code, mesg)

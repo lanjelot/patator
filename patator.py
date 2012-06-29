@@ -377,13 +377,13 @@ http_fuzz url='http://10.0.0.1/login?username=admin&password=_@@_FILE0_@@_' -e _
  0=words.txt -x ignore:'code=200|size=1500-|fgrep=Welcome, unauthenticated user' -X'|'
                 (b)                                                              (c)
 
-* Brute-force logon that enforces a random nonce to be submitted along every POST.
-  (a) Request page that provides the nonce as a hidden input field using GET.
-  (b) Use regex to extract the nonce that is to be submitted by the main request.
+* Brute-force logon that enforces two random nonces to be submitted along every POST.
+  (a) First, request the page that provides the nonces as hidden input fields.
+  (b) Use regular expressions to extract the nonces that are to be submitted along the main request.
 ---------
-http_fuzz url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce=_@@_' accept_cookie=1
- before_urls=http://10.0.0.1/index before_egrep=_@@_:'nput type="hidden" name="nonce" value="(\w+)"/>'
-           (a)                                    (b)
+http_fuzz url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce1=_N1_&nonce2=_N2_' 0=passwords.txt accept_cookie=1
+ before_urls=http://10.0.0.1/index before_egrep='_N1_:<input type="hidden" name="nonce1" value="(\w+)"|_N2_:name="nonce2" value="(\w+)"'
+           (a)                                (b)
 
 * Test the OPTIONS method against a list of URLs.
   (a) Ignore URLs that only allow the HEAD and GET methods.
@@ -2471,7 +2471,7 @@ class HTTP_fuzz(TCP_Cache):
     ('timeout_tcp', 'seconds to wait for a TCP handshake [10]'),
     ('timeout', 'seconds to wait for a HTTP response [20]'),
     ('before_urls', 'comma-separated URLs to query before the main request'),
-    ('before_egrep', 'extract substring from the before_urls responses to include it in the main request'),
+    ('before_egrep', 'extract data from the before_urls response to place in the main request'),
     ('after_urls', 'comma-separated URLs to query after the main request'),
     ('max_mem', 'store no more than N bytes of request+response data in memory [-1 (unlimited)]'), 
     )
@@ -2574,12 +2574,13 @@ class HTTP_fuzz(TCP_Cache):
         perform_fp(fp, 'GET', before_url)
 
       if before_egrep:
-        mark, regex = before_egrep.split(':', 1)
-        val = re.search(regex, response.getvalue(), re.M).group(1)
+        for be in before_egrep.split('|'):
+          mark, regex = be.split(':', 1)
+          val = re.search(regex, response.getvalue(), re.M).group(1)
 
-        header = header.replace(mark, val)
-        query = query.replace(mark, val)
-        body = body.replace(mark, val)
+          header = header.replace(mark, val)
+          query = query.replace(mark, val)
+          body = body.replace(mark, val)
 
     path = quote(path)
     query = urlencode(parse_qsl(query, True))

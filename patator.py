@@ -48,8 +48,8 @@ Currently it supports the following modules:
   - pgsql_login   : Brute-force PostgreSQL
   - vnc_login     : Brute-force VNC
 
-  - dns_forward   : Forward lookup subdomains
-  - dns_reverse   : Reverse lookup subnets
+  - dns_forward   : Brute-force DNS
+  - dns_reverse   : Brute-force DNS (reverse lookup subnets)
   - snmp_login    : Brute-force SNMPv1/2 and SNMPv3
 
   - unzip_pass    : Brute-force the password of encrypted ZIP files
@@ -128,7 +128,7 @@ psycopg          | PostgreSQL     | http://initd.org/psycopg/                   
 --------------------------------------------------------------------------------------------------
 pycrypto         | VNC            | http://www.dlitz.net/software/pycrypto/            |     2.3 |
 --------------------------------------------------------------------------------------------------
-pydns            | DNS            | http://pydns.sourceforge.net/                      |   2.3.4 |
+dnspython        | DNS            | http://www.dnspython.org/                          |  1.10.0 |
 --------------------------------------------------------------------------------------------------
 pysnmp           | SNMP           | http://pysnmp.sourceforge.net/                     |   4.2.1 |
 --------------------------------------------------------------------------------------------------
@@ -494,25 +494,29 @@ unzip_pass zipfile=path/to/file.zip password=FILE0 0=passwords.txt -x ignore:cod
 }}}
 {{{ DNS
 
-* Forward lookup subdomains.
+* Brute-force subdomains.
   (a) Ignore NXDOMAIN responses (rcode 3).
 -----------
-dns_forward domain=FILE0.google.com 0=names.txt -x ignore:code=3
-                                                       (a)
-* Forward lookup domain with all possible TLDs.
+dns_forward name=FILE0.google.com 0=names.txt -x ignore:code=3
+                                              (a)
+* Brute-force domain with every possible TLDs.
 -----------
-dns_forward domain=google.MOD0 0=TLD -x ignore:code=3
+dns_forward name=google.MOD0 0=TLD -x ignore:code=3
 
-* Foward lookup SRV records.
+* Brute-force SRV records.
 -----------
-dns_forward domain=MOD0.microsoft.com 0=SRV qtype=SRV -x ignore:code=3
+dns_forward name=MOD0.microsoft.com 0=SRV qtype=SRV -x ignore:code=3
 
-* Reverse lookup several subnets.
+* Grab the version of several hosts.
+-----------
+dns_forward server=FILE0 0=hosts.txt name=version.bind qtype=txt qclass=ch
+
+* Reverse lookup several networks.
   (a) Ignore names that do not contain 'google.com'.
   (b) Ignore generic PTR records.
 -----------
 dns_reverse host=NET0 0=216.239.32.0-216.239.47.255,8.8.8.0/24 -x ignore:code=3 -x ignore:fgrep!=google.com -x ignore:fgrep=216-239-
-                                   (a)                          (b)
+                                                                                (a)                         (b)
 }}}
 {{{ SNMP
 
@@ -554,7 +558,7 @@ TODO
 ----
   * SSL support for SMTP, MySQL, ... (use socat in the meantime)
   * new option -e ns like in Medusa (not likely to be implemented due to design)
-  * replace PyDNS|paramiko|IPy with a better module (scapy|libssh2|... ?)
+  * replace dnspython|paramiko|IPy with a better module (scapy|libssh2|... ?)
   * rewrite itertools.product that eats too much memory when processing large wordlists
 '''
 
@@ -585,6 +589,7 @@ from struct import unpack
 import socket
 import subprocess
 import hashlib
+from collections import defaultdict
 try:
   # python3+
   from queue import Queue, Empty, Full
@@ -2737,122 +2742,37 @@ class VNC_login:
 # }}}
 
 # DNS {{{
-class HostInfo:
-  def __init__(self):
-    self.name = set()
-    self.ip = set()
-    self.alias = set()
 
-  def __str__(self):
-    line = ''
-    if self.name:
-      line = ' '.join(self.name)
-    if self.ip:
-      if line: line += ' / '
-      line += ' '.join(map(str, self.ip))
-    if self.alias:
-      if line: line += ' / '
-      line += ' '.join(self.alias)
+try:
+  import dns.rdatatype
+  import dns.message
+  import dns.query
+  import dns.reversename
+except ImportError:
+  warnings.append('dnspython')
 
-    return line
+def dns_query(server, timeout, protocol, qname, qtype, qclass):
+  request = dns.message.make_query(qname, qtype, qclass)
 
-class Controller_DNS(Controller):
-  hostmap = {}
+  if protocol == 'tcp':
+    response = dns.query.tcp(request, server, timeout=timeout, one_rr_per_rrset=True)
 
-  # show_final {{{
-  def show_final(self):
-    '''
-    1.2.3.4 ftp.example.com
-          . www.example.com
-          . www2.example.com
-       noip cms.example.com -> www.mistake.com
-    '''
-    ipmap = {}
-    noips = set()
+  else:
+    response = dns.query.udp(request, server, timeout=timeout, one_rr_per_rrset=True)
 
-    '''
-    hostmap = {
-       'ftp.example.com': {'ip': ['1.2.3.4'], 'alias': []}, 
-       'www.example.com': {'ip': ['1.2.3.4'], 'alias': ['www2.example.com']},
-       'www.mistake.com': {'ip': [], 'alias': ['cms.example.com']}, ...}
-    ipmap = {'1.2.3.4': {'name': ['www.example.com', 'ftp.example.com'], 'alias': ('www2.example.com')}}
-    noips = ['cms.example.com -> www.mistake.com', ...]
-    '''
-    for name, hinfo in self.hostmap.items(): 
-      logger.debug('%s -> %s' % (name, hinfo))
-      if not hinfo.ip: # orphan CNAME hostnames (with no IP address) may be still valid virtual hosts
-        for alias in hinfo.alias:
-          noips.add('%s -> %s' % (alias, name))
-      else:
-        for ip in hinfo.ip:
-          if ip not in ipmap: ipmap[ip] = HostInfo()
-          ipmap[ip].name.add(name)
-          ipmap[ip].alias.update(hinfo.alias)
+    if response.flags & dns.flags.TC:
+      response = dns.query.tcp(request, server, timeout=timeout, one_rr_per_rrset=True)
 
-    # pretty print
-    def pprint_info(key, infos):
-      first = True
-      for info in infos:
-        if first:
-          print('%34s %s' % (info, key))
-          first = False
-        else:
-          print('%34s %s' % (info, key))
-   
-    print('Hostmap ' + '-'*42)
-    for ip, hinfo in sorted(ipmap.items()):
-      pprint_info( ip, hinfo.name)
-      pprint_info('.', hinfo.alias)
-          
-    pprint_info('noip', noips)
-
-    print('Domains ' + '-'*42)
-    domains = {}
-    networks = {}
-    for ip, hinfo in ipmap.items():
-      for name in hinfo.name:
-        i = 1 if name.count('.') > 1 else 0
-        d = '.'.join(name.split('.')[i:])
-        if d not in domains: domains[d] = 0
-        domains[d] += 1
-
-    for domain, count in sorted(domains.items(), key=lambda a:a[0].split('.')[-1::-1]):
-      print('%34s %d' % (domain, count))
-
-    print('Networks ' + '-'*41)
-    nets = {}
-    for ip in set(ipmap):
-      if not ip.version() == 4:
-        nets[ip] = [ip]
-      else:
-        n = ip.make_net('255.255.255.0')
-        if n not in nets: nets[n] = []
-        nets[n].append(ip)
-
-    for net, ips in sorted(nets.items()):
-      if len(ips) == 1:
-        print(' '*10 + '%39s' % ips[0])
-      else:
-        print(' '*10 + '%37s.x' % '.'.join(str(net).split('.')[:-1]))
-
-  # }}}
-
-  def push_final(self, resp):
-    for name, hinfo in resp.hostmap.items():
-      if name not in self.hostmap:
-        self.hostmap[name] = hinfo
-      else:
-        self.hostmap[name].ip.update(hinfo.ip)
-        self.hostmap[name].alias.update(hinfo.alias)
+  return response
 
 def generate_tld():
   gtld = [
-    'aero', 'arpa', 'asia', 'biz', 'cat', 'com', 'coop', 'edu', 
-    'gov', 'info', 'int', 'jobs', 'mil', 'mobi', 'museum', 'name', 
+    'aero', 'arpa', 'asia', 'biz', 'cat', 'com', 'coop', 'edu',
+    'gov', 'info', 'int', 'jobs', 'mil', 'mobi', 'museum', 'name',
     'net', 'org', 'pro', 'tel', 'travel']
 
   cctld = [''.join(i) for i in product(*[ascii_lowercase]*2)]
-  tld = gtld + cctld 
+  tld = gtld + cctld
   return tld, len(tld)
 
 def generate_srv():
@@ -2888,10 +2808,169 @@ def generate_srv():
   srv = set(common + distro())
   return srv, len(srv)
 
-try:
-  from DNS import DnsRequest, DNSError
-except ImportError:
-  warnings.append('pydns')
+class HostInfo:
+  def __init__(self):
+    self.name = set()
+    self.ip = set()
+    self.alias = set()
+
+  def __str__(self):
+    line = ''
+    if self.name:
+      line = ' '.join(self.name)
+    if self.ip:
+      if line: line += ' / '
+      line += ' '.join(map(str, self.ip))
+    if self.alias:
+      if line: line += ' / '
+      line += ' '.join(self.alias)
+
+    return line
+
+class Controller_DNS(Controller):
+  records = defaultdict(list)
+  hostmap = defaultdict(HostInfo)
+
+  # show_final {{{
+  def show_final(self):
+    ''' Expected output:
+    Records -----
+          ftp.example.com.   IN A       10.0.1.1
+          www.example.com.   IN A       10.0.1.1
+         prod.example.com.   IN CNAME   www.example.com.
+         ipv6.example.com.   IN AAAA    dead:beef::
+          dev.example.com.   IN A       10.0.1.2
+          svn.example.com.   IN A       10.0.2.1
+      websrv1.example.com.   IN CNAME   prod.example.com.
+         blog.example.com.   IN CNAME   example.wordpress.com.
+    '''
+    print('Records ' + '-'*42)
+    for name, infos in sorted(self.records.items()):
+      for qclass, qtype, rdata in infos:
+        print('%34s %8s %-8s %s' % (name, qclass, qtype, rdata))
+
+    ''' Expected output:
+    Hostmap ------
+           ipv6.example.com dead:beef::
+            ftp.example.com 10.0.1.1
+            www.example.com 10.0.1.1
+           prod.example.com
+        websrv1.example.com
+            dev.example.com 10.0.1.2
+            svn.example.com 10.0.2.1
+      example.wordpress.com ?
+           blog.example.com
+    Domains ---------------------------
+                example.com 8
+    Networks --------------------------
+                           dead:beef::
+                              10.0.1.x
+                              10.0.2.1
+    '''
+    ipmap = defaultdict(HostInfo)
+    noips = defaultdict(list)
+
+    '''
+    hostmap = {
+       'www.example.com': {'ip': ['10.0.1.1'], 'alias': ['prod.example.com']},
+       'ftp.example.com': {'ip': ['10.0.1.1'], 'alias': []},
+       'prod.example.com': {'ip': [], 'alias': ['websrv1.example.com']},
+       'ipv6.example.com': {'ip': ['dead:beef::'], 'alias': []},
+       'dev.example.com': {'ip': ['10.0.1.2'], 'alias': []},
+       'example.wordpress.com': {'ip': [], 'alias': ['blog.example.com']},
+
+    ipmap = {'10.0.1.1': {'name': ['www.example.com', 'ftp.example.com'], 'alias': ['prod.example.com', 'websrv1.example.com']}, ...
+    noips = {'example.wordpress.com': ['blog.example.com'],
+    '''
+
+    for name, hinfo in self.hostmap.items(): 
+      for ip in hinfo.ip:
+        ip = IP(ip)
+        ipmap[ip].name.add(name)
+        ipmap[ip].alias.update(hinfo.alias)
+
+    for name, hinfo in self.hostmap.items():
+      if not hinfo.ip and hinfo.alias:
+        found = False
+        for ip, v in ipmap.items():
+          if name in v.alias:
+            for alias in hinfo.alias:
+              ipmap[ip].alias.add(alias)
+              found = True
+
+        if not found: # orphan CNAME hostnames (with no IP address) may be still valid virtual hosts
+          noips[name].extend(hinfo.alias)
+
+    print('Hostmap ' + '-'*42)
+    for ip, hinfo in sorted(ipmap.items()):
+      for name in hinfo.name:
+        print('%34s %s' % (name, ip))
+      for alias in hinfo.alias:
+        print('%34s' % alias)
+
+    for k, v in noips.items():
+      print('%34s ?' % k)
+      for alias in v:
+        print('%34s' % alias)
+
+    print('Domains ' + '-'*42)
+    domains = {}
+    for ip, hinfo in ipmap.items():
+      for name in hinfo.name.union(hinfo.alias):
+        if name.count('.') > 1:
+          i = 1
+        else:
+          i = 0
+        d = '.'.join(name.split('.')[i:])
+        if d not in domains: domains[d] = 0
+        domains[d] += 1
+
+    for domain, count in sorted(domains.items(), key=lambda a:a[0].split('.')[-1::-1]):
+      print('%34s %d' % (domain, count))
+
+    print('Networks ' + '-'*41)
+    nets = {}
+    for ip in set(ipmap):
+      if not ip.version() == 4:
+        nets[ip] = [ip]
+      else:
+        n = ip.make_net('255.255.255.0')
+        if n not in nets: nets[n] = []
+        nets[n].append(ip)
+
+    for net, ips in sorted(nets.items()):
+      if len(ips) == 1:
+        print(' '*34 + ' %s' % ips[0])
+      else:
+        print(' '*34 + ' %s.x' % '.'.join(str(net).split('.')[:-1]))
+
+  # }}}
+
+  def push_final(self, resp):
+    if hasattr(resp, 'rrs'):
+      for rr in resp.rrs:
+        name, qclass, qtype, data = rr
+
+        info = (qclass, qtype, data)
+        if info not in self.records[name]:
+          self.records[name].append(info)
+
+        if not qclass == 'IN':
+          continue
+
+        if qtype == 'PTR':
+          data = data[:-1]
+          self.hostmap[data].ip.add(name)
+
+        else:
+          if qtype in ('A', 'AAAA'):
+            name = name[:-1]
+            self.hostmap[name].ip.add(data)
+
+          elif qtype == 'CNAME':
+            name, data = name[:-1], data[:-1]
+            self.hostmap[data].alias.add(name)
+
 
 class DNS_reverse:
   '''Reverse lookup subnets'''
@@ -2902,50 +2981,46 @@ class DNS_reverse:
     ]
 
   available_options = (
-    ('host', 'IP addresses to reverse'),
+    ('host', 'IP addresses to reverse lookup'),
     ('server', 'name server to query (directly asking a zone authoritative NS may return more results) [8.8.8.8]'),
-    ('timeout', 'seconds to wait for a DNS response [10]'),
+    ('timeout', 'seconds to wait for a DNS response [5]'),
+    ('protocol', 'send queries over udp or tcp [udp]'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, server='8.8.8.8', timeout='10'):
-    resolver = DnsRequest(qtype='PTR', server=server, timeout=int(timeout))
+  def execute(self, host, server='8.8.8.8', timeout='5', protocol='udp'):
 
-    ip = IP(host)
-    ptr = ip.reverseName()
-    result = resolver.req(ptr.rstrip('.'))
-    hostnames = [ans['data'] for ans in result.answers]
+    response = dns_query(server, int(timeout), protocol, dns.reversename.from_address(host), qtype='PTR', qclass='IN')
 
-    hostmap = {}
-    for n in hostnames:
-      if n not in hostmap: hostmap[n] = HostInfo()
-      hostmap[n].ip.add(ip)
+    code = response.rcode()
+    status = dns.rcode.to_text(code)
+    rrs = [[host, c, t, d] for _, _, c, t, d in [rr.to_text().split(' ', 4) for rr in response.answer]]
 
-    code = result.header['rcode']
-    status = result.header['status']
-    mesg = '%s %s' % (status, ', '.join(hostnames))
-
+    mesg = '%s %s' % (status, ''.join('[%s]' % ' '.join(rr) for rr in rrs))
     resp = self.Response(code, mesg)
-    resp.hostmap = hostmap
+
+    resp.rrs = rrs
 
     return resp
 
 class DNS_forward:
-  '''Forward lookup subdomains'''
+  '''Forward lookup names'''
 
   usage_hints = [
-    """%prog domain=FILE0.google.com 0=names.txt -x ignore:code=3""",
-    """%prog domain=google.MOD0 0=TLD -x ignore:code=3""",
-    """%prog domain=MOD0.microsoft.com 0=SRV qtype=SRV -x ignore:code=3""",
+    """%prog name=FILE0.google.com 0=names.txt -x ignore:code=3""",
+    """%prog name=google.MOD0 0=TLD -x ignore:code=3""",
+    """%prog name=MOD0.microsoft.com 0=SRV qtype=SRV -x ignore:code=3""",
     ]
 
   available_options = (
-    ('domain', 'domains to lookup'),
+    ('name', 'domain names to lookup'),
     ('server', 'name server to query (directly asking the zone authoritative NS may return more results) [8.8.8.8]'),
-    ('timeout', 'seconds to wait for a DNS response [10]'),
-    ('qtype', 'comma-separated list of types to query [ANY,A,AAAA]'),
+    ('timeout', 'seconds to wait for a DNS response [5]'),
+    ('protocol', 'send queries over udp or tcp [udp]'),
+    ('qtype', 'type to query [ANY]'),
+    ('qclass', 'class to query [IN]'),
     )
   available_actions = ()
 
@@ -2956,48 +3031,18 @@ class DNS_forward:
 
   Response = Response_Base  
 
-  def execute(self, domain, server='8.8.8.8', timeout='10', qtype='ANY,A,AAAA'):
-    resolver = DnsRequest(server=server, timeout=int(timeout))
-
-    hostmap = {}
-    for qt in qtype.split(','):
-      result = resolver.req(domain, qtype=qt.strip())
+  def execute(self, name, server='8.8.8.8', timeout='5', protocol='udp', qtype='ANY', qclass='IN'):
     
-      for r in result.answers + result.additional + result.authority:
-        t = r['typename']
-        n = r['name']
-        d = r['data']
+    response = dns_query(server, int(timeout), protocol, name, qtype=qtype, qclass=qclass)
 
-        if t not in ('A', 'AAAA', 'CNAME', 'DNAME', 'SRV'):
-          continue
+    code = response.rcode()
+    status = dns.rcode.to_text(code)
+    rrs = [[n, c, t, d] for n, _, c, t, d in [rr.to_text().split(' ', 4) for rr in response.answer + response.additional + response.authority]]
 
-        if t == 'SRV':
-          _, _, _, d = d
-
-        if t in ('CNAME', 'DNAME', 'SRV'):
-          n, d = d, n
-
-        if n not in hostmap:
-          hostmap[n] = HostInfo()
-
-        if t == 'A':
-          hostmap[n].ip.add(IP(d))
-
-        elif t == 'AAAA':
-          hostmap[n].ip.add(IP(hexlify(d)))
-
-        elif t in ('CNAME', 'DNAME'):
-          hostmap[n].alias.add(d)
-
-        elif t == 'SRV':
-          hostmap[n].alias.add(d)
-
-    code = result.header['rcode']
-    status = result.header['status']
-    mesg = '%s %s' % (status, ' | '.join('%s / %s' % (k, v) for k, v in hostmap.items()))
-
+    mesg = '%s %s' % (status, ''.join('[%s]' % ' '.join(rr) for rr in rrs))
     resp = self.Response(code, mesg)
-    resp.hostmap = hostmap
+
+    resp.rrs = rrs
 
     return resp
 
@@ -3156,8 +3201,8 @@ modules = [
   ('pgsql_login', (Controller, Pgsql_login)),
   ('vnc_login', (Controller, VNC_login)),
 
-  ('dns_reverse', (Controller_DNS, DNS_reverse)),
   ('dns_forward', (Controller_DNS, DNS_forward)),
+  ('dns_reverse', (Controller_DNS, DNS_reverse)),
   ('snmp_login', (Controller, SNMP_login)),
   
   ('unzip_pass', (Controller, Unzip_pass)),
@@ -3173,7 +3218,7 @@ dependencies = {
   'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/'],
   'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/'],
   'pycrypto': [('vnc_login',), 'http://www.dlitz.net/software/pycrypto/'],
-  'pydns': [('dns_reverse', 'dns_forward'), 'http://pydns.sourceforge.net/'],
+  'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/'],
   'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy'],
   'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/'],
   'unzip': [('unzip_pass',), 'http://www.info-zip.org/'],

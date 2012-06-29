@@ -1486,19 +1486,20 @@ class FTP_login(TCP_Cache):
     ('port', 'ports to target [21]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
+    ('timeout', 'seconds to wait for a FTP response [10]'),
     )
   available_options += TCP_Cache.available_options
 
   Response = Response_Base
 
   def connect(self, host, port):
-    fp = FTP()
+    fp = FTP(timeout=int(self.timeout))
     banner = fp.connect(host, int(port))
 
     return TCP_Connection(fp, banner)
 
-  def execute(self, host, port='21', user=None, password=None, persistent='1'):
-
+  def execute(self, host, port='21', user=None, password=None, timeout='10', persistent='1'):
+    self.timeout = timeout
     fp, resp = self.bind(host, port)
 
     try:

@@ -564,15 +564,33 @@ TODO
 
 # }}}
 
-# imports and logging {{{
+# logging {{{
 import logging
-formatter = logging.Formatter('%(asctime)s %(name)-7s %(levelname)7s - %(message)s', datefmt='%H:%M:%S')
+class MyFormatter(logging.Formatter):
+
+  dft_fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
+  dbg_fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(threadName)s] %(message)s'
+
+  def __init__(self):
+    logging.Formatter.__init__(self, MyFormatter.dft_fmt, datefmt='%H:%M:%S')
+
+
+  def format(self, record):
+      if record.levelno == 10:   # DEBUG
+          self._fmt = MyFormatter.dbg_fmt
+      else:
+          self._fmt = MyFormatter.dft_fmt
+
+      return logging.Formatter.format(self, record)
+
 handler = logging.StreamHandler()
-handler.setFormatter(formatter)
+handler.setFormatter(MyFormatter())
 logger = logging.getLogger('patator')
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
+# }}}
 
+# imports {{{
 import re
 import os
 from sys import stdin, exc_info, exit, version_info
@@ -1040,12 +1058,6 @@ Please read the README inside for more examples and usage information.
   def show_final(self): pass
 
   def start_threads(self):
-    gqueues = [Queue(maxsize=10000) for i in range(self.num_threads)]
-
-    # producer
-    t = Thread(target=self.produce, args=(gqueues,))
-    t.daemon = True
-    t.start()
 
     class Progress:
       def __init__(self):
@@ -1056,6 +1068,8 @@ Please read the README inside for more examples and usage information.
         self.fail_count = 0
         self.seconds = [1]*25 # avoid division by zero early bug condition
 
+    gqueues = [Queue(maxsize=10000) for i in range(self.num_threads)]
+
     # consumers
     for num in range(self.num_threads):
       pqueue = Queue()
@@ -1064,6 +1078,11 @@ Please read the README inside for more examples and usage information.
       t.start()
       self.thread_report.append(pqueue)
       self.thread_progress.append(Progress())
+
+    # producer
+    t = Thread(target=self.produce, args=(gqueues,))
+    t.daemon = True
+    t.start()
 
   def produce(self, queues):
 
@@ -1202,8 +1221,9 @@ Please read the README inside for more examples and usage information.
           actions = {}
           try_count += 1
 
+          logger.debug('payload: %s [%d/%d]' % (payload, try_count, self.max_retries))
+
           try:
-            logger.debug('payload: %s' % payload)
             resp = module.execute(**payload)
 
           except:
@@ -2246,8 +2266,8 @@ class MSSQL:
           '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x30\x30\x30\x00\x00' \
           '\x00\x03\x00\x00\x00'
 
-  def connect(self, host, port):
-    self.fp = socket.create_connection((host, port))
+  def connect(self, host, port, timeout):
+    self.fp = socket.create_connection((host, port), timeout)
 
   def login(self, user, password):
     MAX_LEN = 30
@@ -2296,14 +2316,15 @@ class MSSQL_login:
     ('port', 'ports to target [1433]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
+    ('timeout', 'seconds to wait for a response [10]'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, port='1433', user='', password=''):
+  def execute(self, host, port='1433', user='', password='', timeout='10'):
     m = MSSQL()
-    m.connect(host, int(port))
+    m.connect(host, int(port), int(timeout))
     code, mesg = m.login(user, password)
     return self.Response(code, mesg)
 

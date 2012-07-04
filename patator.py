@@ -124,7 +124,7 @@ cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/           
 --------------------------------------------------------------------------------------------------
 mysql-python     | MySQL          | http://sourceforge.net/projects/mysql-python/      |   1.2.3 |
 --------------------------------------------------------------------------------------------------
-psycopg          | PostgreSQL     | http://initd.org/psycopg/                          |   2.4.1 |
+psycopg          | PostgreSQL     | http://initd.org/psycopg/                          |   2.4.5 |
 --------------------------------------------------------------------------------------------------
 pycrypto         | VNC            | http://www.dlitz.net/software/pycrypto/            |     2.3 |
 --------------------------------------------------------------------------------------------------
@@ -1068,7 +1068,7 @@ Please read the README inside for more examples and usage information.
         self.fail_count = 0
         self.seconds = [1]*25 # avoid division by zero early bug condition
 
-    gqueues = [Queue(maxsize=10000) for i in range(self.num_threads)]
+    gqueues = [Queue(maxsize=10000) for _ in range(self.num_threads)]
 
     # consumers
     for num in range(self.num_threads):
@@ -1506,7 +1506,7 @@ class FTP_login(TCP_Cache):
     ('port', 'ports to target [21]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
-    ('timeout', 'seconds to wait for a FTP response [10]'),
+    ('timeout', 'seconds to wait for a response [10]'),
     )
   available_options += TCP_Cache.available_options
 
@@ -1876,7 +1876,7 @@ class Finger_lookup:
     ('host', 'hostnames or subnets to target'),
     ('port', 'ports to target [79]'),
     ('user', 'usernames to test'),
-    ('timeout', 'seconds to wait on socket operations [5]'),
+    ('timeout', 'seconds to wait for a response [5]'),
     )
   available_actions = ()
 
@@ -2387,16 +2387,18 @@ class Pgsql_login:
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('database', 'databases to test [postgres]'),
+    ('timeout', 'seconds to wait for a response [10]'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, port='5432', user=None, password=None, database='postgres', ssl='disable'):
+  def execute(self, host, port='5432', user=None, password=None, database='postgres', ssl='disable', timeout='10'):
     try:
-      psycopg2.connect(host=host, port=int(port), user=user, password=password, database=database, sslmode=ssl)
+      psycopg2.connect(host=host, port=int(port), user=user, password=password, database=database, sslmode=ssl, connect_timeout=int(timeout))
       code, mesg = '0', 'OK'
     except psycopg2.OperationalError as e:
+      logger.debug('OperationalError: %s' % e)
       code, mesg = '1', str(e)[:-1]
   
     return self.Response(code, mesg)
@@ -2872,7 +2874,7 @@ class Controller_DNS(Controller):
     print('Records ' + '-'*42)
     for name, infos in sorted(self.records.items()):
       for qclass, qtype, rdata in infos:
-        print('%34s %8s %-8s %s' % (name, qclass, qtype, rdata))
+        print('%34s %4s %-7s %s' % (name, qclass, qtype, rdata))
 
     ''' Expected output:
     Hostmap ------
@@ -3008,7 +3010,7 @@ class DNS_reverse:
   available_options = (
     ('host', 'IP addresses to reverse lookup'),
     ('server', 'name server to query (directly asking a zone authoritative NS may return more results) [8.8.8.8]'),
-    ('timeout', 'seconds to wait for a DNS response [5]'),
+    ('timeout', 'seconds to wait for a response [5]'),
     ('protocol', 'send queries over udp or tcp [udp]'),
     )
   available_actions = ()
@@ -3042,7 +3044,7 @@ class DNS_forward:
   available_options = (
     ('name', 'domain names to lookup'),
     ('server', 'name server to query (directly asking the zone authoritative NS may return more results) [8.8.8.8]'),
-    ('timeout', 'seconds to wait for a DNS response [5]'),
+    ('timeout', 'seconds to wait for a response [5]'),
     ('protocol', 'send queries over udp or tcp [udp]'),
     ('qtype', 'type to query [ANY]'),
     ('qclass', 'class to query [IN]'),

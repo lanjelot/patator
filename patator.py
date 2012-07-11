@@ -61,14 +61,14 @@ Future modules to be implemented:
   - pop3_login
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
-"Whatever the payload to fire, always use the same launch tube"
+"Whatever the payload to fire, always use the same cannon"
 
 * Why ?
 
-Basically, I got tired of using Medusa, Hydra, ncrack, metasploit auxiliary modules, nmap NSE scripts and the like because:
+Basically, I got tired of using Medusa, Hydra, Ncrack, Metasploit auxiliary modules, Nmap NSE scripts and the like because:
   - they either do not work or are not reliable (got me false negatives several times in the past)
-  - they are slow (not multi-threaded or not testing multiple passwords within the same TCP connection)
-  - they lack very useful features that are easy to code in python (eg. interactive runtime)
+  - they are not flexible enough (eg. how to iterate over all wordlists, fuzz any module parameter)
+  - they lack useful features (eg. display progress or pause during execution)
 
 
 FEATURES
@@ -95,12 +95,12 @@ FEATURES
   * Multi-threaded
 
   * Flexible user input
-    - Any part of a payload is fuzzable:
+    - Any module parameter can be fuzzed:
       + use FILE[0-9] keywords to iterate on a file
       + use COMBO[0-9] keywords to iterate on the combo entries of a file
       + use NET[0-9] keywords to iterate on every host of a network subnet
 
-    - Iteration over the joined wordlists may be done in any order
+    - Iteration over the joined wordlists can be done in any order
 
   * Save every response (along with request) to seperate log files for later reviewing
 
@@ -178,16 +178,16 @@ For instance, this would be the classic order:
 10.0.0.1 root 123456
 10.0.0.1 root qsdfghj
 ....
-10.0.0.1 test password
-10.0.0.1 test 123456
-10.0.0.1 test qsdfghj
+10.0.0.1 admin password
+10.0.0.1 admin 123456
+10.0.0.1 admin qsdfghj
 ...
 10.0.0.2 root password
 ...
 
 While a smarter way might be:
 ---------
-./module host=FILE2 password=FILE1 user=FILE0 0=logins.txt 1=passwords.txt 2=hosts.txt 
+./module host=FILE2 user=FILE1 password=FILE0 2=hosts.txt 1=logins.txt 0=passwords.txt
 10.0.0.1 root password
 10.0.0.2 root password
 10.0.0.1 admin password
@@ -485,13 +485,6 @@ vnc_login host=10.0.0.1 password=FILE0 0=passwords.txt --threads 1
  -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0
         (b)                                 (b)                 (c)
 }}}
-{{{ Unzip
-
-* Brute-force the ZIP file password (cracking older pkzip encryption used to be not supported in JtR).
-----------
-unzip_pass zipfile=path/to/file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
-
-}}}
 {{{ DNS
 
 * Brute-force subdomains.
@@ -536,6 +529,13 @@ snmp_login host=10.0.0.1 version=3 user=myuser auth_key=FILE0 0=passwords.txt -x
 
 NB0. If you get "notInTimeWindow" error messages, increase the retries option.
 NB1. SNMPv3 requires passphrases to be at least 8 characters long.
+
+}}}
+{{{ Unzip
+
+* Brute-force the ZIP file password (cracking older pkzip encryption used to be not supported in JtR).
+----------
+unzip_pass zipfile=path/to/file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
 
 }}}
 
@@ -862,7 +862,7 @@ Please read the README inside for more examples and usage information.
 
     wlists = {}
     kargs = []
-    for arg in args: # ('host=NET0', '0=10.0.0.0/24', 'user=COMBO10', 'password=COMBO11', '1=combos.txt', 'domain=google.MOD2', '2=TLD')
+    for arg in args: # ('host=NET0', '0=10.0.0.0/24', 'user=COMBO10', 'password=COMBO11', '1=combos.txt', 'name=google.MOD2', '2=TLD')
       for k, v in self.expand_key(arg):
         logger.debug('k: %s, v: %s' % (k, v))
 
@@ -920,7 +920,7 @@ Please read the README inside for more examples and usage information.
             else:
               self.payload[k] = v
 
-    logger.debug('iter_keys: %s' % self.iter_keys) # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['domain'])
+    logger.debug('iter_keys: %s' % self.iter_keys) # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['name'])
     logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hexlify), ('header', 'B64', b64encode), ...
     logger.debug('payload: %s' % self.payload)
 
@@ -1469,11 +1469,11 @@ class TCP_Cache:
     for _, c in self.cache.items():
       c.close()
 
-  def bind(self, *args):
-
+  def bind(self, *args, **kwargs):
+    # *args identify one connection in the cache while **kwargs are only options
     key = ':'.join(args)
     if key not in self.cache:
-      self.conn = self.cache[key] = self.connect(*args)
+      self.conn = self.cache[key] = self.connect(*args, **kwargs)
     else:
       self.conn = self.cache[key]
 
@@ -1512,15 +1512,15 @@ class FTP_login(TCP_Cache):
 
   Response = Response_Base
 
-  def connect(self, host, port):
-    fp = FTP(timeout=int(self.timeout))
+  def connect(self, host, port, timeout):
+    fp = FTP(timeout=int(timeout))
     banner = fp.connect(host, int(port))
 
     return TCP_Connection(fp, banner)
 
   def execute(self, host, port='21', user=None, password=None, timeout='10', persistent='1'):
-    self.timeout = timeout
-    fp, resp = self.bind(host, port)
+
+    fp, resp = self.bind(host, port, timeout=timeout)
 
     try:
       if user is not None:
@@ -1690,21 +1690,22 @@ class Telnet_login(TCP_Cache):
     ('port', 'ports to target [23]'),
     ('inputs', 'list of values to input'),
     ('prompt_re', 'regular expression to match prompts [\w+]'),
-    ('timeout', 'seconds to wait for prompt_re to match received data [20]'),
+    ('timeout', 'seconds to wait for a response and for prompt_re to match received data [20]'),
     )
   available_options += TCP_Cache.available_options
 
   Response = Response_Base
 
-  def connect(self, host, port):
+  def connect(self, host, port, timeout):
     self.prompt_count = 0
-    fp = Telnet(host, int(port))
+    fp = Telnet(host, int(port), int(timeout))
 
     return TCP_Connection(fp)
 
   def execute(self, host, port='23', inputs=None, prompt_re='\w+:', timeout='20', persistent='1'):
 
-    fp, _ = self.bind(host, port)
+    fp, _ = self.bind(host, port, timeout=timeout)
+
     trace = ''
     timeout = int(timeout)
 
@@ -1740,6 +1741,7 @@ class SMTP_Base(TCP_Cache):
 
   available_options = TCP_Cache.available_options
   available_options += (
+    ('timeout', 'seconds to wait for a response [10]'),
     ('host', 'hostnames or subnets to target'),
     ('port', 'ports to target [25]'),
     ('helo', 'first command to send after connect [None]'),
@@ -1748,8 +1750,8 @@ class SMTP_Base(TCP_Cache):
 
   Response = Response_Base
 
-  def connect(self, host, port, helo):
-    fp = SMTP()
+  def connect(self, host, port, helo, timeout):
+    fp = SMTP(timeout=int(timeout))
     resp = fp.connect(host, int(port))
 
     if helo:
@@ -1771,9 +1773,9 @@ class SMTP_vrfy(SMTP_Base):
     ''' -x ignore:fgrep='User unknown' -x ignore,reset,retry:code=421''',
     )
 
-  def execute(self, host, port='25', helo='', user=None, persistent='1'):
+  def execute(self, host, port='25', helo='', user=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, helo)
+    fp, resp = self.bind(host, port, helo, timeout=timeout)
 
     if user is not None:
       resp = fp.verify(user)
@@ -1798,9 +1800,9 @@ class SMTP_rcpt(SMTP_Base):
     ('mail_from', 'sender email [test@example.org]'),
     )
 
-  def execute(self, host, port='25', helo='', mail_from='test@example.org', user=None, persistent='1'):
+  def execute(self, host, port='25', helo='', mail_from='test@example.org', user=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, helo)
+    fp, resp = self.bind(host, port, helo, timeout=timeout)
 
     if mail_from:
       resp = fp.mail(mail_from)
@@ -1830,9 +1832,9 @@ class SMTP_login(SMTP_Base):
     ('password', 'passwords to test'),
     )
 
-  def execute(self, host, port='25', helo=None, user=None, password=None, persistent='1'):
+  def execute(self, host, port='25', helo=None, user=None, password=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, helo)
+    fp, resp = self.bind(host, port, helo, timeout=timeout)
     
     try:
       if user is not None and password is not None:

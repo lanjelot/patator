@@ -37,8 +37,9 @@ Currently it supports the following modules:
   - smtp_vrfy     : Enumerate valid users using the SMTP 'VRFY' command
   - smtp_rcpt     : Enumerate valid users using the SMTP 'RCPT TO' command
   - finger_lookup : Enumerate valid users using Finger
-  - http_fuzz     : Brute-force HTTP/HTTPS
-  - pop_passd     : Brute-force poppassd (not POP3)
+  - http_fuzz     : Brute-force HTTP
+  - pop_login     : Brute-force POP3
+  - pop_passd     : Brute-force poppassd (http://netwinsite.com/poppassd/)
   - ldap_login    : Brute-force LDAP
   - smb_login     : Brute-force SMB
   - smb_lookupsid : Brute-force SMB SID-lookup
@@ -58,7 +59,6 @@ Currently it supports the following modules:
 Future modules to be implemented:
   - rdp_login
   - vmware_login (902/tcp)
-  - pop3_login
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
 "Whatever the payload to fire, always use the same cannon"
@@ -1494,7 +1494,7 @@ class TCP_Cache:
 # FTP {{{
 from ftplib import FTP, Error as FTP_Error
 class FTP_login(TCP_Cache):
-  '''Brute-force FTP authentication'''
+  '''Brute-force FTP'''
 
   usage_hints = (
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt"""
@@ -1620,7 +1620,7 @@ class SSH_Cache(TCP_Cache):
       self.conn = None
 
 class SSH_login(SSH_Cache):
-  '''Brute-force SSH authentication'''
+  '''Brute-force SSH'''
 
   usage_hints = (
     """%prog host=10.0.0.1 user=root password=FILE0 0=passwords.txt -x ignore:mesg='Authentication failed.'""",
@@ -1678,7 +1678,7 @@ class SSH_login(SSH_Cache):
 # Telnet {{{
 from telnetlib import Telnet
 class Telnet_login(TCP_Cache):
-  '''Brute-force Telnet authentication'''
+  '''Brute-force Telnet'''
 
   usage_hints = (
     """%prog host=10.0.0.1 inputs='FILE0\\nFILE1' 0=logins.txt 1=passwords.txt persistent=0"""
@@ -1820,7 +1820,7 @@ class SMTP_rcpt(SMTP_Base):
 
 
 class SMTP_login(SMTP_Base):
-  '''Brute-force SMTP authentication'''
+  '''Brute-force SMTP'''
 
   usage_hints = (
     '''%prog host=10.0.0.1 user=f.bar@dom.com password=FILE0 0=passwords.txt [helo='ehlo its.me.com']'''
@@ -1922,7 +1922,7 @@ if not which('ldapsearch'):
 # I chose to wrap around ldapsearch with "-e ppolicy".
 
 class LDAP_login:
-  '''Brute-force LDAP authentication'''
+  '''Brute-force LDAP'''
 
   usage_hints = (
     """%prog host=10.0.0.1 binddn='cn=Directory Manager' bindpw=FILE0 0=passwords.txt"""
@@ -1969,7 +1969,7 @@ class SMB_Connection(TCP_Connection):
     self.fp.get_socket().close()
 
 class SMB_login(TCP_Cache):
-  '''Brute-force SMB authentication'''
+  '''Brute-force SMB'''
 
   usage_hints = (
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt"""
@@ -2121,6 +2121,59 @@ class SMB_lookupsid(TCP_Cache):
 # }}}
 
 # POP {{{
+from poplib import POP3, error_proto as pop_error
+class POP_Connection(TCP_Connection):
+  def close(self):
+    self.fp.quit()
+
+class POP_login(TCP_Cache):
+  '''Brute-force POP3'''
+
+  usage_hints = (
+    '''%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:code=-ERR''',
+    )
+
+  available_options = (
+    ('host', 'hostnames or subnets to target'),
+    ('port', 'ports to target [110]'),
+    ('user', 'usernames to test'),
+    ('password', 'passwords to test'),
+    ('timeout', 'seconds to wait for a response [10]'),
+    )
+  available_options += TCP_Cache.available_options
+
+  Response = Response_Base
+
+  def connect(self, host, port, timeout):
+    fp = POP3(host, int(port), timeout=int(timeout))
+    banner = fp.welcome
+
+    return POP_Connection(fp, banner)
+
+  def execute(self, host, port='110', helo=None, user=None, password=None, timeout='10', persistent='1'):
+
+    fp, resp = self.bind(host, port, timeout=timeout)
+
+    try:
+      if user is not None:
+        resp = fp.user(user)
+      if password is not None:
+        resp = fp.pass_(password)
+
+      logger.debug('No error: %s' % resp)
+      self.reset()
+
+    except pop_error as e:
+      logger.debug('pop_error: %s' % e)
+      resp = str(e)
+
+    if persistent == '0':
+      self.reset()
+
+    code, mesg = resp.split(' ', 1)
+    return self.Response(code, mesg)
+
+
 class Passd_Error(Exception): pass
 class Passd:
   def connect(self, host, port):
@@ -2153,7 +2206,7 @@ class Passd:
     return code, mesg
 
 class POP_passd:
-  '''Brute-force poppassd authentication (http://netwinsite.com/poppassd/ not POP3)'''
+  '''Brute-force poppassd (http://netwinsite.com/poppassd/)'''
 
   usage_hints = (
     '''%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:code=500''',
@@ -2205,7 +2258,7 @@ except ImportError:
   warnings.append('mysql-python')
 
 class MySQL_login:
-  '''Brute-force MySQL authentication'''
+  '''Brute-force MySQL'''
 
   usage_hints = (
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:fgrep='Access denied for user'""",
@@ -2307,7 +2360,7 @@ class MSSQL:
     raise Exception('Failed to parse response')
 
 class MSSQL_login:
-  '''Brute-force MSSQL authentication'''
+  '''Brute-force MSSQL'''
 
   usage_hints = (
     """%prog host=10.0.0.1 user=sa password=FILE0 0=passwords.txt -x ignore:fgrep='Login failed for user'""",
@@ -2339,7 +2392,7 @@ except ImportError:
   warnings.append('cx_Oracle')
 
 class Oracle_login:
-  '''Brute-force Oracle authentication'''
+  '''Brute-force Oracle'''
 
   usage_hints = (
     """%prog host=10.0.0.1 sid=FILE0 0=sids.txt -x ignore:code=ORA-12505""",
@@ -2377,7 +2430,7 @@ except ImportError:
   warnings.append('psycopg')
 
 class Pgsql_login:
-  '''Brute-force PostgreSQL authentication'''
+  '''Brute-force PostgreSQL'''
 
   usage_hints = (
     """%prog host=10.0.0.1 user=postgres password=FILE0 0=passwords.txt -x ignore:fgrep='password authentication failed for user'""",
@@ -2466,7 +2519,7 @@ class Response_HTTP(Response_Base):
     )
 
 class HTTP_fuzz(TCP_Cache):
-  '''Fuzz HTTP/HTTPS'''
+  '''Brute-force HTTP'''
 
   usage_hints = [
     """%prog url=http://10.0.0.1/FILE0 0=paths.txt -x ignore:code=404 -x ignore,retry:code=500""",
@@ -2738,7 +2791,7 @@ class VNC:
 
 
 class VNC_login:
-  '''Brute-force VNC authentication'''
+  '''Brute-force VNC'''
 
   usage_hints = (
     """%prog host=10.0.0.1 password=FILE0 0=passwords.txt -t 1 -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0""",
@@ -3084,7 +3137,7 @@ except ImportError:
   warnings.append('pysnmp')
 
 class SNMP_login:
-  '''Brute-force SNMP v1/2/3 authentication'''
+  '''Brute-force SNMP v1/2/3'''
 
   usage_hints = (
     """%prog host=10.0.0.1 version=2 community=FILE0 1=names.txt -x ignore:mesg='No SNMP response received before timeout'""",
@@ -3219,6 +3272,7 @@ modules = [
   ('smtp_rcpt', (Controller, SMTP_rcpt)),
   ('finger_lookup', (Controller_Finger, Finger_lookup)),
   ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
+  ('pop_login', (Controller, POP_login)),
   ('pop_passd', (Controller, POP_passd)),
   ('ldap_login', (Controller, LDAP_login)),
   ('smb_login', (Controller, SMB_login)),

@@ -67,8 +67,8 @@ The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
 
 Basically, I got tired of using Medusa, Hydra, Ncrack, Metasploit auxiliary modules, Nmap NSE scripts and the like because:
   - they either do not work or are not reliable (got me false negatives several times in the past)
-  - they are not flexible enough (eg. how to iterate over all wordlists, fuzz any module parameter)
-  - they lack useful features (eg. display progress or pause during execution)
+  - they are not flexible enough (how to iterate over all wordlists, fuzz any module parameter)
+  - they lack useful features (display progress or pause during execution)
 
 
 FEATURES
@@ -138,9 +138,9 @@ IPy              | NETx keywords  | https://github.com/haypo/python-ipy         
 --------------------------------------------------------------------------------------------------
 unzip            | ZIP passwords  | http://www.info-zip.org/                           |     6.0 |
 --------------------------------------------------------------------------------------------------
-Java             | keystore files | http://www.oracle.com/technetwork/java/javase/     |    6u29 |
+Java             | keystore files | http://www.oracle.com/technetwork/java/javase/     |       6 |
 --------------------------------------------------------------------------------------------------
-python           |                | http://www.python.org/                             |   2.6.6 |
+python           |                | http://www.python.org/                             |     2.7 |
 --------------------------------------------------------------------------------------------------
 
 * Shortcuts (optionnal)
@@ -313,7 +313,7 @@ smtp_rcpt host=10.0.0.1 user=FILE0@localhost 0=logins.txt helo='ehlo mx.fb.com' 
 
 
 * Brute-force authentication.
-  (a) Send a fake hostname (by default the real hostname is sent)
+  (a) Send a fake hostname (by default your host fqdn is sent)
 ------------             (a)
 smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE1 0=logins.txt 1=passwords.txt 
 
@@ -556,7 +556,6 @@ CHANGELOG
 
 TODO
 ----
-  * SSL support for SMTP, MySQL, ... (use socat in the meantime)
   * new option -e ns like in Medusa (not likely to be implemented due to design)
   * replace dnspython|paramiko|IPy with a better module (scapy|libssh2|... ?)
   * rewrite itertools.product that eats too much memory when processing large wordlists
@@ -566,25 +565,25 @@ TODO
 
 # logging {{{
 import logging
-class MyFormatter(logging.Formatter):
+class MyLoggingFormatter(logging.Formatter):
 
   dft_fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
   dbg_fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(threadName)s] %(message)s'
 
   def __init__(self):
-    logging.Formatter.__init__(self, MyFormatter.dft_fmt, datefmt='%H:%M:%S')
+    logging.Formatter.__init__(self, MyLoggingFormatter.dft_fmt, datefmt='%H:%M:%S')
 
 
   def format(self, record):
       if record.levelno == 10:   # DEBUG
-          self._fmt = MyFormatter.dbg_fmt
+          self._fmt = MyLoggingFormatter.dbg_fmt
       else:
-          self._fmt = MyFormatter.dft_fmt
+          self._fmt = MyLoggingFormatter.dft_fmt
 
       return logging.Formatter.format(self, record)
 
 handler = logging.StreamHandler()
-handler.setFormatter(MyFormatter())
+handler.setFormatter(MyLoggingFormatter())
 logger = logging.getLogger('patator')
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
@@ -730,7 +729,7 @@ class Controller:
     from optparse import OptionGroup
     from optparse import IndentedHelpFormatter
 
-    class MyFormatter(IndentedHelpFormatter):
+    class MyHelpFormatter(IndentedHelpFormatter):
       def format_epilog(self, epilog):
         return epilog
 
@@ -793,7 +792,7 @@ For example, to encode every password in base64:
 Please read the README inside for more examples and usage information.
 '''
 
-    parser = OptionParser(usage=usage, prog=name, epilog=epilog, version=__banner__, formatter=MyFormatter())
+    parser = OptionParser(usage=usage, prog=name, epilog=epilog, version=__banner__, formatter=MyHelpFormatter())
 
     exe_grp = OptionGroup(parser, 'Execution')
     exe_grp.add_option('-x', dest='actions', action='append', default=[], metavar='arg', help='actions and conditions, see Syntax below')
@@ -943,7 +942,7 @@ Please read the README inside for more examples and usage information.
         f.write('$ %s\n' % ' '.join(argv))
 
       handler = logging.FileHandler(log_file)
-      handler.setFormatter(formatter)
+      handler.setFormatter(MyLoggingFormatter())
       logging.getLogger('patator').addHandler(handler)
     
   def update_actions(self, arg): 
@@ -1493,6 +1492,11 @@ class TCP_Cache:
 
 # FTP {{{
 from ftplib import FTP, Error as FTP_Error
+try:
+  from ftplib import FTP_TLS # New in python 2.7
+except ImportError:
+  logger.warn('TLS support to FTP was implemented in python 2.7')
+
 class FTP_login(TCP_Cache):
   '''Brute-force FTP'''
 
@@ -1506,21 +1510,27 @@ class FTP_login(TCP_Cache):
     ('port', 'ports to target [21]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
+    ('tls', 'use TLS [0|1]'),
     ('timeout', 'seconds to wait for a response [10]'),
     )
   available_options += TCP_Cache.available_options
 
   Response = Response_Base
 
-  def connect(self, host, port, timeout):
-    fp = FTP(timeout=int(timeout))
+  def connect(self, host, port, tls, timeout):
+
+    if tls == '0':
+      fp = FTP(timeout=int(timeout))
+    else:
+      fp = FTP_TLS(timeout=int(timeout))
+
     banner = fp.connect(host, int(port))
 
     return TCP_Connection(fp, banner)
 
-  def execute(self, host, port='21', user=None, password=None, timeout='10', persistent='1'):
+  def execute(self, host, port='21', tls='0', user=None, password=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, timeout=timeout)
+    fp, resp = self.bind(host, port, tls, timeout=timeout)
 
     try:
       if user is not None:
@@ -1736,7 +1746,7 @@ class Telnet_login(TCP_Cache):
 # }}}
 
 # SMTP {{{
-from smtplib import SMTP, SMTPAuthenticationError, SMTPHeloError, SMTPException
+from smtplib import SMTP, SMTP_SSL, SMTPAuthenticationError, SMTPHeloError, SMTPException
 class SMTP_Base(TCP_Cache):
 
   available_options = TCP_Cache.available_options
@@ -1744,14 +1754,23 @@ class SMTP_Base(TCP_Cache):
     ('timeout', 'seconds to wait for a response [10]'),
     ('host', 'hostnames or subnets to target'),
     ('port', 'ports to target [25]'),
-    ('helo', 'first command to send after connect [None]'),
+    ('ssl', 'use SSL [0|1]'),
+    ('helo', 'helo or ehlo command to send after connect [skip]'),
+    ('starttls', 'send STARTTLS [0|1]'),
     ('user', 'usernames to test'),
     )
 
   Response = Response_Base
 
-  def connect(self, host, port, helo, timeout):
-    fp = SMTP(timeout=int(timeout))
+  def connect(self, host, port, ssl, helo, starttls, timeout):
+
+    if ssl == '0':
+      if not port: port = 25
+      fp = SMTP(timeout=int(timeout))
+    else:
+      if not port: port = 465
+      fp = SMTP_SSL(timeout=int(timeout))
+
     resp = fp.connect(host, int(port))
 
     if helo:
@@ -1761,6 +1780,9 @@ class SMTP_Base(TCP_Cache):
         resp = fp.ehlo(name)
       else:
         resp = fp.helo(name)
+
+    if not starttls == '0':
+      resp = fp.starttls()
 
     return TCP_Connection(fp, resp)
     
@@ -1773,9 +1795,9 @@ class SMTP_vrfy(SMTP_Base):
     ''' -x ignore:fgrep='User unknown' -x ignore,reset,retry:code=421''',
     )
 
-  def execute(self, host, port='25', helo='', user=None, timeout='10', persistent='1'):
+  def execute(self, host, port='', ssl='0', helo='', starttls='0', user=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, helo, timeout=timeout)
+    fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
 
     if user is not None:
       resp = fp.verify(user)
@@ -1800,9 +1822,9 @@ class SMTP_rcpt(SMTP_Base):
     ('mail_from', 'sender email [test@example.org]'),
     )
 
-  def execute(self, host, port='25', helo='', mail_from='test@example.org', user=None, timeout='10', persistent='1'):
+  def execute(self, host, port='', ssl='0', helo='', starttls='0', mail_from='test@example.org', user=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, helo, timeout=timeout)
+    fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
 
     if mail_from:
       resp = fp.mail(mail_from)
@@ -1832,9 +1854,9 @@ class SMTP_login(SMTP_Base):
     ('password', 'passwords to test'),
     )
 
-  def execute(self, host, port='25', helo=None, user=None, password=None, timeout='10', persistent='1'):
+  def execute(self, host, port='', ssl='0', helo='', starttls='0', user=None, password=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, helo, timeout=timeout)
+    fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
     
     try:
       if user is not None and password is not None:
@@ -2121,7 +2143,7 @@ class SMB_lookupsid(TCP_Cache):
 # }}}
 
 # POP {{{
-from poplib import POP3, error_proto as pop_error
+from poplib import POP3, POP3_SSL, error_proto as pop_error
 class POP_Connection(TCP_Connection):
   def close(self):
     self.fp.quit()
@@ -2138,21 +2160,26 @@ class POP_login(TCP_Cache):
     ('port', 'ports to target [110]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
+    ('ssl', 'use SSL [0|1]'),
     ('timeout', 'seconds to wait for a response [10]'),
     )
   available_options += TCP_Cache.available_options
 
   Response = Response_Base
 
-  def connect(self, host, port, timeout):
-    fp = POP3(host, int(port), timeout=int(timeout))
-    banner = fp.welcome
+  def connect(self, host, port, ssl, timeout):
+    if ssl == '0':
+      if not port: port = 110
+      fp = POP3(host, int(port), timeout=int(timeout))
+    else:
+      if not port: port = 995
+      fp = POP3_SSL(host, int(port), timeout=int(timeout)) # timeout was New in python 2.7
 
-    return POP_Connection(fp, banner)
+    return POP_Connection(fp, fp.welcome)
 
-  def execute(self, host, port='110', helo=None, user=None, password=None, timeout='10', persistent='1'):
+  def execute(self, host, port='', ssl='0', user=None, password=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, timeout=timeout)
+    fp, resp = self.bind(host, port, ssl, timeout=timeout)
 
     try:
       if user is not None:
@@ -3293,19 +3320,20 @@ modules = [
   ]
 
 dependencies = {
-  'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/'],
-  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/'],
-  'openldap': [('ldap_login',), 'http://www.openldap.org/'],
-  'impacket': [('smb_login','smb_lookupsid'), 'http://oss.coresecurity.com/projects/impacket.html'],
-  'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/'],
-  'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/'],
-  'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/'],
-  'pycrypto': [('vnc_login',), 'http://www.dlitz.net/software/pycrypto/'],
-  'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/'],
-  'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy'],
-  'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/'],
-  'unzip': [('unzip_pass',), 'http://www.info-zip.org/'],
-  'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/'],
+  'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
+  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.0'],
+  'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
+  'impacket': [('smb_login','smb_lookupsid'), 'http://oss.coresecurity.com/projects/impacket.html', 'svn#414'],
+  'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '5.1.1'],
+  'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/', '1.2.3'],
+  'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.4.5'],
+  'pycrypto': [('vnc_login',), 'http://www.dlitz.net/software/pycrypto/', '2.3'],
+  'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/', '1.10.0'],
+  'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy', '0.75'],
+  'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/', '4.2.1'],
+  'unzip': [('unzip_pass',), 'http://www.info-zip.org/', '6.0'],
+  'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/', '6'],
+  'python': [('ftp_login',), 'http://www.python.org/', '2.7'],
   }
 # }}}
 
@@ -3339,9 +3367,9 @@ Available modules:
   # dependencies
   abort = False
   for w in warnings:
-    mods, url = dependencies[w]
+    mods, url, ver = dependencies[w]
     if name in mods:
-      print('ERROR: %s (%s) is required to run %s.' % (w, url, name))
+      print('ERROR: %s %s (%s) is required to run %s.' % (w, ver, url, name))
       abort = True
 
   if abort:

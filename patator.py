@@ -59,6 +59,7 @@ Currently it supports the following modules:
 Future modules to be implemented:
   - rdp_login
   - vmware_login (902/tcp)
+  - imap_login
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
 "Whatever the payload to fire, always use the same cannon"
@@ -229,10 +230,10 @@ specify ORed conditions.
 * Failures
 
 During execution, failures may happen, such as a TCP connect timeout for
-instance. A failure is actually an exception that is not caught by the module,
+instance. A failure is actually an exception that the module does not expect,
 and as a result the exception is caught upstream by the controller.
 
-By default, such exceptions, or failures, are not reported to the user, the
+Such exceptions, or failures, are not immediately reported to the user, the
 controller will try 5 more times before reporting the failed payload with the
 code "xxx" (--max-retries defaults to 5).
 
@@ -244,8 +245,8 @@ code "xxx" (--max-retries defaults to 5).
 ---------
 ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:mesg='Login incorrect.'
 
-NB0. If you get errors like "500 OOPS: priv_sock_get_cmd", try passing -x ignore,reset,retry:code=500
-     in order to retry the last login/password with a new TCP connection. Odd servers like vsftpd
+NB0. If you get errors like "500 OOPS: priv_sock_get_cmd", use -x ignore,reset,retry:code=500
+     in order to retry the last login/password using a new TCP connection. Odd servers like vsftpd
      return this when they shut down the TCP connection (ie. max login attempts reached).
 
 NB1. If you get errors like "too many connections from your IP address", try decreasing the number of
@@ -307,7 +308,7 @@ smtp_vrfy host=10.0.0.1 user=FILE0 0=logins.txt -x ignore:fgrep='User unknown in
  recipient table' -x ignore,reset,retry:code=421
                              (b)
 
-* Use the RCPT TO command in case the VRFY command was disabled.
+* Use the RCPT TO command in case the VRFY command is not available.
 ---------
 smtp_rcpt host=10.0.0.1 user=FILE0@localhost 0=logins.txt helo='ehlo mx.fb.com' mail_from=root
 
@@ -374,7 +375,7 @@ http_fuzz url=http://10.0.0.1/ header=@headers.txt 0=vhosts.txt 1=agents.txt
   (c) Use a different delimiter string because the comma cannot be escaped.
 ---------                                                         (a)             (a)
 http_fuzz url='http://10.0.0.1/login?username=admin&password=_@@_FILE0_@@_' -e _@@_:hex
- 0=words.txt -x ignore:'code=200|size=1500-|fgrep=Welcome, unauthenticated user' -X'|'
+ 0=words.txt -x ignore:'code=200|size=1500-|fgrep=Welcome, unauthenticated user' -X '|'
                 (b)                                                              (c)
 
 * Brute-force logon that enforces two random nonces to be submitted along every POST.
@@ -558,7 +559,6 @@ TODO
 ----
   * new option -e ns like in Medusa (not likely to be implemented due to design)
   * replace dnspython|paramiko|IPy with a better module (scapy|libssh2|... ?)
-  * rewrite itertools.product that eats too much memory when processing large wordlists
 '''
 
 # }}}
@@ -1453,7 +1453,7 @@ class TCP_Connection:
 class TCP_Cache:
 
   available_actions = (
-    ('reset', 'close current connection in order to reconnect for next probe'),
+    ('reset', 'close current connection in order to reconnect next time'),
     )
 
   available_options = (
@@ -2440,7 +2440,7 @@ class Oracle_login:
   def execute(self, host, port='1521', user='', password='', sid=''):
     dsn = cx_Oracle.makedsn(host, port, sid)
     try:
-      fp = cx_Oracle.connect(user, password, dsn)
+      fp = cx_Oracle.connect(user, password, dsn, threaded=True)
       code, mesg = '0', fp.version
 
     except cx_Oracle.DatabaseError as e:
@@ -2567,7 +2567,7 @@ class HTTP_fuzz(TCP_Cache):
     #('path', 'web path [/]'),
     #('query', 'query string'),
     ('body', 'body data'),
-    ('header', 'use custom headers, delimited with "\\r\\n"'),
+    ('header', 'use custom headers'),
     ('method', 'method to use [GET | POST | HEAD | ...]'),
     ('user_pass', 'username and password for HTTP authentication (user:pass)'),
     ('auth_type', 'type of HTTP authentication [basic | digest | ntlm]'),
@@ -2597,7 +2597,8 @@ class HTTP_fuzz(TCP_Cache):
 
     return TCP_Connection(fp)
 
-  def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='', header='', method='GET', user_pass='', auth_type='basic',
+  def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
+    header='', method='GET', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1', 
     before_urls='', before_egrep='', after_urls='', max_mem='-1'):
     

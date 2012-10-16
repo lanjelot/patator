@@ -1251,10 +1251,14 @@ Please read the README inside for more examples and usage information.
 
         if 'free' in actions:
           self.register_free(payload, actions['free'])
+          break
 
-        if 'retry' in actions and 'fail' not in actions:
+        if 'fail' in actions:
+          break
+
+        if 'retry' in actions:
           continue
-        
+
         break
        
   def monitor_progress(self):
@@ -1302,7 +1306,7 @@ Please read the README inside for more examples and usage information.
         if 'fail' in actions:
           p.fail_count += 1
 
-        if 'quit' in actions:
+        if 'quit' in actions and 'retry' not in actions:
           raise SystemExit
 
 
@@ -1363,7 +1367,7 @@ Please read the README inside for more examples and usage information.
         for i, p in enumerate(self.thread_progress):
           total_count = p.done_count + p.skip_count
           logger.info(' #{0}: {1:>3}% ({2}/{3}) {4}'.format(
-            i,
+            i+1,
             total_count * 100/(self.total_size/self.num_threads),
             total_count,
             self.total_size/self.num_threads,
@@ -2173,7 +2177,7 @@ class POP_login(TCP_Cache):
       fp = POP3(host, int(port), timeout=int(timeout))
     else:
       if not port: port = 995
-      fp = POP3_SSL(host, int(port), timeout=int(timeout)) # timeout was New in python 2.7
+      fp = POP3_SSL(host, int(port)) # timeout=int(timeout)) # no timeout option in python2
 
     return POP_Connection(fp, fp.welcome)
 
@@ -2674,7 +2678,7 @@ class HTTP_fuzz(TCP_Cache):
         fp.setopt(pycurl.CUSTOMREQUEST, method)
 
       headers = [h.strip('\r') for h in header.split('\n') if h]
-      fp.setopt(pycurl.HTTPHEADER, headers) # warning: this disables the use of "Expect: 100-continue" header
+      fp.setopt(pycurl.HTTPHEADER, headers)
 
       fp.perform()
 
@@ -2723,8 +2727,8 @@ except ImportError:
 
 class VNC_Error(Exception): pass
 class VNC:
-  def connect(self, host, port):
-    self.fp = socket.create_connection((host, port))
+  def connect(self, host, port, timeout):
+    self.fp = socket.create_connection((host, port), timeout=timeout)
     resp = self.fp.recv(99) # banner
 
     logger.debug('banner: %s' % repr(resp))
@@ -2772,7 +2776,7 @@ class VNC:
       resp = resp[-16:]
 
     if len(resp) != 16:
-      raise VNC_Error('Unexpected challenge size (unsupported authentication type ?)')
+      raise VNC_Error('Unexpected challenge size (No authentication required? Unsupported authentication type?)')
 
     logger.debug('challenge: %s' % repr(resp))
     pw = password.ljust(8, '\x00')[:8] # make sure it is 8 chars long, zero padded
@@ -2829,16 +2833,17 @@ class VNC_login:
     ('host', 'hostnames or subnets to target'),
     ('port', 'ports to target [5900]'),
     ('password', 'passwords to test'),
+    ('timeout', 'seconds to wait for a response [10]'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, port=None, password=None):
+  def execute(self, host, port=None, password=None, timeout='10'):
     v = VNC()
 
     try:
-      code, mesg = 0, v.connect(host, int(port or 5900))
+      code, mesg = 0, v.connect(host, int(port or 5900), int(timeout))
 
       if password is not None:
         code, mesg = v.login(password)

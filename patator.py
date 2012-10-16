@@ -40,6 +40,7 @@ Currently it supports the following modules:
   - http_fuzz     : Brute-force HTTP
   - pop_login     : Brute-force POP3
   - pop_passd     : Brute-force poppassd (http://netwinsite.com/poppassd/)
+  - imap_login    : Brute-force IMAP4
   - ldap_login    : Brute-force LDAP
   - smb_login     : Brute-force SMB
   - smb_lookupsid : Brute-force SMB SID-lookup
@@ -59,7 +60,6 @@ Currently it supports the following modules:
 Future modules to be implemented:
   - rdp_login
   - vmware_login (902/tcp)
-  - imap_login
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
 "Whatever the payload to fire, always use the same cannon"
@@ -2282,6 +2282,49 @@ class POP_passd:
 
 # }}}
 
+# IMAP {{{
+from imaplib import IMAP4, IMAP4_SSL
+class IMAP_login:
+  '''Brute-force IMAP4'''
+
+  usage_hints = (
+    '''%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x FIXME ''',
+    )
+
+  available_options = (
+    ('host', 'hostnames or subnets to target'),
+    ('port', 'ports to target [110]'),
+    ('user', 'usernames to test'),
+    ('password', 'passwords to test'),
+    ('ssl', 'use SSL [0|1]'),
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, host, port='', ssl='0', user=None, password=None):
+    if ssl == '0':
+      if not port: port = 143
+      fp = IMAP4(host, port)
+    else:
+      if not port: port = 993
+      fp = IMAP4_SSL(host, port)
+
+    code, resp = 0, fp.welcome
+
+    try:
+      if user is not None and password is not None:
+        r = fp.login(user, password)
+        resp = ', '.join(r[1])
+
+    except IMAP4.error as e:
+      logger.debug('imap_error: %s' % e)
+      code, resp = 1, str(e)
+
+    return self.Response(code, resp)
+
+# }}}
+
 # MySQL {{{
 try:
   import _mysql
@@ -3307,6 +3350,7 @@ modules = [
   ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
   ('pop_login', (Controller, POP_login)),
   ('pop_passd', (Controller, POP_passd)),
+  ('imap_login', (Controller, IMAP_login)),
   ('ldap_login', (Controller, LDAP_login)),
   ('smb_login', (Controller, SMB_login)),
   ('smb_lookupsid', (Controller, SMB_lookupsid)),

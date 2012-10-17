@@ -88,7 +88,7 @@ FEATURES
       + show verbose progress
       + pause/unpause execution
       + increase/decrease verbosity
-      + add new actions & conditions during runtime in order to exclude more types of response from showing
+      + add new actions & conditions during runtime (eg. to exclude more types of response from showing)
       + ... press h to see all available interactive commands
 
   * Use persistent connections (ie. will test several passwords until the server disconnects)
@@ -1085,25 +1085,52 @@ Please read the README inside for more examples and usage information.
 
   def produce(self, queues):
 
+    if self.from_stdin:
+      from itertools import product, chain
+
+    else:
+      def product(xs, *rest):
+        if len(rest) == 0:
+          for x in xs():
+            yield [x]
+        else:
+          for head in xs():
+            for tail in product(*rest):
+              yield [head] + tail
+
+      def chain(*iterables):
+        def xs():
+          for iterable in iterables:
+            for element in iterable:
+              yield element
+        return xs
+
+    class FileIter:
+      def __init__(self, filename):
+        self.filename = filename
+
+      def __iter__(self):
+        return open(self.filename)
+
     iterables = []
     for _, (t, v, _) in self.iter_keys.items():
 
       if t in ('FILE', 'COMBO'):
         size = 0
-        fds = []
+        files = []
 
-        for f in v.split(','):
-          if f == '-': # stdin
+        for fname in v.split(','):
+          if fname == '-': # stdin
             from sys import maxint
             size += maxint
-            fds.append(stdin)
+            files.append(stdin)
 
           else:
-            f = os.path.expanduser(f)
-            size += sum(1 for _ in open(f))
-            fds.append(open(f))
+            fpath = os.path.expanduser(fname)
+            size += sum(1 for _ in open(fpath))
+            files.append(FileIter(fpath))
 
-        iterable = chain(*fds)
+        iterable = chain(*files)
 
       elif t == 'NET':
         subnets = [IP(n, make_net=True) for n in v.split(',')]
@@ -1111,7 +1138,8 @@ Please read the README inside for more examples and usage information.
         iterable = chain(*subnets)
 
       elif t == 'MOD':
-        iterable, size = self.module.available_keys[v]()
+        elements, size = self.module.available_keys[v]()
+        iterable = chain(elements)
 
       else:
         raise NotImplementedError("Incorrect keyword '%s'" % t)
@@ -2288,12 +2316,12 @@ class IMAP_login:
   '''Brute-force IMAP4'''
 
   usage_hints = (
-    '''%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x FIXME ''',
+    '''%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt''',
     )
 
   available_options = (
     ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [110]'),
+    ('port', 'ports to target [143]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('ssl', 'use SSL [0|1]'),

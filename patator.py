@@ -610,12 +610,12 @@ from collections import defaultdict
 try:
   # python3+
   from queue import Queue, Empty, Full
-  from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl
+  from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl, quote_plus
   from io import StringIO
 except ImportError:
   # python2.6+
   from Queue import Queue, Empty, Full
-  from urllib import quote, urlencode
+  from urllib import quote, urlencode, quote_plus
   from urlparse import urlparse, urlunparse, parse_qsl
   from cStringIO import StringIO
 
@@ -707,6 +707,7 @@ class Controller:
     'b64': (b64encode, 'encode in base64'),
     'md5': (md5hex, 'hash in md5'),
     'sha1': (sha1hex, 'hash in sha1'),
+    'url': (quote_plus, 'url encode'),
     }
 
   def expand_key(self, arg):

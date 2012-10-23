@@ -44,6 +44,7 @@ Currently it supports the following modules:
   - ldap_login    : Brute-force LDAP
   - smb_login     : Brute-force SMB
   - smb_lookupsid : Brute-force SMB SID-lookup
+  - vmauthd_login : Brute-force VMware Authentication Daemon
   - mssql_login   : Brute-force MSSQL
   - oracle_login  : Brute-force Oracle
   - mysql_login   : Brute-force MySQL
@@ -234,7 +235,7 @@ instance. A failure is actually an exception that the module does not expect,
 and as a result the exception is caught upstream by the controller.
 
 Such exceptions, or failures, are not immediately reported to the user, the
-controller will try 5 more times before reporting the failed payload with the
+controller will try 4 more times before reporting the failed payload with the
 code "xxx" (--max-retries defaults to 5).
 
 
@@ -2233,38 +2234,6 @@ class POP_login(TCP_Cache):
     code, mesg = resp.split(' ', 1)
     return self.Response(code, mesg)
 
-
-class Passd_Error(Exception): pass
-class Passd:
-  def connect(self, host, port):
-    self.fp = socket.create_connection((host, port))
-    return self.getresp() # welcome banner
-
-  def close(self):
-    self.fp.close()
- 
-  def sendcmd(self, cmd):
-    self.fp.sendall(cmd + '\r\n')
-    return self.getresp()
-
-  def getresp(self):
-    resp = self.fp.recv(1024)
-    while not resp.endswith('\r\n'):
-      resp += self.fp.recv(1024)
-
-    code, _ = self.unparse(resp)
-    if not code.startswith('2'):
-      raise Passd_Error(resp)
-
-    return resp
-
-  def unparse(self, resp):
-    i = resp.rstrip().rfind('\n') + 1
-    code = resp[i:i+3]
-    mesg = resp[i+4:]
-
-    return code, mesg
-
 class POP_passd:
   '''Brute-force poppassd (http://netwinsite.com/poppassd/)'''
 
@@ -2277,36 +2246,37 @@ class POP_passd:
     ('port', 'ports to target [106]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
+    ('timeout', 'seconds to wait for a response [10]'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, port='106', user=None, password=None):
-    fp = Passd()
-    resp = fp.connect(host, int(port))
-    trace = resp
+  def execute(self, host, port='106', user=None, password=None, timeout='10'):
+    fp = LineReceiver()
+    resp = fp.connect(host, int(port), int(timeout))
+    trace = resp + '\r\n'
 
     try:
       if user is not None:
-        cmd = 'user %s' % user
+        cmd = 'USER %s' % user
         resp = fp.sendcmd(cmd)
-        trace += '\r\n'.join((cmd, resp))
+        trace += '%s\r\n%s\r\n' % (cmd, resp)
 
       if password is not None:
-        cmd = 'pass %s' % password
+        cmd = 'PASS %s' % password
         resp = fp.sendcmd(cmd)
-        trace += '\r\n'.join((cmd, resp))
+        trace += '%s\r\n%s\r\n' % (cmd, resp)
 
-    except Passd_Error as e:
+    except LineReceiver_Error as e:
       resp = str(e)
-      logger.debug('Passd_Error: %s' % resp)
-      trace += '\r\n'.join((cmd, resp))
+      logger.debug('LineReceiver_Error: %s' % resp)
+      trace += '%s\r\n%s\r\n' % (cmd, resp)
 
     finally:
       fp.close()
-    
-    code, mesg = fp.unparse(resp)
+
+    code, mesg = fp.parse(resp)
     return self.Response(code, mesg, trace)
 
 # }}}
@@ -2351,6 +2321,103 @@ class IMAP_login:
       code, resp = 1, str(e)
 
     return self.Response(code, resp)
+
+# }}}
+
+# VMauthd {{{
+from ssl import wrap_socket
+class LineReceiver_Error(Exception): pass
+class LineReceiver:
+
+  def connect(self, host, port, timeout, ssl=False):
+    self.sock = socket.create_connection((host, port), timeout)
+    banner = self.getresp()
+
+    if ssl:
+      self.sock = wrap_socket(self.sock)
+
+    return banner # welcome banner
+
+  def close(self):
+    self.sock.close()
+
+  def sendcmd(self, cmd):
+    self.sock.sendall(cmd + '\r\n')
+    return self.getresp()
+
+  def getresp(self):
+    resp = self.sock.recv(1024)
+    while not resp.endswith('\n'):
+      resp += self.sock.recv(1024)
+
+    resp = resp.rstrip()
+    code, _ = self.parse(resp)
+
+    if not code.isdigit():
+      raise Exception('Unexpected response: %s' % resp)
+
+    if code[0] not in ('1', '2', '3'):
+      raise LineReceiver_Error(resp)
+
+    return resp
+
+  def parse(self, resp):
+    i = resp.rfind('\n') + 1
+    code = resp[i:i+3]
+    mesg = resp[i+4:]
+
+    return code, mesg
+
+class VMauthd_login(TCP_Cache):
+  '''Brute-force VMware Authentication Daemon'''
+
+  usage_hints = (
+    '''%prog host=10.0.0.1 user=root password=FILE0 0=passwords.txt''',
+    )
+
+  available_options = (
+    ('host', 'hostnames or subnets to target'),
+    ('port', 'ports to target [902]'),
+    ('user', 'usernames to test'),
+    ('password', 'passwords to test'),
+    ('ssl', 'use SSL [1|0]'),
+    ('timeout', 'seconds to wait for a response [10]'),
+    )
+  available_options += TCP_Cache.available_options
+
+  Response = Response_Base
+
+  def connect(self, host, port, ssl, timeout):
+    fp = LineReceiver()
+    banner = fp.connect(host, int(port), int(timeout), ssl != '0')
+    return TCP_Connection(fp, banner)
+
+  def execute(self, host, port='902', user=None, password=None, ssl='1', timeout='10', persistent='1'):
+
+    fp, resp = self.bind(host, port, ssl, timeout=timeout)
+    trace = resp + '\r\n'
+
+    try:
+      if user is not None:
+        cmd = 'USER %s' % user
+        resp = fp.sendcmd(cmd)
+        trace += '%s\r\n%s\r\n' % (cmd, resp)
+
+      if password is not None:
+        cmd = 'PASS %s' % password
+        resp = fp.sendcmd(cmd)
+        trace += '%s\r\n%s\r\n' % (cmd, resp)
+
+    except LineReceiver_Error as e:
+      resp = str(e)
+      logger.debug('LineReceiver_Error: %s' % resp)
+      trace += '%s\r\n%s\r\n' % (cmd, resp)
+
+    if persistent == '0':
+      self.reset()
+
+    code, mesg = fp.parse(resp)
+    return self.Response(code, mesg, trace)
 
 # }}}
 
@@ -3383,6 +3450,7 @@ modules = [
   ('ldap_login', (Controller, LDAP_login)),
   ('smb_login', (Controller, SMB_login)),
   ('smb_lookupsid', (Controller, SMB_lookupsid)),
+  ('vmauthd_login', (Controller, VMauthd_login)),
   ('mssql_login', (Controller, MSSQL_login)),
   ('oracle_login', (Controller, Oracle_login)),
   ('mysql_login', (Controller, MySQL_login)),

@@ -15,7 +15,7 @@ __author__  = 'Sebastien Macke'
 __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
-__version__ = '0.4-beta'
+__version__ = '0.4'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
  
@@ -60,7 +60,6 @@ Currently it supports the following modules:
 
 Future modules to be implemented:
   - rdp_login
-  - vmware_login (902/tcp)
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
 "Whatever the payload to fire, always use the same cannon"
@@ -120,7 +119,7 @@ pycurl           | HTTP           | http://pycurl.sourceforge.net/              
 --------------------------------------------------------------------------------------------------
 openldap         | LDAP           | http://www.openldap.org/                           |  2.4.24 |
 --------------------------------------------------------------------------------------------------
-impacket         | SMB            | http://oss.coresecurity.com/projects/impacket.html | svn#414 |
+impacket         | SMB            | http://code.google.com/p/impacket/                 | svn#525 |
 --------------------------------------------------------------------------------------------------
 cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   5.1.1 |
 --------------------------------------------------------------------------------------------------
@@ -175,21 +174,21 @@ Each keyword is numbered in order to:
 
 For instance, this would be the classic order:
 ---------
-./module host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
+$ ./module host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
 10.0.0.1 root password
 10.0.0.1 root 123456
 10.0.0.1 root qsdfghj
-....
+... (trying all passwords before testing next login)
 10.0.0.1 admin password
 10.0.0.1 admin 123456
 10.0.0.1 admin qsdfghj
-...
+... (trying all logins before testing next host)
 10.0.0.2 root password
 ...
 
 While a smarter way might be:
 ---------
-./module host=FILE2 user=FILE1 password=FILE0 2=hosts.txt 1=logins.txt 0=passwords.txt
+$ ./module host=FILE2 user=FILE1 password=FILE0 2=hosts.txt 1=logins.txt 0=passwords.txt
 10.0.0.1 root password
 10.0.0.2 root password
 10.0.0.1 admin password
@@ -235,8 +234,8 @@ instance. A failure is actually an exception that the module does not expect,
 and as a result the exception is caught upstream by the controller.
 
 Such exceptions, or failures, are not immediately reported to the user, the
-controller will try 4 more times before reporting the failed payload with the
-code "xxx" (--max-retries defaults to 5).
+controller will retry 4 more times before reporting the failed payload with the
+code "xxx" (--max-retries defaults to 4).
 
 
 * Read carefully the following examples to get a good understanding of how patator works.
@@ -322,7 +321,7 @@ smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE
 }}}
 {{{ HTTP
 
-* Find hidden Web resources.
+* Find hidden web resources.
   (a) Use a specific header.
   (b) Follow redirects.
   (c) Do not report 404 errors.
@@ -543,6 +542,19 @@ unzip_pass zipfile=path/to/file.zip password=FILE0 0=passwords.txt -x ignore:cod
 
 CHANGELOG
 ---------
+
+* v0.4 2012/11/02
+  - new modules: smb_lookupsid, finger_lookup, pop_login, imap_login, vmauthd_login
+  - improved connection cache
+  - improved usage, user can now act upon specific reponses (eg. stop brute-forcing host if down, or stop testing login if password found)
+  - improved dns brute-forcing presentation
+  - switched to dnspython which is not limited to the IN class (eg. can now scan for {hostname,version}.bind)
+  - rewrote itertools.product to avoid memory over-consumption when using large wordlists
+  - can now read wordlist from stdin
+  - added timeout option to most of the network brute-forcing modules
+  - added SSL and/or TLS support to a few modules
+  - before_egrep now allows more than one expression (ie. useful when more than one random nonce needs to be submitted)
+  - fixed numerous bugs
 
 * v0.3 2011/12/16
     - minor bugs fixed in http_fuzz
@@ -807,7 +819,7 @@ Please read the README inside for more examples and usage information.
 
     opt_grp = OptionGroup(parser, 'Optimization')
     opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between tests (default is 0)')
-    opt_grp.add_option('--max-retries', dest='max_retries', type='int', default=5, metavar='N', help='skip payload after N failures (default is 5) (-1 for unlimited)')
+    opt_grp.add_option('--max-retries', dest='max_retries', type='int', default=4, metavar='N', help='skip payload after N failures (default is 4) (-1 for unlimited)')
     opt_grp.add_option('-t', '--threads', dest='num_threads', type='int', default=10, metavar='N', help='number of threads (default is 10)')
 
     log_grp = OptionGroup(parser, 'Logging')
@@ -960,7 +972,7 @@ Please read the README inside for more examples and usage information.
         name, opts = action, None
 
       if name not in self.available_actions:
-        raise NotImplementedError('Unsupported action: %s' % n)
+        raise NotImplementedError('Unsupported action: %s' % name)
 
       if name not in self.actions:
         self.actions[name] = []
@@ -1196,12 +1208,19 @@ Please read the README inside for more examples and usage information.
   def consume(self, gqueue, pqueue):
     module = self.module()
 
+    def shutdown():
+      logger.debug('thread exits')
+      if hasattr(module, '__del__'):
+        module.__del__()
+
     while True:
       if self.stop_now:
+        shutdown()
         return
 
       prod = gqueue.get()
-      if not prod:
+      if prod is None:
+        shutdown()
         return
       
       payload = self.payload.copy()
@@ -1239,18 +1258,19 @@ Please read the README inside for more examples and usage information.
           sleep(1)
 
         if self.stop_now:
+          shutdown()
           return
 
         if self.rate_limit:
           sleep(self.rate_limit)
 
 
-        if try_count < self.max_retries or self.max_retries < 0:
+        if try_count <= self.max_retries or self.max_retries < 0:
 
           actions = {}
           try_count += 1
 
-          logger.debug('payload: %s [%d/%d]' % (payload, try_count, self.max_retries))
+          logger.debug('payload: %s [try %d/%d]' % (payload, try_count, self.max_retries+1))
 
           try:
             resp = module.execute(**payload)
@@ -1396,9 +1416,9 @@ Please read the README inside for more examples and usage information.
       if command == 'f':
         for i, p in enumerate(self.thread_progress):
           total_count = p.done_count + p.skip_count
-          logger.info(' #{0}: {1:>3}% ({2}/{3}) {4}'.format(
-            i+1,
-            total_count * 100/(self.total_size/self.num_threads),
+          logger.info(' {0:>3}: {1:>3}% ({2}/{3}) {4}'.format(
+            '#%d' % (i+1),
+            int(100*total_count/(1.0*self.total_size/self.num_threads)),
             total_count,
             self.total_size/self.num_threads,
             p.current))
@@ -1615,7 +1635,8 @@ class SSH_Cache(TCP_Cache):
   def __del__(self):
     for k, pool in self.cache.items():
       for u, c in pool.items():
-        with self.lock: self.count[k] -= 1
+        with self.lock:
+          self.count[k] -= 1
         c.close()
 
   def bind(self, host, port, user, max_conn):
@@ -1676,7 +1697,7 @@ class SSH_login(SSH_Cache):
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('auth_type', 'auth type to use [password|keyboard-interactive]'),
-    ('max_conn', 'maximum concurrent connections per host:port tuple [10]'),
+    ('max_conn', 'maximum concurrent connections per host:port [10]'),
     )
   available_options += SSH_Cache.available_options
 
@@ -1916,9 +1937,10 @@ class Controller_Finger(Controller):
   user_list = []
 
   def push_final(self, resp):
-   for l in resp.lines:
-      if l not in self.user_list:
-        self.user_list.append(l)
+    if hasattr(resp, 'lines'):
+      for l in resp.lines:
+         if l not in self.user_list:
+           self.user_list.append(l)
 
   def show_final(self):
     print('\n'.join(self.user_list))

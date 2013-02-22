@@ -1161,6 +1161,9 @@ Please read the README inside for more examples and usage information.
       self.total_size *= size
       iterables.append(iterable)
 
+    if not iterables:
+      iterables.append(chain(['']))
+
     if self.stop:
       self.total_size = self.stop - self.start 
     else:

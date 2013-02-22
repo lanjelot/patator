@@ -268,7 +268,7 @@ ftp_login host=NET0 user=anonymous password=test@example.com 0=10.0.0.0/24
 ssh_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:mesg='Authentication failed.'
 
 NB. If you get errors like "Error reading SSH protocol banner ... Connection reset by peer",
-    try decreasing the max_conn option (default is 10), the server may be enforcing a maximum
+    try decreasing the number of threads, the server may be enforcing a maximum
     number of concurrent connections (eg. MaxStartups in OpenSSH).
 
 
@@ -1287,6 +1287,7 @@ Please read the README inside for more examples and usage information.
             if hasattr(module, 'reset'):
               module.reset()
 
+            sleep(try_count * .1)
             continue
 
         else:
@@ -1339,9 +1340,11 @@ Please read the README inside for more examples and usage information.
         p.current = current
         p.seconds[p.done_count % len(p.seconds)] = seconds
 
+        if 'fail' in actions or 'ignore' not in actions:
+          logger.info('%-15s | %-25s \t | %5d | %s' % (resp.compact(), current, offset, resp))
+
         if 'ignore' not in actions:
           p.hits_count += 1
-          logger.info('%-15s | %-25s \t | %5d | %s' % (resp.compact(), current, offset, resp))
 
           if self.log_dir:
             filename = '%d_%s' % (offset, resp.compact().replace(' ', '_'))
@@ -1515,32 +1518,47 @@ class TCP_Cache:
     )
 
   def __init__(self):
-    self.cache = {}
-    self.conn = None
+    self.cache = {} # {'10.0.0.1:22': ('root', conn1), '10.0.0.2:22': ('admin', conn2),
+    self.curr = None
 
   def __del__(self):
-    for _, c in self.cache.items():
+    for _, (_, c) in self.cache.items():
       c.close()
+    self.cache.clear()
 
-  def bind(self, *args, **kwargs):
-    # *args identify one connection in the cache while **kwargs are only options
+  def bind(self, host, port, *args, **kwargs):
+
+    hp = '%s:%s' % (host, port)
     key = ':'.join(args)
-    if key not in self.cache:
-      self.conn = self.cache[key] = self.connect(*args, **kwargs)
-    else:
-      self.conn = self.cache[key]
 
-    return self.conn.fp, self.conn.banner
+    if hp in self.cache:
+      k, c = self.cache[hp]
+
+      if key == k:
+        self.curr = hp, k, c
+        return c.fp, c.banner
+
+      else:
+        c.close()
+        del self.cache[hp]
+
+    self.curr = None
+
+    conn = self.connect(host, port, *args, **kwargs)
+
+    self.cache[hp] = (key, conn)
+    self.curr = hp, key, conn
+
+    return conn.fp, conn.banner
 
   def reset(self, **kwargs):
-    if self.conn:
-      for k, v in self.cache.items():
-        if v == self.conn:
-          del self.cache[k]
-          break
+    if self.curr:
+      hp, _, c = self.curr
 
-      self.conn.close()
-      self.conn = None
+      c.close()
+      del self.cache[hp]
+
+      self.curr = None
 
 # }}}
 
@@ -1616,75 +1634,7 @@ try:
 except ImportError:
   warnings.append('paramiko')
 
-class SSH_Connection(TCP_Connection):
-
-  def __init__(self, host, port, user, fp):
-    self.host = host
-    self.port = port
-    self.fp = fp
-    self.banner = fp.remote_version
-
-    self.user = user
-    self.ctime = time()
-
-class SSH_Cache(TCP_Cache):
-
-  lock = Lock()
-  count = {} # '10.0.0.1:22': 9, '10.0.0.2:222': 10
-
-  def __del__(self):
-    for k, pool in self.cache.items():
-      for u, c in pool.items():
-        with self.lock:
-          self.count[k] -= 1
-        c.close()
-
-  def bind(self, host, port, user, max_conn):
-
-    hp = '%s:%s' % (host, port)
-    if hp not in self.cache:
-      self.cache[hp] = {}
-
-      with self.lock:
-        if hp not in self.count:
-          self.count[hp] = 0
-
-    while True:
-      with self.lock:
-        if self.count[hp] < int(max_conn):
-          if user not in self.cache[hp]:
-            self.count[hp] += 1
-          break
-
-      if self.cache[hp]:
-        candidates = [(k, c.ctime) for k, c in self.cache[hp].items() if k != user]
-        if candidates:
-          u, _ = min(candidates, key=lambda x: x[1])
-          c = self.cache[hp].pop(u)
-          c.close()
-        break
-
-    if user not in self.cache[hp]:
-      self.conn = self.cache[hp][user] = self.connect(host, port, user)
-    else:
-      self.conn = self.cache[hp][user]
-
-    return self.conn.fp, self.conn.banner
-
-  def reset(self, **kwargs):
-    if self.conn:
-      hp = '%s:%s' % (self.conn.host, self.conn.port)
-
-      if self.conn.user in self.cache[hp]:
-        with self.lock:
-          self.count[hp] -= 1
-
-        self.cache[hp].pop(self.conn.user)
-
-      self.conn.close()
-      self.conn = None
-
-class SSH_login(SSH_Cache):
+class SSH_login(TCP_Cache):
   '''Brute-force SSH'''
 
   usage_hints = (
@@ -1697,9 +1647,8 @@ class SSH_login(SSH_Cache):
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('auth_type', 'auth type to use [password|keyboard-interactive]'),
-    ('max_conn', 'maximum concurrent connections per host:port [10]'),
     )
-  available_options += SSH_Cache.available_options
+  available_options += TCP_Cache.available_options
 
   Response = Response_Base
 
@@ -1707,11 +1656,11 @@ class SSH_login(SSH_Cache):
     fp = paramiko.Transport('%s:%s' % (host, int(port)))
     fp.start_client()
 
-    return SSH_Connection(host, port, user, fp)
+    return TCP_Connection(fp, fp.remote_version)
 
-  def execute(self, host, port='22', user=None, password=None, auth_type='password', persistent='1', max_conn='10'):
+  def execute(self, host, port='22', user=None, password=None, auth_type='password', persistent='1'):
 
-    fp, banner = self.bind(host, port, user, max_conn)
+    fp, banner = self.bind(host, port, user)
 
     try:
       if user is not None and password is not None:

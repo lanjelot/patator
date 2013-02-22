@@ -2428,6 +2428,40 @@ class MySQL_login:
     code, mesg = resp
     return self.Response(code, mesg)
 
+class MySQL_query(TCP_Cache):
+
+  usage_hints = (
+    '''%prog host=10.0.0.1 user=root password=s3cr3t query="select length(load_file('/home/adam/FILE0'))" 0=files.txt -x ignore:size=0''',
+    )
+
+  available_options = (
+    ('host', 'hostnames or subnets to target'),
+    ('port', 'port to use [3306]'),
+    ('user', 'username to use'),
+    ('password', 'password to use'),
+    ('query', 'SQL query to execute'),
+    )
+
+  available_actions = ()
+
+  Response = Response_Base
+
+  def connect(self, host, port, user, password):
+    fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password) # db=db
+    return TCP_Connection(fp)
+
+  def execute(self, host, port='3306', user='', password='', query='select @@version'):
+
+    fp, _ = self.bind(host, port, user, password)
+
+    fp.query(query)
+
+    rs = fp.store_result()
+    rows = rs.fetch_row(10, 0)
+
+    code, mesg = '0', '\n'.join(', '.join(map(str, r)) for r in filter(any, rows))
+    return self.Response(code, mesg)
+
 # }}}
 
 # MSSQL {{{
@@ -3425,6 +3459,7 @@ modules = [
   ('mssql_login', (Controller, MSSQL_login)),
   ('oracle_login', (Controller, Oracle_login)),
   ('mysql_login', (Controller, MySQL_login)),
+  ('mysql_query', (Controller, MySQL_query)),
   #'rdp_login', 
   ('pgsql_login', (Controller, Pgsql_login)),
   ('vnc_login', (Controller, VNC_login)),

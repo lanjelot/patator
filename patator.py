@@ -12,10 +12,11 @@
 # details (http://www.gnu.org/licenses/gpl.txt).
 
 __author__  = 'Sebastien Macke'
+__twitter__ = '@lanjelot'
 __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
-__version__ = '0.4'
+__version__ = '0.5-beta'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
  
@@ -85,8 +86,8 @@ FEATURES
       + not limited to brute-forcing (eg. remote exploit testing, or vulnerable version probing)
 
   * Interactive runtime
-      + show verbose progress
-      + pause/unpause execution
+      + show progress during execution (press Enter)
+      + pause/unpause execution (press p)
       + increase/decrease verbosity
       + add new actions & conditions during runtime (eg. to exclude more types of response from showing)
       + ... press h to see all available interactive commands
@@ -234,8 +235,8 @@ instance. A failure is actually an exception that the module does not expect,
 and as a result the exception is caught upstream by the controller.
 
 Such exceptions, or failures, are not immediately reported to the user, the
-controller will retry 4 more times before reporting the failed payload with the
-code "xxx" (--max-retries defaults to 4).
+controller will retry 4 more times (see --max-retries) before reporting the
+failed payload with logging level ERROR.
 
 
 * Read carefully the following examples to get a good understanding of how patator works.
@@ -608,7 +609,7 @@ import os
 from sys import stdin, exc_info, exit, version_info
 from time import localtime, strftime, sleep, time
 from functools import reduce
-from threading import Thread, active_count, Lock
+from threading import Thread, active_count
 from select import select
 from itertools import product, chain, islice
 from string import ascii_lowercase
@@ -665,15 +666,14 @@ def create_dir(top_path, from_stdin=False):
     files = os.listdir(top_path)
     if files:
       if not from_stdin:
-        if raw_input("Directory '%s' is not empty, do you want to wipe it ? [Y/n]: " % top_path) == 'n':
-          exit(0)
-      for root, dirs, files in os.walk(top_path):
-        if dirs:
-          print("Directory '%s' contains sub-directories, safely aborting..." % root)
-          exit(0)
-        for f in files:
-          os.unlink(os.path.join(root, f))
-        break
+        if raw_input("Directory '%s' is not empty, do you want to wipe it ? [Y/n]: " % top_path) != 'n':
+          for root, dirs, files in os.walk(top_path):
+            if dirs:
+              print("Directory '%s' contains sub-directories, safely aborting..." % root)
+              exit(0)
+            for f in files:
+              os.unlink(os.path.join(root, f))
+            break
   else:
     os.mkdir(top_path)
   return top_path
@@ -854,7 +854,7 @@ Please read the README inside for more examples and usage information.
     self.from_stdin = False
     self.start_time = 0
     self.total_size = 1
-    self.stop_now = False
+    self.quit_now = False
     self.log_dir = None
     self.thread_report = []
     self.thread_progress = []
@@ -952,7 +952,7 @@ Please read the README inside for more examples and usage information.
     
     if self.log_dir:
       log_file = os.path.join(self.log_dir, 'RUNTIME.log')
-      with open(log_file, 'w') as f:
+      with open(log_file, 'a') as f:
         f.write('$ %s\n' % ' '.join(argv))
 
       handler = logging.FileHandler(log_file)
@@ -1015,26 +1015,20 @@ Please read the README inside for more examples and usage information.
     logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
 
     try:
-      tryok = False
       self.start_threads()
       self.monitor_progress()
-      tryok = True
-    except SystemExit:
-      logger.info('Quitting')
     except KeyboardInterrupt:
-      print
+      self.quit_now = True
     except:
+      self.quit_now = True
       logger.exception(exc_info()[1])
 
-    if not tryok:
-      self.stop_now = True
-      try:
-        while active_count() > 1:
-          sleep(.1)
-      except KeyboardInterrupt:
-        pass
-
-    self.report_progress()
+    try:
+      while active_count() > 1:
+        sleep(.1)
+      self.report_progress()
+    except KeyboardInterrupt:
+      pass
 
     hits_count = sum(p.hits_count for p in self.thread_progress)
     done_count = sum(p.done_count for p in self.thread_progress)
@@ -1045,10 +1039,10 @@ Please read the README inside for more examples and usage information.
     speed_avg = done_count / total_time 
 
     if self.from_stdin:
-      if tryok:
-        self.total_size = done_count+skip_count
-      else:
+      if self.quit_now:
         self.total_size = -1
+      else:
+        self.total_size = done_count+skip_count
 
     self.show_final()
 
@@ -1056,7 +1050,7 @@ Please read the README inside for more examples and usage information.
       hits_count, done_count, skip_count, fail_count, self.total_size, speed_avg,
       pprint_seconds(total_time, '%dh %dm %ds')))
 
-    if not tryok:
+    if self.quit_now:
       resume = []
       for i, p in enumerate(self.thread_progress):
         c = p.done_count + p.skip_count
@@ -1194,7 +1188,7 @@ Please read the README inside for more examples and usage information.
           continue
 
       while True:
-        if self.stop_now:
+        if self.quit_now:
           return
 
         try:
@@ -1217,11 +1211,16 @@ Please read the README inside for more examples and usage information.
         module.__del__()
 
     while True:
-      if self.stop_now:
+      if self.quit_now:
         shutdown()
         return
 
-      prod = gqueue.get()
+      try:
+        prod = gqueue.get_nowait()
+      except Empty:
+        sleep(.1)
+        continue
+
       if prod is None:
         shutdown()
         return
@@ -1257,16 +1256,15 @@ Please read the README inside for more examples and usage information.
 
       while True:
 
-        while self.paused and not self.stop_now:
+        while self.paused and not self.quit_now:
           sleep(1)
 
-        if self.stop_now:
+        if self.quit_now:
           shutdown()
           return
 
         if self.rate_limit:
           sleep(self.rate_limit)
-
 
         if try_count <= self.max_retries or self.max_retries < 0:
 
@@ -1316,7 +1314,7 @@ Please read the README inside for more examples and usage information.
         break
        
   def monitor_progress(self):
-    while active_count() > 1:
+    while active_count() > 1 and not self.quit_now:
       self.report_progress()
 
       if not self.from_stdin:
@@ -1330,7 +1328,7 @@ Please read the README inside for more examples and usage information.
 
         try:
           actions, current, resp, seconds = pq.get_nowait()
-          #logger.debug('actions reported: %s' % actions)
+          #logger.info('actions reported: %s' % '+'.join(actions))
 
         except Empty: 
           break
@@ -1339,14 +1337,31 @@ Please read the README inside for more examples and usage information.
           p.skip_count += 1
           continue
 
-        offset = (self.start + p.done_count * self.num_threads) + i + 1
+        if self.resume:
+          offset = p.done_count + self.resume[i]
+        else:
+          offset = p.done_count
+
+        offset = (offset * self.num_threads) + i + 1 + self.start
+
         p.current = current
         p.seconds[p.done_count % len(p.seconds)] = seconds
 
-        if 'fail' in actions or 'ignore' not in actions:
-          logger.info('%-15s | %-25s \t | %5d | %s' % (resp.compact(), current, offset, resp))
+        msg = '%-15s | %-25s \t | %5d | %s' % (resp.compact(), current, offset, resp)
 
-        if 'ignore' not in actions:
+        if 'fail' in actions:
+          logger.error(msg)
+
+        elif 'ignore' not in actions:
+          logger.info(msg)
+
+        if 'fail' in actions:
+          p.fail_count += 1
+
+        elif 'retry' in actions:
+          continue
+
+        elif 'ignore' not in actions:
           p.hits_count += 1
 
           if self.log_dir:
@@ -1356,14 +1371,10 @@ Please read the README inside for more examples and usage information.
 
           self.push_final(resp)
 
-        if 'retry' not in actions:
-          p.done_count += 1
+        p.done_count += 1
 
-        if 'fail' in actions:
-          p.fail_count += 1
-
-        if 'quit' in actions and 'retry' not in actions:
-          raise SystemExit
+        if 'quit' in actions:
+          self.quit_now = True
 
 
   def monitor_interaction(self):
@@ -1385,7 +1396,7 @@ Please read the README inside for more examples and usage information.
        ''')
 
     elif command == 'q':
-      raise KeyboardInterrupt
+      self.quit_now = True
 
     elif command == 'p':
       self.paused = not self.paused
@@ -1402,7 +1413,10 @@ Please read the README inside for more examples and usage information.
 
     elif command.startswith('x'):
       _, arg = command.split(' ', 1)
-      self.update_actions(arg)
+      try:
+        self.update_actions(arg)
+      except ValueError:
+        logger.warn('usage: x actions:conditions')
 
     else: # show progress
       total_count = sum(p.done_count+p.skip_count for p in self.thread_progress)
@@ -2432,6 +2446,7 @@ class MySQL_login:
     return self.Response(code, mesg)
 
 class MySQL_query(TCP_Cache):
+  '''Brute-force MySQL queries'''
 
   usage_hints = (
     '''%prog host=10.0.0.1 user=root password=s3cr3t query="select length(load_file('/home/adam/FILE0'))" 0=files.txt -x ignore:size=0''',

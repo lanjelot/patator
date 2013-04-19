@@ -49,6 +49,7 @@ Currently it supports the following modules:
   - mssql_login   : Brute-force MSSQL
   - oracle_login  : Brute-force Oracle
   - mysql_login   : Brute-force MySQL
+  - mysql_queries : Brute-force MySQL queries
   - pgsql_login   : Brute-force PostgreSQL
   - vnc_login     : Brute-force VNC
 
@@ -236,7 +237,7 @@ and as a result the exception is caught upstream by the controller.
 
 Such exceptions, or failures, are not immediately reported to the user, the
 controller will retry 4 more times (see --max-retries) before reporting the
-failed payload with logging level ERROR.
+failed payload with logging level "FAIL".
 
 
 * Read carefully the following examples to get a good understanding of how patator works.
@@ -579,6 +580,7 @@ TODO
 
 # logging {{{
 import logging
+logging._levelNames[logging.ERROR] = 'FAIL'
 class MyLoggingFormatter(logging.Formatter):
 
   dft_fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
@@ -711,7 +713,7 @@ class Controller:
   builtin_actions = (
     ('ignore', 'do not report'),
     ('retry', 'try payload again'),
-    ('free', 'dismiss future types of payloads'),
+    ('free', 'dismiss future similar payloads'),
     ('quit', 'terminate execution now'),
     )
 
@@ -1168,8 +1170,8 @@ Please read the README inside for more examples and usage information.
       self.total_size -= sum(self.resume)
 
     logger.info('')
-    logger.info('%-15s | %-25s \t | %5s | %s' % ('code & size', 'candidate', 'num', 'mesg'))
-    logger.info('-' * 63)
+    logger.info(self.module.Response.logformat % self.module.Response.logheader)
+    logger.info('-' * 70)
 
     self.start_time = time()
     count = 0
@@ -1347,7 +1349,7 @@ Please read the README inside for more examples and usage information.
         p.current = current
         p.seconds[p.done_count % len(p.seconds)] = seconds
 
-        msg = '%-15s | %-25s \t | %5d | %s' % (resp.compact(), current, offset, resp)
+        msg = self.module.Response.logformat % (resp.compact()+(current, offset, resp))
 
         if 'fail' in actions:
           logger.error(msg)
@@ -1365,7 +1367,7 @@ Please read the README inside for more examples and usage information.
           p.hits_count += 1
 
           if self.log_dir:
-            filename = '%d_%s' % (offset, resp.compact().replace(' ', '_'))
+            filename = '%d_%s' % (offset, ':'.join(map(str, resp.compact())))
             with open('%s/%s.txt' % (self.log_dir, filename), 'w') as f:
               f.write(resp.dump())
 
@@ -1479,6 +1481,9 @@ class Response_Base:
     ('egrep', 'search for regex'),
     )
 
+  logformat = '%-5s %-4s | %-34s | %5s | %s'
+  logheader = ('code', 'size', 'candidate', 'num', 'mesg')
+
   def __init__(self, code, mesg, trace=None):
     self.code = code
     self.mesg = mesg
@@ -1486,7 +1491,7 @@ class Response_Base:
     self.size = len(self.mesg)
 
   def compact(self):
-    return '%s %d' % (self.code, self.size)
+    return self.code, self.size
 
   def __str__(self):
     return self.mesg
@@ -1987,7 +1992,7 @@ class LDAP_login:
 
   def execute(self, host, port='389', binddn='', bindpw='', basedn='', ssl='0'):
     uri = 'ldap%s://%s:%s' % ('s' if ssl != '0' else '', host, port)
-    cmd = ['ldapsearch', '-H', uri, '-e', 'ppolicy', '-D', binddn, '-w', bindpw, '-b', basedn]
+    cmd = ['ldapsearch', '-H', uri, '-e', 'ppolicy', '-D', binddn, '-w', bindpw, '-b', basedn, '-s', 'one']
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={'LDAPTLS_REQCERT': 'never'})
     out = p.stdout.read()
     err = p.stderr.read()
@@ -2017,7 +2022,7 @@ class SMB_login(TCP_Cache):
 
   usage_hints = (
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt"""
-    """ -x ignore:fgrep=STATUS_LOGON_FAILURE""",
+    """ -x ignore:fgrep='unknown user name or bad password'""",
     )
   
   available_options = (
@@ -2030,26 +2035,32 @@ class SMB_login(TCP_Cache):
     )
   available_options += TCP_Cache.available_options
 
-  Response = Response_Base
+  class Response(Response_Base):
+    logformat = '%-8s %-4s | %-34s | %5s | %s'
 
   # ripped from medusa smbnt.c
   error_map = {
-    0xFF: 'UNKNOWN_ERROR_CODE',
-    0x00: 'STATUS_SUCCESS',
-    0x0D: 'STATUS_INVALID_PARAMETER',
-    0x5E: 'STATUS_NO_LOGON_SERVERS',
-    0x6D: 'STATUS_LOGON_FAILURE',
-    0x6E: 'STATUS_ACCOUNT_RESTRICTION',
-    0x6F: 'STATUS_INVALID_LOGON_HOURS',
-    0x70: 'STATUS_INVALID_WORKSTATION',
-    0x71: 'STATUS_PASSWORD_EXPIRED',
-    0x72: 'STATUS_ACCOUNT_DISABLED',
-    0x5B: 'STATUS_LOGON_TYPE_NOT_GRANTED',
-    0x8D: 'STATUS_TRUSTED_RELATIONSHIP_FAILURE',
-    0x93: 'STATUS_ACCOUNT_EXPIRED',
-    0x24: 'STATUS_PASSWORD_MUST_CHANGE',
-    0x34: 'STATUS_ACCOUNT_LOCKED_OUT',
-    0x01: 'AS400_STATUS_LOGON_FAILURE',
+    0xffff: 'UNKNOWN_ERROR_CODE',
+    0x0000: 'STATUS_SUCCESS',
+    0x000d: 'STATUS_INVALID_PARAMETER',
+    0x005e: 'STATUS_NO_LOGON_SERVERS',
+    0x006d: 'STATUS_LOGON_FAILURE',
+    0x006e: 'STATUS_ACCOUNT_RESTRICTION',
+    0x006f: 'STATUS_INVALID_LOGON_HOURS',
+    0x0002: 'STATUS_INVALID_LOGON_HOURS (LM Authentication)',
+    0x0070: 'STATUS_INVALID_WORKSTATION',
+    0x0002: 'STATUS_INVALID_WORKSTATION (LM Authentication)',
+    0x0071: 'STATUS_PASSWORD_EXPIRED',
+    0x0072: 'STATUS_ACCOUNT_DISABLED',
+    0x015b: 'STATUS_LOGON_TYPE_NOT_GRANTED',
+    0x018d: 'STATUS_TRUSTED_RELATIONSHIP_FAILURE',
+    0x0193: 'STATUS_ACCOUNT_EXPIRED',
+    0x0002: 'STATUS_ACCOUNT_EXPIRED_OR_DISABLED (LM Authentication)',
+    0x0224: 'STATUS_PASSWORD_MUST_CHANGE',
+    0x0002: 'STATUS_PASSWORD_MUST_CHANGE (LM Authentication)',
+    0x0234: 'STATUS_ACCOUNT_LOCKED_OUT (No LM Authentication Code)',
+    0x0001: 'AS400_STATUS_LOGON_FAILURE',
+    0x0064: 'The machine you are logging onto is protected by an authentication firewall.',
   }
   
   def connect(self, host, port):
@@ -2077,30 +2088,31 @@ class SMB_login(TCP_Cache):
       self.reset()
 
     except impacket_smb.SessionError as e:
-      code = '%x-%x' % (e.error_class, e.error_code)
-      mesg = self.error_map.get(e.error_code, '')
+      code = '%04x%04x' % (e.error_class, e.error_code)
 
-      error_class = e.error_classes.get(e.error_class, None) # (ERRNT, {})
+      error_class = e.error_classes.get(e.error_class, None) # -> ("ERRNT", nt_msgs)
       if error_class:
-        class_str = error_class[0] # 'ERRNT'
-        error_tuple = error_class[1].get(e.error_code, None) # ('ERRnoaccess', 'Access denied.') or None
+        class_str = error_class[0] # "ERRNT"
+        error_tuple = error_class[1].get(e.error_code, None) # -> ("STATUS_LOGON_FAILURE","Logon failure: unknown user name or bad password.") or None
 
         if error_tuple:
-          mesg += ' - %s %s' % error_tuple
+          mesg = '%s %s' % error_tuple
         else:
-          mesg += ' - %s' % class_str
+          mesg = '%s' % class_str
+
+      else:
+        mesg = self.error_map.get(e.error_code & 0x0000fffff, '')
 
     if persistent == '0':
       self.reset()
 
     return self.Response(code, mesg)
 
-
 class DCE_Connection(TCP_Connection):
 
   def __init__(self, fp, smbt):
-    self.fp = fp
     self.smbt = smbt
+    TCP_Connection.__init__(self, fp)
 
   def close(self):
     self.smbt.get_socket().close()
@@ -2117,6 +2129,8 @@ class SMB_lookupsid(TCP_Cache):
     ('port', 'ports to target [139]'),
     ('sid', 'SID to test'),
     ('rid', 'RID to test'),
+    ('user', 'username to use if auth required'),
+    ('password', 'password to use if auth required'),
     )
   available_options += TCP_Cache.available_options
 
@@ -2601,7 +2615,8 @@ class Oracle_login:
     )
   available_actions = ()
 
-  Response = Response_Base
+  class Response(Response_Base):
+    logformat = '%-9s %-4s | %-34s | %5s | %s'
 
   def execute(self, host, port='1521', user='', password='', sid=''):
     dsn = cx_Oracle.makedsn(host, port, sid)
@@ -2681,12 +2696,15 @@ class Controller_HTTP(Controller):
 
 class Response_HTTP(Response_Base):
 
+  logformat = '%-4s %-13s | %-32s | %5s | %s'
+  logheader = ('code', 'size:clen', 'candidate', 'num', 'mesg')
+
   def __init__(self, code, response, trace=None, content_length=-1):
     self.content_length = content_length
     Response_Base.__init__(self, code, response, trace)
 
   def compact(self):
-    return '%s %s' % (self.code, '%d:%d' % (self.size, self.content_length))
+    return self.code, '%d:%d' % (self.size, self.content_length)
 
   def __str__(self):
     i = self.mesg.rfind('HTTP/', 0, 5000)

@@ -609,7 +609,7 @@ logger.addHandler(handler)
 # imports {{{
 import re
 import os
-from sys import stdin, exc_info, exit, version_info, maxint
+from sys import exc_info, exit, version_info, maxint
 from time import localtime, strftime, sleep, time
 from functools import reduce
 from threading import Thread, active_count
@@ -664,20 +664,19 @@ def which(program):
 
   return None
 
-def create_dir(top_path, from_stdin=False):
+def create_dir(top_path):
   top_path = os.path.abspath(top_path)
   if os.path.isdir(top_path):
     files = os.listdir(top_path)
     if files:
-      if not from_stdin:
-        if raw_input("Directory '%s' is not empty, do you want to wipe it ? [Y/n]: " % top_path) != 'n':
-          for root, dirs, files in os.walk(top_path):
-            if dirs:
-              print("Directory '%s' contains sub-directories, safely aborting..." % root)
-              exit(0)
-            for f in files:
-              os.unlink(os.path.join(root, f))
-            break
+      if raw_input("Directory '%s' is not empty, do you want to wipe it ? [Y/n]: " % top_path) != 'n':
+        for root, dirs, files in os.walk(top_path):
+          if dirs:
+            print("Directory '%s' contains sub-directories, safely aborting..." % root)
+            exit(0)
+          for f in files:
+            os.unlink(os.path.join(root, f))
+          break
   else:
     os.mkdir(top_path)
   return top_path
@@ -706,6 +705,135 @@ def md5hex(plain):
 
 def sha1hex(plain):
   return hashlib.sha1(plain).hexdigest()
+
+# I rewrote itertools.product to avoid memory over-consumption when using large wordlists
+def product(xs, *rest):
+  if len(rest) == 0:
+    for x in xs():
+      yield [x]
+  else:
+    for head in xs():
+      for tail in product(*rest):
+        yield [head] + tail
+
+def chain(*iterables):
+  def xs():
+    for iterable in iterables:
+      for element in iterable:
+        yield element
+  return xs
+
+class FileIter:
+  def __init__(self, filename):
+    self.filename = filename
+
+  def __iter__(self):
+    return open(self.filename)
+
+# These are examples. You can easily write your own iterator to fit your needs.
+# Or using the PROG keyword, you can call an external program such as:
+#   - seq(1) from coreutils
+#   - http://hashcat.net/wiki/doku.php?id=maskprocessor
+#   - john -stdout -i
+# For instance:
+# $ ./dummy_test data=PROG0 0='seq 1 80'
+# $ ./dummy_test data=PROG0 0='mp64.bin ?l?l?l',$(mp64.bin --combination ?l?l?l)
+class RangeIter:
+  def __init__(self, typ, rng, random=None): #random.Random()):
+    r = rng.split('-')
+
+    if typ == 'hex':
+      self.fmt = '%x'
+      self.mn = int(r[0], 16)
+      self.mx = int(r[1], 16)
+
+    elif typ == 'digits':
+      self.fmt = '%d'
+      c = rng.count('-')
+
+      if c == 1: # 1-50
+        self.mn = int(r[0])
+        self.mx = int(r[1])
+
+      elif c == 2: # -50-50
+        self.mn = int(r[1]) * -1
+        self.mx = int(r[2])
+
+      elif c == 3: # -50--25
+        self.mn = int(r[1]) * -1
+        self.mx = int(r[3]) * -1
+
+        if self.mn > self.mx:
+          self.mn, self.mx = self.mx, self.mn
+
+      else:
+        raise NotImplementedError("Unsupported range '%s'" % rng)
+
+    self.cur = self.mn
+    self.random = random
+
+  def __iter__(self):
+    return self
+
+  def next(self):
+    if self.random:
+      val = self.random.randint(self.mn, self.mx)
+      return self.fmt % val
+
+    else:
+      if self.cur > self.mx:
+        raise StopIteration
+
+      ret = self.fmt % self.cur
+      self.cur += 1
+
+      return ret
+
+  def __len__(self):
+    if self.random:
+      return maxint
+    else:
+      return self.mx - self.mn + 1
+
+def letterrange(first, last, charset):
+  for k in range(len(last)):
+    for x in product(*[chain(charset)]*(k+1)):
+      result = ''.join(x)
+      if first:
+        if first != result:
+          continue
+        else:
+          first = None
+      yield result
+      if result == last:
+        return
+
+class LetterRangeIter:
+  def __init__(self, typ, rng):
+    self.first, self.last = rng.split('-')
+    if typ == 'letters':
+      self.charset = [c for c in string.letters]
+    elif 'lower' in typ:
+      self.charset = [c for c in string.lowercase]
+    elif 'upper' in typ:
+      self.charset = [c for c in string.uppercase]
+    else:
+      raise NotImplementedError("Incorrect type '%s'" % typ)
+
+  def __iter__(self):
+    return letterrange(self.first, self.last, self.charset)
+
+  def __len__(self):
+    def count(f):
+      total = 0
+      i = 0
+      for c in f[::-1]:
+        z = self.charset.index(c) + 1
+        total += (26**i)*z
+        i += 1
+      return total + 1
+
+    return count(self.last) - count(self.first) + 1
 
 # }}}
 
@@ -741,6 +869,12 @@ class Controller:
 
   def find_module_keys(self, value):
     return map(int, re.findall(r'MOD(\d)', value))
+
+  def find_range_keys(self, value):
+    return map(int, re.findall(r'RANGE(\d)', value))
+
+  def find_prog_keys(self, value):
+    return map(int, re.findall(r'PROG(\d)', value))
 
   def usage_parser(self, name):
     from optparse import OptionParser
@@ -855,7 +989,6 @@ Please read the README inside for more examples and usage information.
     self.actions = {}
     self.free_list = []
     self.paused = False
-    self.from_stdin = False
     self.start_time = 0
     self.total_size = 1
     self.quit_now = False
@@ -885,9 +1018,6 @@ Please read the README inside for more examples and usage information.
 
         if k.isdigit():
           wlists[k] = v
-
-          if v == '-':
-            self.from_stdin = True
 
         else:
           if v.startswith('@'):
@@ -935,7 +1065,19 @@ Please read the README inside for more examples and usage information.
               self.iter_keys[i][2].append(k)
 
             else:
-              self.payload[k] = v
+              for i in self.find_range_keys(v):
+                if i not in self.iter_keys:
+                  self.iter_keys[i] = ('RANGE', iter_vals[i], [])
+                self.iter_keys[i][2].append(k)
+
+              else:
+                for i in self.find_prog_keys(v):
+                  if i not in self.iter_keys:
+                    self.iter_keys[i] = ('PROG', iter_vals[i], [])
+                  self.iter_keys[i][2].append(k)
+
+                else:
+                  self.payload[k] = v
 
     logger.debug('iter_keys: %s' % self.iter_keys) # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['name'])
     logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hexlify), ('header', 'B64', b64encode), ...
@@ -952,7 +1094,7 @@ Please read the README inside for more examples and usage information.
     if opts.auto_log:
       self.log_dir = create_time_dir(opts.log_dir or '/tmp/patator', opts.auto_log)
     elif opts.log_dir:
-      self.log_dir = create_dir(opts.log_dir, self.from_stdin)
+      self.log_dir = create_dir(opts.log_dir)
     
     if self.log_dir:
       log_file = os.path.join(self.log_dir, 'RUNTIME.log')
@@ -1042,11 +1184,8 @@ Please read the README inside for more examples and usage information.
     total_time = time() - self.start_time
     speed_avg = done_count / total_time 
 
-    if self.from_stdin:
-      if self.quit_now:
-        self.total_size = -1
-      else:
-        self.total_size = done_count+skip_count
+    if self.total_size >= maxint:
+      self.total_size = -1
 
     self.show_final()
 
@@ -1083,7 +1222,7 @@ Please read the README inside for more examples and usage information.
 
     # consumers
     for num in range(self.num_threads):
-      pqueue = Queue()
+      pqueue = Queue(maxsize=1000)
       t = Thread(target=self.consume, args=(gqueues[num], pqueue))
       t.daemon = True
       t.start()
@@ -1097,33 +1236,6 @@ Please read the README inside for more examples and usage information.
 
   def produce(self, queues):
 
-    if self.from_stdin:
-      from itertools import product, chain
-
-    else:
-      def product(xs, *rest):
-        if len(rest) == 0:
-          for x in xs():
-            yield [x]
-        else:
-          for head in xs():
-            for tail in product(*rest):
-              yield [head] + tail
-
-      def chain(*iterables):
-        def xs():
-          for iterable in iterables:
-            for element in iterable:
-              yield element
-        return xs
-
-    class FileIter:
-      def __init__(self, filename):
-        self.filename = filename
-
-      def __iter__(self):
-        return open(self.filename)
-
     iterables = []
     for _, (t, v, _) in self.iter_keys.items():
 
@@ -1132,14 +1244,9 @@ Please read the README inside for more examples and usage information.
         files = []
 
         for fname in v.split(','):
-          if fname == '-': # stdin
-            size += maxint
-            files.append(stdin)
-
-          else:
-            fpath = os.path.expanduser(fname)
-            size += sum(1 for _ in open(fpath))
-            files.append(FileIter(fpath))
+          fpath = os.path.expanduser(fname)
+          size += sum(1 for _ in open(fpath))
+          files.append(FileIter(fpath))
 
         iterable = chain(*files)
 
@@ -1151,6 +1258,35 @@ Please read the README inside for more examples and usage information.
       elif t == 'MOD':
         elements, size = self.module.available_keys[v]()
         iterable = chain(elements)
+
+      elif t == 'RANGE':
+        typ, opt = v.split(':', 1)
+        logger.debug('typ: %s, opt: %s' % (typ, opt))
+
+        if typ in ['hex', 'digits']:
+          it = RangeIter(typ, opt)
+          size = len(it)
+
+        elif typ in ['letters', 'lower', 'lowercase', 'upper', 'uppercase']:
+          it = LetterRangeIter(typ, opt)
+          size = len(it)
+
+        else:
+          raise NotImplementedError("Incorrect range type '%s'" % typ)
+
+        iterable = chain(it)
+
+      elif t == 'PROG':
+        m = re.match(r'(.+),(\d+)$', v)
+        if m:
+          prog, size = m.groups()
+        else:
+          prog, size = v, maxint
+
+        logger.debug('prog: %s, size: %s' % (prog, size))
+
+        p = subprocess.Popen(prog.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        iterable, size = chain(p.stdout), int(size)
 
       else:
         raise NotImplementedError("Incorrect keyword '%s'" % t)
@@ -1243,6 +1379,12 @@ Please read the README inside for more examples and usage information.
         elif t == 'MOD':
           for k in keys:
             payload[k] = payload[k].replace('MOD%d' %i, prod[i])
+        elif t == 'RANGE':
+          for k in keys:
+            payload[k] = payload[k].replace('RANGE%d' %i, prod[i])
+        elif t == 'PROG':
+          for k in keys:
+            payload[k] = payload[k].replace('PROG%d' %i, prod[i])
 
       for k, m, e in self.enc_keys:
         payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(m.group(1)), payload[k])
@@ -1251,7 +1393,7 @@ Please read the README inside for more examples and usage information.
       pp_prod = ':'.join(prod)
 
       if self.check_free(payload):
-        pqueue.put_nowait(('skip', pp_prod, None, 0))
+        pqueue.put(('skip', pp_prod, None, 0))
         continue
 
       try_count = 0
@@ -1298,7 +1440,7 @@ Please read the README inside for more examples and usage information.
           actions = {'fail': None}
 
         actions.update(self.lookup_actions(resp))
-        pqueue.put_nowait((actions, pp_prod, resp, time() - start_time))
+        pqueue.put((actions, pp_prod, resp, time() - start_time))
 
         for name in self.module_actions:
           if name in actions:
@@ -1319,15 +1461,13 @@ Please read the README inside for more examples and usage information.
   def monitor_progress(self):
     while active_count() > 1 and not self.quit_now:
       self.report_progress()
-
-      if not self.from_stdin:
-        self.monitor_interaction()
+      self.monitor_interaction()
 
   def report_progress(self):
     for i, pq in enumerate(self.thread_report):
       p = self.thread_progress[i]
 
-      while True:
+      for _ in range(pq.maxsize):
 
         try:
           actions, current, resp, seconds = pq.get_nowait()
@@ -1381,7 +1521,7 @@ Please read the README inside for more examples and usage information.
 
 
   def monitor_interaction(self):
-
+    from sys import stdin
     i, _, _ = select([stdin], [], [], .1)
     if not i: return
     command = i[0].readline().strip()
@@ -1424,16 +1564,22 @@ Please read the README inside for more examples and usage information.
     else: # show progress
       total_count = sum(p.done_count+p.skip_count for p in self.thread_progress)
       speed_avg = self.num_threads / (sum(sum(p.seconds) / len(p.seconds) for p in self.thread_progress) / self.num_threads)
-      remain_seconds = (self.total_size - total_count) / speed_avg
-      etc_time = datetime.now() + timedelta(seconds = remain_seconds)
+      if self.total_size >= maxint:
+        etc_time = 'inf'
+        remain_time = 'inf'
+      else:
+        remain_seconds = (self.total_size - total_count) / speed_avg
+        remain_time = pprint_seconds(remain_seconds, '%02d:%02d:%02d')
+        etc_seconds = datetime.now() + timedelta(seconds=remain_seconds)
+        etc_time = etc_seconds.strftime('%H:%M:%S')
 
       logger.info('Progress: {0:>3}% ({1}/{2}) | Speed: {3:.0f} r/s | ETC: {4} ({5} remaining) {6}'.format(
         total_count * 100/self.total_size,
         total_count,
         self.total_size,
         speed_avg,
-        etc_time.strftime('%H:%M:%S'),
-        pprint_seconds(remain_seconds, '%02d:%02d:%02d'),
+        etc_time,
+        remain_time,
         self.paused and '| Paused' or ''))
 
       if command == 'f':
@@ -3439,6 +3585,62 @@ class Keystore_pass:
 
 # }}}
 
+# TCP Fuzz {{{
+class TCP_fuzz:
+  '''Fuzz TCP services'''
+
+  usage_hints = (
+    '''%prog host=10.0.0.1 data=RANGE0 0=hex:0x00-0xffffff''',
+    )
+
+  available_options = (
+    ('host', 'target host'),
+    ('port', 'target port'),
+    ('timeout', 'seconds to wait for a response [10]'),
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, host, port, data='', timeout='2'):
+    fp = socket.create_connection((host, port), int(timeout))
+    fp.send(data.decode('hex'))
+    resp = fp.recv(1024)
+    fp.close()
+
+    code = 0
+    mesg = resp.encode('hex')
+
+    return self.Response(code, mesg)
+
+# }}}
+
+# Dummy Test {{{
+class Dummy_test:
+  '''Testing module'''
+
+  usage_hints = (
+    """%prog data=RANGE0 0=hex:0x00-0xffff""",
+    """%prog data=PROG0 0='seq 0 80'""",
+    """%prog data=PROG0 0='mp64.bin -i ?l?l?l',$(mp64.bin --combination -i ?l?l?l)""",
+    )
+
+  available_options = (
+    ('data', 'data to test'),
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, data):
+    code = 0
+    mesg = data
+    #sleep(.01)
+
+    return self.Response(code, mesg)
+
+# }}}
+
 # modules {{{
 modules = [
   ('ftp_login', (Controller, FTP_login)),
@@ -3470,6 +3672,9 @@ modules = [
   
   ('unzip_pass', (Controller, Unzip_pass)),
   ('keystore_pass', (Controller, Keystore_pass)),
+
+  ('tcp_fuzz', (Controller, TCP_fuzz)),
+  ('dummy_test', (Controller, Dummy_test)),
   ]
 
 dependencies = {

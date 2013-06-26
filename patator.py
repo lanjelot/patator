@@ -12,10 +12,10 @@
 # details (http://www.gnu.org/licenses/gpl.txt).
 
 __author__  = 'Sebastien Macke'
-__twitter__ = '@lanjelot'
 __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
+__twitter__ = 'http://twitter.com/lanjelot'
 __version__ = '0.5-beta'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
@@ -121,7 +121,7 @@ pycurl           | HTTP           | http://pycurl.sourceforge.net/              
 --------------------------------------------------------------------------------------------------
 openldap         | LDAP           | http://www.openldap.org/                           |  2.4.24 |
 --------------------------------------------------------------------------------------------------
-impacket         | SMB            | http://code.google.com/p/impacket/                 | svn#525 |
+impacket         | SMB            | http://code.google.com/p/impacket/                 | svn#765 |
 --------------------------------------------------------------------------------------------------
 cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   5.1.1 |
 --------------------------------------------------------------------------------------------------
@@ -265,7 +265,7 @@ ftp_login host=NET0 user=anonymous password=test@example.com 0=10.0.0.0/24
 
 }}}
 {{{ SSH
-* Brute-force authentication. Do not report wrong passwords.
+* Brute-force authentication with password same as login (aka single mode). Do not report wrong passwords.
 ---------
 ssh_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:mesg='Authentication failed.'
 
@@ -574,6 +574,7 @@ TODO
 ----
   * new option -e ns like in Medusa (not likely to be implemented due to design)
   * replace dnspython|paramiko|IPy with a better module (scapy|libssh2|... ?)
+  * use impacket/enum_lookupsids to automatically get the sid
 '''
 
 # }}}
@@ -608,13 +609,14 @@ logger.addHandler(handler)
 # imports {{{
 import re
 import os
-from sys import stdin, exc_info, exit, version_info
+from sys import stdin, exc_info, exit, version_info, maxint
 from time import localtime, strftime, sleep, time
 from functools import reduce
 from threading import Thread, active_count
 from select import select
-from itertools import product, chain, islice
-from string import ascii_lowercase
+from itertools import islice
+import string
+import random
 from binascii import hexlify
 from base64 import b64encode
 from datetime import timedelta, datetime
@@ -1131,7 +1133,6 @@ Please read the README inside for more examples and usage information.
 
         for fname in v.split(','):
           if fname == '-': # stdin
-            from sys import maxint
             size += maxint
             files.append(stdin)
 
@@ -1185,7 +1186,7 @@ Please read the README inside for more examples and usage information.
         off = self.resume[idx]
 
         if count < off * len(self.resume):
-          logger.debug('Skipping %d %s, resume[%d]: %s' % (count, ':'.join(prod), idx, self.resume[idx]))
+          #logger.debug('Skipping %d %s, resume[%d]: %s' % (count, ':'.join(prod), idx, self.resume[idx]))
           count += 1
           continue
 
@@ -1600,8 +1601,8 @@ class FTP_login(TCP_Cache):
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [21]'),
+    ('host', 'target host'),
+    ('port', 'target port [21]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('tls', 'use TLS [0|1]'),
@@ -1664,8 +1665,8 @@ class SSH_login(TCP_Cache):
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [22]'),
+    ('host', 'target host'),
+    ('port', 'target port [22]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('auth_type', 'auth type to use [password|keyboard-interactive]'),
@@ -1722,8 +1723,8 @@ class Telnet_login(TCP_Cache):
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [23]'),
+    ('host', 'target host'),
+    ('port', 'target port [23]'),
     ('inputs', 'list of values to input'),
     ('prompt_re', 'regular expression to match prompts [\w+]'),
     ('timeout', 'seconds to wait for a response and for prompt_re to match received data [20]'),
@@ -1778,8 +1779,8 @@ class SMTP_Base(TCP_Cache):
   available_options = TCP_Cache.available_options
   available_options += (
     ('timeout', 'seconds to wait for a response [10]'),
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [25]'),
+    ('host', 'target host'),
+    ('port', 'target port [25]'),
     ('ssl', 'use SSL [0|1]'),
     ('helo', 'helo or ehlo command to send after connect [skip]'),
     ('starttls', 'send STARTTLS [0|1]'),
@@ -1924,8 +1925,8 @@ class Finger_lookup:
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [79]'),
+    ('host', 'target host'),
+    ('port', 'target port [79]'),
     ('user', 'usernames to test'),
     ('timeout', 'seconds to wait for a response [5]'),
     )
@@ -1979,8 +1980,8 @@ class LDAP_login:
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [389]'),
+    ('host', 'target host'),
+    ('port', 'target port [389]'),
     ('binddn', 'usernames to test'),
     ('bindpw', 'passwords to test'),
     ('basedn', 'base DN for search'),
@@ -2026,12 +2027,12 @@ class SMB_login(TCP_Cache):
     )
   
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [139]'),
+    ('host', 'target host'),
+    ('port', 'target port [139]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('password_hash', "LM/NT hashes to test, at least one hash must be provided ('lm:nt' or ':nt' or 'lm:')"),
-    ('domain', 'domains to test'),
+    ('domain', 'domain to test'),
     )
   available_options += TCP_Cache.available_options
 
@@ -2074,16 +2075,19 @@ class SMB_login(TCP_Cache):
     fp, _ = self.bind(host, port)
 
     try:
-      if user is not None:
-        if password is not None:
-          fp.login(user, password, domain)
-
-        else:
+      if user is None:
+        fp.login('', '') # to get computer name
+        fp.login_standard('', '') # to get workgroup or domain (Primary Domain)
+      else:
+        if password is None:
           lmhash, nthash = password_hash.split(':')
           fp.login(user, '', domain, lmhash, nthash)
 
+        else:
+          fp.login(user, password, domain)
+
       logger.debug('No error')
-      code, mesg = '0', fp.get_server_name()
+      code, mesg = '0', '%s\\%s (%s)' % (fp.get_server_domain(), fp.get_server_name(), fp.get_server_os())
 
       self.reset()
 
@@ -2125,8 +2129,8 @@ class SMB_lookupsid(TCP_Cache):
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [139]'),
+    ('host', 'target host'),
+    ('port', 'target port [139]'),
     ('sid', 'SID to test'),
     ('rid', 'RID to test'),
     ('user', 'username to use if auth required'),
@@ -2192,8 +2196,8 @@ class POP_login(TCP_Cache):
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [110]'),
+    ('host', 'target host'),
+    ('port', 'target port [110]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('ssl', 'use SSL [0|1]'),
@@ -2244,8 +2248,8 @@ class POP_passd:
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [106]'),
+    ('host', 'target host'),
+    ('port', 'target port [106]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('timeout', 'seconds to wait for a response [10]'),
@@ -2293,8 +2297,8 @@ class IMAP_login:
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [143]'),
+    ('host', 'target host'),
+    ('port', 'target port [143]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('ssl', 'use SSL [0|1]'),
@@ -2378,8 +2382,8 @@ class VMauthd_login(TCP_Cache):
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [902]'),
+    ('host', 'target host'),
+    ('port', 'target port [902]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('ssl', 'use SSL [1|0]'),
@@ -2437,8 +2441,8 @@ class MySQL_login:
     )
   
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [3306]'),
+    ('host', 'target host'),
+    ('port', 'target port [3306]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('timeout', 'seconds to wait for a response [10]'),
@@ -2467,8 +2471,8 @@ class MySQL_query(TCP_Cache):
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'port to use [3306]'),
+    ('host', 'target host'),
+    ('port', 'target port [3306]'),
     ('user', 'username to use'),
     ('password', 'password to use'),
     ('query', 'SQL query to execute'),
@@ -2498,74 +2502,11 @@ class MySQL_query(TCP_Cache):
 
 # MSSQL {{{
 # I did not use pymssql because neither version 1.x nor 2.0.0b1_dev were multithreads safe (they all segfault)
-class MSSQL:
-  # ripped from medusa mssql.c
-  hdr = '\x02\x00\x02\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-
-  pt2 = '\x30\x30\x30\x30\x30\x30\x61\x30\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x20\x18\x81\xb8\x2c\x08\x03\x01\x06\x0a\x09\x01\x01\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x73\x71\x75\x65\x6c\x64\x61\x20\x31\x2e\x30\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-
-  pt3 = '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x04\x02\x00\x00\x4d\x53\x44\x42\x4c\x49\x42\x00\x00\x00\x07\x06\x00\x00' \
-        '\x00\x00\x0d\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-        '\x00\x00\x00\x00\x00\x00'
-
-  langp = '\x02\x01\x00\x47\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00' \
-          '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' \
-          '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x30\x30\x30\x00\x00' \
-          '\x00\x03\x00\x00\x00'
-
-  def connect(self, host, port, timeout):
-    self.fp = socket.create_connection((host, port), timeout)
-
-  def login(self, user, password):
-    MAX_LEN = 30
-    user_len = len(user)
-    password_len = len(password)
-    data = self.hdr + user[:MAX_LEN] + '\x00' * (MAX_LEN - user_len) + chr(user_len) + \
-      password[:MAX_LEN] + '\x00' * (MAX_LEN - password_len) + chr(password_len) + self.pt2 + chr(password_len) + \
-      password[:MAX_LEN] + '\x00' * (MAX_LEN - password_len) + self.pt3
-
-    self.fp.sendall(data)
-    self.fp.sendall(self.langp)
-
-    resp = self.fp.recv(1024)
-    code, size = self.parse(resp)
-
-    return code, size
-
-  def parse(self, resp):
-    i = 8
-    while True:
-      resp = resp[i:]
-      code, size = unpack('<cH', resp[:3])
-      #logger.debug('code: %s / size: %d' % (code.encode('hex'), size))
-
-      if code == '\xfd': # Done
-        break
-
-      if code in ('\xaa', '\xab') : # Error or Info message
-        num, state, severity, msg_len = unpack('IBBB', resp[3:10])
-        msg = resp[11:11+msg_len]
-        return num, msg
-
-      i = size + 3
-    
-    raise Exception('Failed to parse response')
-
+try:
+  from impacket import tds
+  from impacket.tds import TDS_ERROR_TOKEN, TDS_LOGINACK_TOKEN
+except ImportError:
+  warnings.append('impacket')
 class MSSQL_login:
   '''Brute-force MSSQL'''
 
@@ -2574,22 +2515,44 @@ class MSSQL_login:
     )
 
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [1433]'),
+    ('host', 'target host'),
+    ('port', 'target port [1433]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
-    ('timeout', 'seconds to wait for a response [10]'),
+    ('windows_auth', 'use Windows auth [0|1]'),
+    ('domain', 'domain to test []'),
+    ('password_hash', "LM/NT hashes to test ('lm:nt' or ':nt')"),
+    #('timeout', 'seconds to wait for a response [10]'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, port='1433', user='', password='', timeout='10'):
-    m = MSSQL()
-    m.connect(host, int(port), int(timeout))
-    code, mesg = m.login(user, password)
-    return self.Response(code, mesg)
+  def execute(self, host, port='1433', user='', password='', windows_auth='0', domain='', password_hash=None): #, timeout='10'):
 
+    fp = tds.MSSQL(host, int(port))
+    fp.connect()
+
+    if windows_auth == '0':
+      r = fp.login(None, user, password, None, None, False)
+    else:
+      r = fp.login(None, user, password, domain, password_hash, True)
+
+    if not r:
+      key = fp.replies[TDS_ERROR_TOKEN][0]
+
+      code = key['Number']
+      mesg = key['MsgText'].decode('utf-16le')
+
+    else:
+      key = fp.replies[TDS_LOGINACK_TOKEN][0]
+
+      code = '0'
+      mesg = '%s (%d%d %d%d)' % (key['ProgName'].decode('utf-16le'), key['MajorVer'], key['MinorVer'], key['BuildNumHi'], key['BuildNumLow'])
+
+    fp.disconnect()
+
+    return self.Response(code, mesg)
 # }}}
 
 # Oracle {{{
@@ -2645,8 +2608,8 @@ class Pgsql_login:
     )
   
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [5432]'),
+    ('host', 'target host'),
+    ('port', 'target port [5432]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('database', 'databases to test [postgres]'),
@@ -2745,8 +2708,8 @@ class HTTP_fuzz(TCP_Cache):
 
   available_options = (
     ('url', 'main url to target (scheme://host[:port]/path?query)'),
-    #('host', 'hostnames or subnets to target'),
-    #('port', 'ports to target'),
+    #('host', 'target host'),
+    #('port', 'target port'),
     #('scheme', 'scheme [http | https]'),
     #('path', 'web path [/]'),
     #('query', 'query string'),
@@ -3010,8 +2973,8 @@ class VNC_login:
     )
   
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [5900]'),
+    ('host', 'target host'),
+    ('port', 'target port [5900]'),
     ('password', 'passwords to test'),
     ('timeout', 'seconds to wait for a response [10]'),
     )
@@ -3061,12 +3024,13 @@ def dns_query(server, timeout, protocol, qname, qtype, qclass):
   return response
 
 def generate_tld():
+  from itertools import product
   gtld = [
     'aero', 'arpa', 'asia', 'biz', 'cat', 'com', 'coop', 'edu',
     'gov', 'info', 'int', 'jobs', 'mil', 'mobi', 'museum', 'name',
     'net', 'org', 'pro', 'tel', 'travel']
 
-  cctld = [''.join(i) for i in product(*[ascii_lowercase]*2)]
+  cctld = [''.join(i) for i in product(*[string.ascii_lowercase]*2)]
   tld = gtld + cctld
   return tld, len(tld)
 
@@ -3359,8 +3323,8 @@ class SNMP_login:
     )
   
   available_options = (
-    ('host', 'hostnames or subnets to target'),
-    ('port', 'ports to target [161]'),
+    ('host', 'target host'),
+    ('port', 'target port [161]'),
     ('version', 'SNMP version to use [2|3|1]'),
     #('security_name', 'SNMP v1/v2 username, for most purposes it can be any arbitrary string [test-agent]'),
     ('community', 'SNMPv1/2c community names to test [public]'),
@@ -3512,7 +3476,7 @@ dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
   'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.0'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
-  'impacket': [('smb_login','smb_lookupsid'), 'http://oss.coresecurity.com/projects/impacket.html', 'svn#414'],
+  'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'http://oss.coresecurity.com/projects/impacket.html', 'svn#765'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '5.1.1'],
   'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/', '1.2.3'],
   'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.4.5'],
@@ -3555,7 +3519,7 @@ Available modules:
 
   # dependencies
   abort = False
-  for w in warnings:
+  for w in set(warnings):
     mods, url, ver = dependencies[w]
     if name in mods:
       print('ERROR: %s %s (%s) is required to run %s.' % (w, ver, url, name))

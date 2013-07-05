@@ -99,9 +99,11 @@ FEATURES
 
   * Flexible user input
     - Any module parameter can be fuzzed:
-      + use FILE[0-9] keywords to iterate on a file
-      + use COMBO[0-9] keywords to iterate on the combo entries of a file
-      + use NET[0-9] keywords to iterate on every host of a network subnet
+      + use the FILE keyword to iterate over a file
+      + use the COMBO keyword to iterate over a combo file
+      + use the NET keyword to iterate over every hosts of a network subnet
+      + use the RANGE keyword to iterate over hexadecimal, decimal or alphabetical ranges
+      + use the PROG keyword to iterage over the output of an external program
 
     - Iteration over the joined wordlists can be done in any order
 
@@ -211,6 +213,12 @@ Brute-force a list of hosts with a file containing combo entries (each line := l
 Scan subnets to just grab version banners.
 ---------
 ./module host=NET0 0=10.0.1.0/24,10.0.2.0/24,10.0.3.128-10.0.3.255
+
+Fuzzing a parameter by iterating over a range of values.
+---------
+./module param=RANGE0 0=hex:0x00-0xffff
+./module param=RANGE0 0=int:0-500
+./module param=RANGE0 0=lower:a-zzz
 
 
 * Actions & Conditions
@@ -545,6 +553,14 @@ unzip_pass zipfile=path/to/file.zip password=FILE0 0=passwords.txt -x ignore:cod
 CHANGELOG
 ---------
 
+* v0.5 2013/07/05
+  - new modules: mysql_query, tcp_fuzz
+  - new RANGE and PROG keywords (supersedes the reading from stdin feature)
+  - switched to impacket for mssql_login
+  - output more intuitive
+  - fixed connection cache
+  - minor bug fixes
+
 * v0.4 2012/11/02
   - new modules: smb_lookupsid, finger_lookup, pop_login, imap_login, vmauthd_login
   - improved connection cache
@@ -738,7 +754,7 @@ class FileIter:
 # For instance:
 # $ ./dummy_test data=PROG0 0='seq 1 80'
 # $ ./dummy_test data=PROG0 0='mp64.bin ?l?l?l',$(mp64.bin --combination ?l?l?l)
-class RangeIter:
+class HexIntRangeIter:
   def __init__(self, typ, rng, random=None): #random.Random()):
     r = rng.split('-')
 
@@ -747,7 +763,7 @@ class RangeIter:
       self.mn = int(r[0], 16)
       self.mx = int(r[1], 16)
 
-    elif typ == 'digits':
+    elif typ in ('int', 'digits'):
       self.fmt = '%d'
       c = rng.count('-')
 
@@ -829,7 +845,7 @@ class LetterRangeIter:
       i = 0
       for c in f[::-1]:
         z = self.charset.index(c) + 1
-        total += (26**i)*z
+        total += (len(self.charset)**i)*z
         i += 1
       return total + 1
 
@@ -1263,8 +1279,8 @@ Please read the README inside for more examples and usage information.
         typ, opt = v.split(':', 1)
         logger.debug('typ: %s, opt: %s' % (typ, opt))
 
-        if typ in ['hex', 'digits']:
-          it = RangeIter(typ, opt)
+        if typ in ['hex', 'int', 'digits']:
+          it = HexIntRangeIter(typ, opt)
           size = len(it)
 
         elif typ in ['letters', 'lower', 'lowercase', 'upper', 'uppercase']:
@@ -2271,7 +2287,7 @@ class SMB_lookupsid(TCP_Cache):
   '''Brute-force SMB SID-lookup'''
 
   usage_hints = (
-    '''seq 500 2000 | %prog host=10.0.0.1 sid=S-1-5-21-1234567890-1234567890-1234567890 rid=FILE0 0=- -x ignore:code=1''',
+    '''%prog host=10.0.0.1 sid=S-1-5-21-1234567890-1234567890-1234567890 rid=RANGE0 0=int:500-2000 -x ignore:code=1''',
     )
 
   available_options = (

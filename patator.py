@@ -16,7 +16,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
 __twitter__ = 'http://twitter.com/lanjelot'
-__version__ = '0.5-beta'
+__version__ = '0.5'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
  

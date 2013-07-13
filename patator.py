@@ -16,7 +16,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
 __twitter__ = 'http://twitter.com/lanjelot'
-__version__ = '0.5'
+__version__ = '0.6-beta'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
  
@@ -59,6 +59,8 @@ Currently it supports the following modules:
 
   - unzip_pass    : Brute-force the password of encrypted ZIP files
   - keystore_pass : Brute-force the password of Java keystore files
+
+  - tcp_fuzz      : Fuzz TCP services
 
 Future modules to be implemented:
   - rdp_login
@@ -103,7 +105,7 @@ FEATURES
       + use the COMBO keyword to iterate over a combo file
       + use the NET keyword to iterate over every hosts of a network subnet
       + use the RANGE keyword to iterate over hexadecimal, decimal or alphabetical ranges
-      + use the PROG keyword to iterage over the output of an external program
+      + use the PROG keyword to iterate over the output of an external program
 
     - Iteration over the joined wordlists can be done in any order
 
@@ -209,7 +211,6 @@ Brute-force a list of hosts with a file containing combo entries (each line := l
 ---------
 ./module host=FILE0 user=COMBO10 password=COMBO11 0=hosts.txt 1=combos.txt
 
-
 Scan subnets to just grab version banners.
 ---------
 ./module host=NET0 0=10.0.1.0/24,10.0.2.0/24,10.0.3.128-10.0.3.255
@@ -219,6 +220,11 @@ Fuzzing a parameter by iterating over a range of values.
 ./module param=RANGE0 0=hex:0x00-0xffff
 ./module param=RANGE0 0=int:0-500
 ./module param=RANGE0 0=lower:a-zzz
+
+Fuzzing a parameter by iterating over the output of an external program.
+---------
+./module param=PROG0 0='john -stdout -i'
+./module param=PROG0 0='mp64.bin ?l?l?l',$(mp64.bin --combination ?l?l?l) # http://hashcat.net/wiki/doku.php?id=maskprocessor
 
 
 * Actions & Conditions
@@ -1234,23 +1240,23 @@ Please read the README inside for more examples and usage information.
         self.fail_count = 0
         self.seconds = [1]*25 # avoid division by zero early bug condition
 
-    gqueues = [Queue(maxsize=10000) for _ in range(self.num_threads)]
+    task_queues = [Queue(maxsize=10000) for _ in range(self.num_threads)]
 
     # consumers
     for num in range(self.num_threads):
-      pqueue = Queue(maxsize=1000)
-      t = Thread(target=self.consume, args=(gqueues[num], pqueue))
+      report_queue = Queue(maxsize=1000)
+      t = Thread(target=self.consume, args=(task_queues[num], report_queue))
       t.daemon = True
       t.start()
-      self.thread_report.append(pqueue)
+      self.thread_report.append(report_queue)
       self.thread_progress.append(Progress())
 
     # producer
-    t = Thread(target=self.produce, args=(gqueues,))
+    t = Thread(target=self.produce, args=(task_queues,))
     t.daemon = True
     t.start()
 
-  def produce(self, queues):
+  def produce(self, task_queues):
 
     iterables = []
     for _, (t, v, _) in self.iter_keys.items():
@@ -1347,17 +1353,17 @@ Please read the README inside for more examples and usage information.
           return
 
         try:
-          queues[cid].put_nowait(prod)
+          task_queues[cid].put_nowait(prod)
           break
         except Full:
           sleep(.1)
 
       count += 1
 
-    for q in queues:
+    for q in task_queues:
       q.put(None)
 
-  def consume(self, gqueue, pqueue):
+  def consume(self, task_queue, report_queue):
     module = self.module()
 
     def shutdown():
@@ -1371,7 +1377,7 @@ Please read the README inside for more examples and usage information.
         return
 
       try:
-        prod = gqueue.get_nowait()
+        prod = task_queue.get_nowait()
       except Empty:
         sleep(.1)
         continue
@@ -1409,7 +1415,7 @@ Please read the README inside for more examples and usage information.
       pp_prod = ':'.join(prod)
 
       if self.check_free(payload):
-        pqueue.put(('skip', pp_prod, None, 0))
+        report_queue.put(('skip', pp_prod, None, 0))
         continue
 
       try_count = 0
@@ -1435,7 +1441,9 @@ Please read the README inside for more examples and usage information.
           logger.debug('payload: %s [try %d/%d]' % (payload, try_count, self.max_retries+1))
 
           try:
+            exec_time = time()
             resp = module.execute(**payload)
+            resp.time = time() - exec_time
 
           except:
             e_type, e_value, _ = exc_info()
@@ -1452,11 +1460,12 @@ Please read the README inside for more examples and usage information.
             sleep(try_count * .1)
             continue
 
+
         else:
           actions = {'fail': None}
 
         actions.update(self.lookup_actions(resp))
-        pqueue.put((actions, pp_prod, resp, time() - start_time))
+        report_queue.put((actions, pp_prod, resp, time() - start_time))
 
         for name in self.module_actions:
           if name in actions:
@@ -1611,7 +1620,7 @@ Please read the README inside for more examples and usage information.
 # }}}
 
 # Response_Base {{{
-def match_size(size, val):
+def match_range(size, val):
   if '-' in val:
     size_min, size_max = val.split('-')
 
@@ -1619,42 +1628,44 @@ def match_size(size, val):
       raise ValueError('Invalid interval')
 
     elif not size_min: # size == -N
-      return size <= int(size_max)
+      return size <= float(size_max)
 
     elif not size_max: # size == N-
-      return size >= int(size_min)
+      return size >= float(size_min)
 
     else:
-      size_min, size_max = int(size_min), int(size_max)
+      size_min, size_max = float(size_min), float(size_max)
       if size_min >= size_max:
         raise ValueError('Invalid interval')
 
       return size_min <= size <= size_max
 
   else:
-    return size == int(val)
+    return size == float(val)
 
 class Response_Base:
 
   available_conditions = (
     ('code', 'match status code'),
     ('size', 'match size (N or N-M or N- or -N)'),
+    ('time', 'match time (N or N-M or N- or -N)'),
     ('mesg', 'match message'),
-    ('fgrep', 'search for string'),
-    ('egrep', 'search for regex'),
+    ('fgrep', 'search for string in mesg'),
+    ('egrep', 'search for regex in mesg'),
     )
 
-  logformat = '%-5s %-4s | %-34s | %5s | %s'
-  logheader = ('code', 'size', 'candidate', 'num', 'mesg')
+  logformat = '%-5s %-4s %6s | %-34s | %5s | %s'
+  logheader = ('code', 'size', 'time', 'candidate', 'num', 'mesg')
 
   def __init__(self, code, mesg, trace=None):
     self.code = code
     self.mesg = mesg
     self.trace = trace
     self.size = len(self.mesg)
+    self.time = 0
 
   def compact(self):
-    return self.code, self.size
+    return self.code, self.size, '%.3f' % self.time
 
   def __str__(self):
     return self.mesg
@@ -1666,7 +1677,10 @@ class Response_Base:
     return val == str(self.code)
 
   def match_size(self, val):
-    return match_size(self.size, val)
+    return match_range(self.size, val)
+
+  def match_time(self, val):
+    return match_range(self.time, val)
 
   def match_mesg(self, val):
     return val == self.mesg
@@ -2199,7 +2213,7 @@ class SMB_login(TCP_Cache):
   available_options += TCP_Cache.available_options
 
   class Response(Response_Base):
-    logformat = '%-8s %-4s | %-34s | %5s | %s'
+    logformat = '%-8s %-4s %6s | %-34s | %5s | %s'
 
   # ripped from medusa smbnt.c
   error_map = {
@@ -2741,7 +2755,7 @@ class Oracle_login:
   available_actions = ()
 
   class Response(Response_Base):
-    logformat = '%-9s %-4s | %-34s | %5s | %s'
+    logformat = '%-9s %-4s %6s | %-34s | %5s | %s'
 
   def execute(self, host, port='1521', user='', password='', sid=''):
     dsn = cx_Oracle.makedsn(host, port, sid)
@@ -2821,8 +2835,8 @@ class Controller_HTTP(Controller):
 
 class Response_HTTP(Response_Base):
 
-  logformat = '%-4s %-13s | %-32s | %5s | %s'
-  logheader = ('code', 'size:clen', 'candidate', 'num', 'mesg')
+  logformat = '%-4s %-13s %6s | %-32s | %5s | %s'
+  logheader = ('code', 'size:clen', 'time', 'candidate', 'num', 'mesg')
 
   def __init__(self, code, response, trace=None, content_length=-1):
     self.content_length = content_length
@@ -2841,7 +2855,7 @@ class Response_HTTP(Response_Base):
       return line.strip()
 
   def match_clen(self, val):
-    return match_size(self.content_length, val)
+    return match_range(self.content_length, val)
 
   def match_fgrep(self, val):
     return val in self.mesg

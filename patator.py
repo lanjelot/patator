@@ -2843,7 +2843,7 @@ class Response_HTTP(Response_Base):
     Response_Base.__init__(self, code, response, trace)
 
   def compact(self):
-    return self.code, '%d:%d' % (self.size, self.content_length)
+    return self.code, '%d:%d' % (self.size, self.content_length), '%.3f' % self.time
 
   def __str__(self):
     i = self.mesg.rfind('HTTP/', 0, 5000)

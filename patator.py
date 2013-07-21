@@ -3615,6 +3615,38 @@ class Keystore_pass:
 
 # }}}
 
+# Umbraco {{{
+import hmac
+class Umbraco_crack:
+  '''Crack Umbraco HMAC-SHA1 password hashes'''
+
+  usage_hints = (
+    """%prog hashlist=@umbraco_users.pw password=FILE0 0=rockyou.txt""",
+    )
+
+  available_options = (
+    ('hashlist', 'hashes to crack'),
+    ('password', 'password to test'),
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, password, hashlist):
+
+    p = password.encode('utf-16-le')
+    h = b64encode(hmac.new(p, p, digestmod=hashlib.sha1).digest())
+
+    if h not in hashlist:
+      code, mesg = 1, 'fail'
+    else:
+      cracked = [line.rstrip() for line in hashlist.split('\n') if h in line]
+      code, mesg = 0, ' '.join(cracked)
+
+    return self.Response(code, mesg)
+
+# }}}
+
 # TCP Fuzz {{{
 class TCP_fuzz:
   '''Fuzz TCP services'''
@@ -3702,6 +3734,7 @@ modules = [
   
   ('unzip_pass', (Controller, Unzip_pass)),
   ('keystore_pass', (Controller, Keystore_pass)),
+  ('umbraco_crack', (Controller, Umbraco_crack)),
 
   ('tcp_fuzz', (Controller, TCP_fuzz)),
   ('dummy_test', (Controller, Dummy_test)),

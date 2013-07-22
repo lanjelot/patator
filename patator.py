@@ -760,102 +760,116 @@ class FileIter:
 # For instance:
 # $ ./dummy_test data=PROG0 0='seq 1 80'
 # $ ./dummy_test data=PROG0 0='mp64.bin ?l?l?l',$(mp64.bin --combination ?l?l?l)
-class HexIntRangeIter:
+class RangeIter:
+
   def __init__(self, typ, rng, random=None): #random.Random()):
-    r = rng.split('-')
 
-    if typ == 'hex':
-      self.fmt = '%x'
-      self.mn = int(r[0], 16)
-      self.mx = int(r[1], 16)
+    if typ in ('hex', 'int', 'float'):
 
-    elif typ in ('int', 'digits'):
-      self.fmt = '%d'
-      c = rng.count('-')
-
-      if c == 1: # 1-50
-        self.mn = int(r[0])
-        self.mx = int(r[1])
-
-      elif c == 2: # -50-50
-        self.mn = int(r[1]) * -1
-        self.mx = int(r[2])
-
-      elif c == 3: # -50--25
-        self.mn = int(r[1]) * -1
-        self.mx = int(r[3]) * -1
-
-        if self.mn > self.mx:
-          self.mn, self.mx = self.mx, self.mn
-
-      else:
+      m = re.match(r'(-?.+?)-(-?.+)$', rng) # 5-50 or -5-50 or 5--50 or -5--50
+      if not m:
         raise NotImplementedError("Unsupported range '%s'" % rng)
 
-    self.cur = self.mn
-    self.random = random
+      mn = m.group(1)
+      mx = m.group(2)
 
-  def __iter__(self):
-    return self
+      if typ == 'hex':
+        mn = int(mn, 16)
+        mx = int(mx, 16)
+        fmt = '%x'
 
-  def next(self):
-    if self.random:
-      val = self.random.randint(self.mn, self.mx)
-      return self.fmt % val
+      elif typ == 'int':
+        mn = int(mn)
+        mx = int(mx)
+        fmt = '%d'
 
-    else:
-      if self.cur > self.mx:
-        raise StopIteration
+      elif typ == 'float':
+        from decimal import Decimal
+        mn = Decimal(mn)
+        mx = Decimal(mx)
 
-      ret = self.fmt % self.cur
-      self.cur += 1
+      if mn > mx:
+        step = -1
+      else:
+        step = 1
 
-      return ret
+    elif typ == 'letters':
+      charset = [c for c in string.letters]
 
-  def __len__(self):
-    if self.random:
-      return maxint
-    else:
-      return self.mx - self.mn + 1
+    elif typ in ('lower', 'lowercase'):
+      charset = [c for c in string.lowercase]
 
-def letterrange(first, last, charset):
-  for k in range(len(last)):
-    for x in product(*[chain(charset)]*(k+1)):
-      result = ''.join(x)
-      if first:
-        if first != result:
-          continue
-        else:
-          first = None
-      yield result
-      if result == last:
-        return
+    elif typ in ('upper', 'uppercase'):
+      charset = [c for c in string.uppercase]
 
-class LetterRangeIter:
-  def __init__(self, typ, rng):
-    self.first, self.last = rng.split('-')
-    if typ == 'letters':
-      self.charset = [c for c in string.letters]
-    elif 'lower' in typ:
-      self.charset = [c for c in string.lowercase]
-    elif 'upper' in typ:
-      self.charset = [c for c in string.uppercase]
     else:
       raise NotImplementedError("Incorrect type '%s'" % typ)
 
+    def zrange(start, stop, step, fmt):
+      x = start
+      while x != stop+step:
+
+        yield fmt % x
+        x += step
+
+    def letterrange(first, last, charset):
+      for k in range(len(last)):
+        for x in product(*[chain(charset)]*(k+1)):
+          result = ''.join(x)
+          if first:
+            if first != result:
+              continue
+            else:
+              first = None
+          yield result
+          if result == last:
+            return
+
+    if typ == 'float':
+      precision = max(len(str(x).partition('.')[-1]) for x in (mn, mx))
+
+      fmt = '%%.%df' % precision
+      exp = 10**precision
+      step *= Decimal(1) / exp
+
+      self.generator = zrange(mn, mx, step, fmt)
+      self.size = int(abs(mx-mn) * exp) + 1
+
+      def random_generator():
+        while True:
+          yield fmt % (Decimal(random.randint(mn*exp, mx*exp)) / exp)
+
+    elif typ in ('hex', 'int'):
+      self.generator = zrange(mn, mx, step, fmt)
+      self.size = abs(mx-mn) + 1
+
+      def random_generator():
+        while True:
+          yield fmt % random.randint(mn, mx)
+
+    else: # letters, lower, upper
+      def count(f):
+        total = 0
+        i = 0
+        for c in f[::-1]:
+          z = charset.index(c) + 1
+          total += (len(charset)**i)*z
+          i += 1
+        return total + 1
+
+      first, last = rng.split('-')
+      self.generator = letterrange(first, last, charset)
+      self.size = count(last) - count(first) + 1
+
+    if random:
+      self.generator = random_generator()
+      self.size = maxint
+
   def __iter__(self):
-    return letterrange(self.first, self.last, self.charset)
+    return self.generator
 
   def __len__(self):
-    def count(f):
-      total = 0
-      i = 0
-      for c in f[::-1]:
-        z = self.charset.index(c) + 1
-        total += (len(self.charset)**i)*z
-        i += 1
-      return total + 1
-
-    return count(self.last) - count(self.first) + 1
+    return self.size
 
 # }}}
 
@@ -1282,21 +1296,20 @@ Please read the README inside for more examples and usage information.
         iterable = chain(elements)
 
       elif t == 'RANGE':
-        typ, opt = v.split(':', 1)
-        logger.debug('typ: %s, opt: %s' % (typ, opt))
+        size = 0
+        ranges = []
 
-        if typ in ['hex', 'int', 'digits']:
-          it = HexIntRangeIter(typ, opt)
-          size = len(it)
+        for r in v.split(','):
+          typ, opt = r.split(':', 1)
 
-        elif typ in ['letters', 'lower', 'lowercase', 'upper', 'uppercase']:
-          it = LetterRangeIter(typ, opt)
-          size = len(it)
+          if typ not in ['hex', 'int', 'float', 'letters', 'lower', 'lowercase', 'upper', 'uppercase']:
+            raise NotImplementedError("Incorrect range type '%s'" % typ)
 
-        else:
-          raise NotImplementedError("Incorrect range type '%s'" % typ)
+          it = RangeIter(typ, opt)
+          size += len(it)
+          ranges.append(it)
 
-        iterable = chain(it)
+        iterable = chain(*ranges)
 
       elif t == 'PROG':
         m = re.match(r'(.+),(\d+)$', v)
@@ -1320,7 +1333,7 @@ Please read the README inside for more examples and usage information.
       iterables.append(chain(['']))
 
     if self.stop:
-      self.total_size = self.stop - self.start 
+      self.total_size = self.stop - self.start
     else:
       self.total_size -= self.start
 

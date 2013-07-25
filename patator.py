@@ -2826,26 +2826,6 @@ try:
 except ImportError:
   warnings.append('pycurl')
 
-class Controller_HTTP(Controller):
-  def expand_key(self, arg):
-    key, val = arg.split('=', 1)
-    if key == 'url':
-      m = re.match(r'(?:(?P<scheme>.+)://)?(?P<host>.+?)(?::(?P<port>[^/]+))?/'\
-        +  '(?P<path>[^;?#]*)'\
-        +  '(?:\;(?P<params>[^?#]*))?'\
-        +  '(?:\?(?P<query>[^#]*))?'\
-        +  '(?:\#(?P<fragment>.*))?' , val)
-
-      if not m:
-        yield (key, val)
-
-      else:
-        for k, v in m.groupdict().items():
-          if v is not None:
-            yield (k, v)
-    else:
-      yield (key, val)
-
 class Response_HTTP(Response_Base):
 
   logformat = '%-4s %-13s %6s | %-32s | %5s | %s'
@@ -2859,13 +2839,11 @@ class Response_HTTP(Response_Base):
     return self.code, '%d:%d' % (self.size, self.content_length), '%.3f' % self.time
 
   def __str__(self):
-    i = self.mesg.rfind('HTTP/', 0, 5000)
-    if i == -1:
-      return self.mesg
+    lines = re.findall('^(HTTP/.+)$', self.mesg, re.M)
+    if not lines:
+      return 'Unexpected HTTP response'
     else:
-      j = self.mesg.find('\n', i)
-      line = self.mesg[i:j]
-      return line.strip()
+      return lines[-1]
 
   def match_clen(self, val):
     return match_range(self.content_length, val)
@@ -2896,7 +2874,7 @@ class HTTP_fuzz(TCP_Cache):
     ]
 
   available_options = (
-    ('url', 'main url to target (scheme://host[:port]/path?query)'),
+    ('url', 'target url (scheme://host[:port]/path?query)'),
     #('host', 'target host'),
     #('port', 'target port'),
     #('scheme', 'scheme [http | https]'),
@@ -3214,12 +3192,13 @@ def dns_query(server, timeout, protocol, qname, qtype, qclass):
 
 def generate_tld():
   from itertools import product
+  from string import ascii_lowercase
   gtld = [
     'aero', 'arpa', 'asia', 'biz', 'cat', 'com', 'coop', 'edu',
     'gov', 'info', 'int', 'jobs', 'mil', 'mobi', 'museum', 'name',
     'net', 'org', 'pro', 'tel', 'travel']
 
-  cctld = [''.join(i) for i in product(*[string.ascii_lowercase]*2)]
+  cctld = [''.join(i) for i in product(*[ascii_lowercase]*2)]
   tld = gtld + cctld
   return tld, len(tld)
 
@@ -3725,7 +3704,7 @@ modules = [
   ('smtp_vrfy', (Controller, SMTP_vrfy)),
   ('smtp_rcpt', (Controller, SMTP_rcpt)),
   ('finger_lookup', (Controller_Finger, Finger_lookup)),
-  ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
+  ('http_fuzz', (Controller, HTTP_fuzz)),
   ('pop_login', (Controller, POP_login)),
   ('pop_passd', (Controller, POP_passd)),
   ('imap_login', (Controller, IMAP_login)),

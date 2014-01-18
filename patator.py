@@ -1454,9 +1454,7 @@ Please read the README inside for more examples and usage information.
           logger.debug('payload: %s [try %d/%d]' % (payload, try_count, self.max_retries+1))
 
           try:
-            exec_time = time()
             resp = module.execute(**payload)
-            resp.time = time() - exec_time
 
           except:
             e_type, e_value, _ = exc_info()
@@ -1670,12 +1668,12 @@ class Response_Base:
   logformat = '%-5s %-4s %6s | %-34s | %5s | %s'
   logheader = ('code', 'size', 'time', 'candidate', 'num', 'mesg')
 
-  def __init__(self, code, mesg, trace=None):
+  def __init__(self, code, mesg, timing=0, trace=None):
     self.code = code
     self.mesg = mesg
+    self.time = isinstance(timing, Timing) and timing.time or time 
+    self.size = len(mesg)
     self.trace = trace
-    self.size = len(self.mesg)
-    self.time = 0
 
   def compact(self):
     return self.code, self.size, '%.3f' % self.time
@@ -1706,6 +1704,15 @@ class Response_Base:
 
   def dump(self):
     return self.trace or str(self)
+
+
+class Timing:
+  def __enter__(self):
+    self.t1 = time()
+    return self
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    self.time = time() - self.t1
 
 # }}}
 
@@ -1741,7 +1748,7 @@ class TCP_Cache:
   def bind(self, host, port, *args, **kwargs):
 
     hp = '%s:%s' % (host, port)
-    key = ':'.join(args)
+    key = ':'.join(map(str, args))
 
     if hp in self.cache:
       k, c = self.cache[hp]
@@ -1756,6 +1763,7 @@ class TCP_Cache:
 
     self.curr = None
 
+    logger.debug('connect')
     conn = self.connect(host, port, *args, **kwargs)
 
     self.cache[hp] = (key, conn)
@@ -1814,13 +1822,16 @@ class FTP_login(TCP_Cache):
 
   def execute(self, host, port='21', tls='0', user=None, password=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, tls, timeout=timeout)
+    with Timing() as timing:
+      fp, resp = self.bind(host, port, tls, timeout=timeout)
 
     try:
-      if user is not None:
-        resp = fp.sendcmd('USER ' + user)
-      if password is not None:
-        resp = fp.sendcmd('PASS ' + password)
+      if user is not None or password is not None:
+        with Timing() as timing:
+          if user is not None:
+            resp = fp.sendcmd('USER ' + user)
+          if password is not None:
+            resp = fp.sendcmd('PASS ' + password)
 
       logger.debug('No error: %s' % resp)
       self.reset()
@@ -1833,7 +1844,7 @@ class FTP_login(TCP_Cache):
       self.reset()
 
     code, mesg = resp.split(' ', 1)
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -1872,18 +1883,20 @@ class SSH_login(TCP_Cache):
 
   def execute(self, host, port='22', user=None, password=None, auth_type='password', persistent='1'):
 
-    fp, banner = self.bind(host, port, user)
+    with Timing() as timing:
+      fp, banner = self.bind(host, port, user)
 
     try:
       if user is not None and password is not None:
-        if auth_type == 'password':
-          fp.auth_password(user, password, fallback=False)
+        with Timing() as timing:
+          if auth_type == 'password':
+            fp.auth_password(user, password, fallback=False)
 
-        elif auth_type == 'keyboard-interactive':
-          fp.auth_interactive(user, lambda a,b,c: [password] if len(c) == 1 else [])
+          elif auth_type == 'keyboard-interactive':
+            fp.auth_interactive(user, lambda a,b,c: [password] if len(c) == 1 else [])
 
-        else:
-          raise NotImplementedError("Incorrect auth_type '%s'" % auth_type)
+          else:
+            raise NotImplementedError("Incorrect auth_type '%s'" % auth_type)
 
       logger.debug('No error')
       code, mesg = '0', banner
@@ -1897,7 +1910,7 @@ class SSH_login(TCP_Cache):
     if persistent == '0':
       self.reset()
 
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -1930,7 +1943,8 @@ class Telnet_login(TCP_Cache):
 
   def execute(self, host, port='23', inputs=None, prompt_re='\w+:', timeout='20', persistent='1'):
 
-    fp, _ = self.bind(host, port, timeout=timeout)
+    with Timing() as timing:
+      fp, _ = self.bind(host, port, timeout=timeout)
 
     trace = ''
     timeout = int(timeout)
@@ -1942,22 +1956,23 @@ class Telnet_login(TCP_Cache):
       self.prompt_count += 1
   
     if inputs is not None:
-      for val in inputs.split(r'\n'):
-        logger.debug('input: %s' % val)
-        cmd = val + '\n' #'\r\x00'
-        fp.write(cmd)
-        trace += cmd
+      with Timing() as timing:
+        for val in inputs.split(r'\n'):
+          logger.debug('input: %s' % val)
+          cmd = val + '\n' #'\r\x00'
+          fp.write(cmd)
+          trace += cmd
 
-        _, _, raw = fp.expect([prompt_re], timeout=timeout)
-        logger.debug('raw %d: %s' % (self.prompt_count, repr(raw)))
-        trace += raw
-        self.prompt_count += 1
+          _, _, raw = fp.expect([prompt_re], timeout=timeout)
+          logger.debug('raw %d: %s' % (self.prompt_count, repr(raw)))
+          trace += raw
+          self.prompt_count += 1
 
     if persistent == '0':
       self.reset()
 
     mesg = repr(raw)[1:-1] # strip enclosing single quotes
-    return self.Response(0, mesg, trace)
+    return self.Response(0, mesg, timing, trace)
 
 # }}}
 
@@ -2013,16 +2028,18 @@ class SMTP_vrfy(SMTP_Base):
 
   def execute(self, host, port='', ssl='0', helo='', starttls='0', user=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
+    with Timing() as timing:
+      fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
 
     if user is not None:
-      resp = fp.verify(user)
+      with Timing() as timing:
+        resp = fp.verify(user)
 
     if persistent == '0':
       self.reset()
 
     code, mesg = resp
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 
 class SMTP_rcpt(SMTP_Base):
@@ -2040,13 +2057,15 @@ class SMTP_rcpt(SMTP_Base):
 
   def execute(self, host, port='', ssl='0', helo='', starttls='0', mail_from='test@example.org', user=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
+    with Timing() as timing:
+      fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
 
-    if mail_from:
-      resp = fp.mail(mail_from)
-
-    if user:
-      resp = fp.rcpt(user)
+    if mail_from or user is not None:
+      with Timing() as timing:
+        if mail_from:
+          resp = fp.mail(mail_from)
+        if user is not None:
+          resp = fp.rcpt(user)
 
     fp.rset()
 
@@ -2054,7 +2073,7 @@ class SMTP_rcpt(SMTP_Base):
       self.reset()
 
     code, mesg = resp
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 
 class SMTP_login(SMTP_Base):
@@ -2072,11 +2091,13 @@ class SMTP_login(SMTP_Base):
 
   def execute(self, host, port='', ssl='0', helo='', starttls='0', user=None, password=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
+    with Timing() as timing:
+      fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
     
     try:
       if user is not None and password is not None:
-        resp = fp.login(user, password)
+        with Timing() as timing:
+          resp = fp.login(user, password)
 
       logger.debug('No error: %s' % resp)
       self.reset()
@@ -2088,7 +2109,7 @@ class SMTP_login(SMTP_Base):
       self.reset()
 
     code, mesg = resp
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -2127,17 +2148,20 @@ class Finger_lookup:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(int(timeout))
 
-    s.connect((host, int(port)))
+    with Timing() as timing:
+      s.connect((host, int(port)))
+
     if user:
       s.send(user)
     s.send('\r\n')
 
     data = ''
-    while True:
-      raw = s.recv(1024)
-      if not raw:
-        break
-      data += raw
+    with Timing() as timing:
+      while True:
+        raw = s.recv(1024)
+        if not raw:
+          break
+        data += raw
 
     s.close()
 
@@ -2146,7 +2170,7 @@ class Finger_lookup:
     data = data.strip()
     mesg = repr(data)
 
-    resp = self.Response(0, mesg, data)
+    resp = self.Response(0, mesg, timing, data)
     resp.lines = [l.strip('\r\n') for l in data.split('\n')]
 
     return resp
@@ -2187,11 +2211,13 @@ class LDAP_login:
     out = p.stdout.read()
     err = p.stderr.read()
 
-    code = p.wait()
+    with Timing() as timing:
+      code = p.wait()
+
     mesg = repr((out + err).strip())[1:-1]
     trace = '[out]\n%s\n[err]\n%s' % (out, err)
 
-    return self.Response(code, mesg, trace)
+    return self.Response(code, mesg, timing, trace)
 
 # }}}
 
@@ -2261,19 +2287,21 @@ class SMB_login(TCP_Cache):
 
   def execute(self, host, port='139', user=None, password=None, password_hash=None, domain='', persistent='1'):
 
-    fp, _ = self.bind(host, port)
+    with Timing() as timing:
+      fp, _ = self.bind(host, port)
 
     try:
       if user is None:
         fp.login('', '') # to get computer name
         fp.login_standard('', '') # to get workgroup or domain (Primary Domain)
       else:
-        if password is None:
-          lmhash, nthash = password_hash.split(':')
-          fp.login(user, '', domain, lmhash, nthash)
+        with Timing() as timing:
+          if password is None:
+            lmhash, nthash = password_hash.split(':')
+            fp.login(user, '', domain, lmhash, nthash)
 
-        else:
-          fp.login(user, password, domain)
+          else:
+            fp.login(user, password, domain)
 
       logger.debug('No error')
       code, mesg = '0', '%s\\%s (%s)' % (fp.get_server_domain(), fp.get_server_name(), fp.get_server_os())
@@ -2299,7 +2327,7 @@ class SMB_login(TCP_Cache):
     if persistent == '0':
       self.reset()
 
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 class DCE_Connection(TCP_Connection):
 
@@ -2408,13 +2436,17 @@ class POP_login(TCP_Cache):
 
   def execute(self, host, port='', ssl='0', user=None, password=None, timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, ssl, timeout=timeout)
+    with Timing() as timing:
+      fp, resp = self.bind(host, port, ssl, timeout=timeout)
 
     try:
-      if user is not None:
-        resp = fp.user(user)
-      if password is not None:
-        resp = fp.pass_(password)
+      if user is not None or password is not None:
+        with Timing() as timing:
+
+          if user is not None:
+            resp = fp.user(user)
+          if password is not None:
+            resp = fp.pass_(password)
 
       logger.debug('No error: %s' % resp)
       self.reset()
@@ -2427,7 +2459,7 @@ class POP_login(TCP_Cache):
       self.reset()
 
     code, mesg = resp.split(' ', 1)
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 class POP_passd:
   '''Brute-force poppassd (http://netwinsite.com/poppassd/)'''
@@ -2448,20 +2480,25 @@ class POP_passd:
   Response = Response_Base
 
   def execute(self, host, port='106', user=None, password=None, timeout='10'):
+
     fp = LineReceiver()
-    resp = fp.connect(host, int(port), int(timeout))
+    with Timing() as timing:
+      resp = fp.connect(host, int(port), int(timeout))
     trace = resp + '\r\n'
 
     try:
-      if user is not None:
-        cmd = 'USER %s' % user
-        resp = fp.sendcmd(cmd)
-        trace += '%s\r\n%s\r\n' % (cmd, resp)
+      if user is not None or password is not None:
+        with Timing() as timing:
 
-      if password is not None:
-        cmd = 'PASS %s' % password
-        resp = fp.sendcmd(cmd)
-        trace += '%s\r\n%s\r\n' % (cmd, resp)
+          if user is not None:
+            cmd = 'USER %s' % user
+            resp = fp.sendcmd(cmd)
+            trace += '%s\r\n%s\r\n' % (cmd, resp)
+
+          if password is not None:
+            cmd = 'PASS %s' % password
+            resp = fp.sendcmd(cmd)
+            trace += '%s\r\n%s\r\n' % (cmd, resp)
 
     except LineReceiver_Error as e:
       resp = str(e)
@@ -2472,7 +2509,7 @@ class POP_passd:
       fp.close()
 
     code, mesg = fp.parse(resp)
-    return self.Response(code, mesg, trace)
+    return self.Response(code, mesg, timing, trace)
 
 # }}}
 
@@ -2499,23 +2536,29 @@ class IMAP_login:
   def execute(self, host, port='', ssl='0', user=None, password=None):
     if ssl == '0':
       if not port: port = 143
-      fp = IMAP4(host, port)
+      klass = IMAP4
     else:
       if not port: port = 993
-      fp = IMAP4_SSL(host, port)
+      klass = IMAP4_SSL
+
+    with Timing() as timing:
+      fp = klass(host, port)
 
     code, resp = 0, fp.welcome
 
     try:
       if user is not None and password is not None:
-        r = fp.login(user, password)
+        with Timing() as timing:
+          r = fp.login(user, password)
         resp = ', '.join(r[1])
+
+      # doesn't it need to self.reset() to test more creds?
 
     except IMAP4.error as e:
       logger.debug('imap_error: %s' % e)
       code, resp = 1, str(e)
 
-    return self.Response(code, resp)
+    return self.Response(code, resp, timing)
 
 # }}}
 
@@ -2589,19 +2632,23 @@ class VMauthd_login(TCP_Cache):
 
   def execute(self, host, port='902', user=None, password=None, ssl='1', timeout='10', persistent='1'):
 
-    fp, resp = self.bind(host, port, ssl, timeout=timeout)
+    with Timing() as timing:
+      fp, resp = self.bind(host, port, ssl, timeout=timeout)
     trace = resp + '\r\n'
 
     try:
-      if user is not None:
-        cmd = 'USER %s' % user
         resp = fp.sendcmd(cmd)
         trace += '%s\r\n%s\r\n' % (cmd, resp)
 
-      if password is not None:
-        cmd = 'PASS %s' % password
-        resp = fp.sendcmd(cmd)
-        trace += '%s\r\n%s\r\n' % (cmd, resp)
+          if user is not None:
+            cmd = 'USER %s' % user
+            resp = fp.sendcmd(cmd)
+            trace += '%s\r\n%s\r\n' % (cmd, resp)
+
+          if password is not None:
+            cmd = 'PASS %s' % password
+            resp = fp.sendcmd(cmd)
+            trace += '%s\r\n%s\r\n' % (cmd, resp)
 
     except LineReceiver_Error as e:
       resp = str(e)
@@ -2612,7 +2659,7 @@ class VMauthd_login(TCP_Cache):
       self.reset()
 
     code, mesg = fp.parse(resp)
-    return self.Response(code, mesg, trace)
+    return self.Response(code, mesg, timing, trace)
 
 # }}}
 
@@ -2643,14 +2690,16 @@ class MySQL_login:
   def execute(self, host, port='3306', user='anony', password='', timeout='10'):
 
     try:
-      fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password, connect_timeout=int(timeout))
+      with Timing() as timing:
+        fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password, connect_timeout=int(timeout))
+
       resp = '0', fp.get_server_info()
 
     except _mysql.Error as resp:
       logger.debug('MysqlError: %s' % resp)
 
     code, mesg = resp
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 class MySQL_query(TCP_Cache):
   '''Brute-force MySQL queries'''
@@ -2679,13 +2728,14 @@ class MySQL_query(TCP_Cache):
 
     fp, _ = self.bind(host, port, user, password)
 
-    fp.query(query)
+    with Timing() as timing:
+      fp.query(query)
 
     rs = fp.store_result()
     rows = rs.fetch_row(10, 0)
 
     code, mesg = '0', '\n'.join(', '.join(map(str, r)) for r in filter(any, rows))
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -2722,10 +2772,11 @@ class MSSQL_login:
     fp = tds.MSSQL(host, int(port))
     fp.connect()
 
-    if windows_auth == '0':
-      r = fp.login(None, user, password, None, None, False)
-    else:
-      r = fp.login(None, user, password, domain, password_hash, True)
+    with Timing() as timing:
+      if windows_auth == '0':
+        r = fp.login(none, user, password, none, none, false)
+      else:
+        r = fp.login(none, user, password, domain, password_hash, true)
 
     if not r:
       key = fp.replies[TDS_ERROR_TOKEN][0]
@@ -2741,7 +2792,7 @@ class MSSQL_login:
 
     fp.disconnect()
 
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 # }}}
 
 # Oracle {{{
@@ -2773,13 +2824,15 @@ class Oracle_login:
   def execute(self, host, port='1521', user='', password='', sid=''):
     dsn = cx_Oracle.makedsn(host, port, sid)
     try:
-      fp = cx_Oracle.connect(user, password, dsn, threaded=True)
+      with Timing() as timing:
+        fp = cx_Oracle.connect(user, password, dsn, threaded=True)
+
       code, mesg = '0', fp.version
 
     except cx_Oracle.DatabaseError as e:
       code, mesg = e.args[0].message[:-1].split(': ', 1)
       
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -2809,14 +2862,18 @@ class Pgsql_login:
   Response = Response_Base
 
   def execute(self, host, port='5432', user=None, password=None, database='postgres', ssl='disable', timeout='10'):
+
     try:
-      psycopg2.connect(host=host, port=int(port), user=user, password=password, database=database, sslmode=ssl, connect_timeout=int(timeout))
+      with Timing() as timing:
+        psycopg2.connect(host=host, port=int(port), user=user, password=password, database=database, sslmode=ssl, connect_timeout=int(timeout))
+
       code, mesg = '0', 'OK'
+
     except psycopg2.OperationalError as e:
       logger.debug('OperationalError: %s' % e)
       code, mesg = '1', str(e)[:-1]
   
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -2831,9 +2888,9 @@ class Response_HTTP(Response_Base):
   logformat = '%-4s %-13s %6s | %-32s | %5s | %s'
   logheader = ('code', 'size:clen', 'time', 'candidate', 'num', 'mesg')
 
-  def __init__(self, code, response, trace=None, content_length=-1):
+  def __init__(self, code, response, trace, content_length, time):
+    Response_Base.__init__(self, code, response, time, trace=trace)
     self.content_length = content_length
-    Response_Base.__init__(self, code, response, trace)
 
   def compact(self):
     return self.code, '%d:%d' % (self.size, self.content_length), '%.3f' % self.time
@@ -3021,11 +3078,12 @@ class HTTP_fuzz(TCP_Cache):
 
     http_code = fp.getinfo(pycurl.HTTP_CODE)
     content_length = fp.getinfo(pycurl.CONTENT_LENGTH_DOWNLOAD)
+    response_time = fp.getinfo(pycurl.TOTAL_TIME) - fp.getinfo(pycurl.STARTTRANSFER_TIME)
 
     if persistent == '0':
       self.reset()
 
-    return self.Response(http_code, response.getvalue(), trace.getvalue(), content_length)
+    return self.Response(http_code, response.getvalue(), trace.getvalue(), content_length, response_time)
 
 # }}}
 
@@ -3153,16 +3211,18 @@ class VNC_login:
     v = VNC()
 
     try:
-      code, mesg = 0, v.connect(host, int(port or 5900), int(timeout))
+      with Timing() as timing:
+        code, mesg = 0, v.connect(host, int(port or 5900), int(timeout))
 
       if password is not None:
-        code, mesg = v.login(password)
+        with Timing() as timing:
+          code, mesg = v.login(password)
 
     except VNC_Error as e:
       logger.debug('VNC_Error: %s' % e)
       code, mesg = 2, str(e)
 
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -3419,14 +3479,15 @@ class DNS_reverse:
 
   def execute(self, host, server='8.8.8.8', timeout='5', protocol='udp'):
 
-    response = dns_query(server, int(timeout), protocol, dns.reversename.from_address(host), qtype='PTR', qclass='IN')
+    with Timing() as timing:
+      response = dns_query(server, int(timeout), protocol, dns.reversename.from_address(host), qtype='PTR', qclass='IN')
 
     code = response.rcode()
     status = dns.rcode.to_text(code)
     rrs = [[host, c, t, d] for _, _, c, t, d in [rr.to_text().split(' ', 4) for rr in response.answer]]
 
     mesg = '%s %s' % (status, ''.join('[%s]' % ' '.join(rr) for rr in rrs))
-    resp = self.Response(code, mesg)
+    resp = self.Response(code, mesg, timing)
 
     resp.rrs = rrs
 
@@ -3459,15 +3520,16 @@ class DNS_forward:
   Response = Response_Base  
 
   def execute(self, name, server='8.8.8.8', timeout='5', protocol='udp', qtype='ANY', qclass='IN'):
-    
-    response = dns_query(server, int(timeout), protocol, name, qtype=qtype, qclass=qclass)
+
+    with Timing() as timing:
+      response = dns_query(server, int(timeout), protocol, name, qtype=qtype, qclass=qclass)
 
     code = response.rcode()
     status = dns.rcode.to_text(code)
     rrs = [[n, c, t, d] for n, _, c, t, d in [rr.to_text().split(' ', 4) for rr in response.answer + response.additional + response.authority]]
 
     mesg = '%s %s' % (status, ''.join('[%s]' % ' '.join(rr) for rr in rrs))
-    resp = self.Response(code, mesg)
+    resp = self.Response(code, mesg, timing)
 
     resp.rrs = rrs
 
@@ -3520,11 +3582,12 @@ class SNMP_login:
     else:
       raise NotImplementedError("Incorrect SNMP version '%s'" % version)
 
-    errorIndication, errorStatus, errorIndex, varBinds = cmdgen.CommandGenerator().getCmd(
-      security_model,
-      cmdgen.UdpTransportTarget((host, int(port or 161)), timeout=int(timeout), retries=int(retries)),
-      (1,3,6,1,2,1,1,1,0)
-      )
+    with Timing() as timing:
+      errorIndication, errorStatus, errorIndex, varBinds = cmdgen.CommandGenerator().getCmd(
+        security_model,
+        cmdgen.UdpTransportTarget((host, int(port or 161)), timeout=int(timeout), retries=int(retries)),
+        (1,3,6,1,2,1,1,1,0)
+        )
 
     code = '%d-%d' % (errorStatus, errorIndex)
     if not errorIndication:
@@ -3532,7 +3595,7 @@ class SNMP_login:
     else:
       mesg = '%s' % errorIndication 
 
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -3563,11 +3626,13 @@ class Unzip_pass:
     out = p.stdout.read()
     err = p.stderr.read()
 
-    code = p.wait()
+    with Timing() as timing:
+      code = p.wait()
+
     mesg = repr(out.strip())[1:-1]
     trace = '[out]\n%s\n[err]\n%s' % (out, err)
 
-    return self.Response(code, mesg, trace)
+    return self.Response(code, mesg, timing, trace)
       
 # }}}
 
@@ -3599,11 +3664,13 @@ class Keystore_pass:
     out = p.stdout.read()
     err = p.stderr.read()
 
-    code = p.wait()
+    with Timing() as timing:
+      code = p.wait()
+
     mesg = repr(out.strip())[1:-1]
     trace = '[out]\n%s\n[err]\n%s' % (out, err)
 
-    return self.Response(code, mesg, trace)
+    return self.Response(code, mesg, timing, trace)
 
 # }}}
 
@@ -3659,13 +3726,14 @@ class TCP_fuzz:
   def execute(self, host, port, data='', timeout='2'):
     fp = socket.create_connection((host, port), int(timeout))
     fp.send(data.decode('hex'))
-    resp = fp.recv(1024)
+    with Timing() as timing:
+      resp = fp.recv(1024)
     fp.close()
 
     code = 0
     mesg = resp.encode('hex')
 
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 
@@ -3687,11 +3755,11 @@ class Dummy_test:
   Response = Response_Base
 
   def execute(self, data):
-    code = 0
-    mesg = data
-    #sleep(.01)
+    code, mesg = 0, data
+    with Timing() as timing:
+      sleep(random.random())
 
-    return self.Response(code, mesg)
+    return self.Response(code, mesg, timing)
 
 # }}}
 

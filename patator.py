@@ -604,28 +604,119 @@ TODO
 # logging {{{
 import logging
 logging._levelNames[logging.ERROR] = 'FAIL'
-class MyLoggingFormatter(logging.Formatter):
+logger = logging.getLogger('patator')
 
-  dft_fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
-  dbg_fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(threadName)s] %(message)s'
+class TXTFormatter(logging.Formatter):
+  def __init__(self, indicatorsfmt):
+    self.resultfmt = '%(asctime)s %(name)-7s %(levelname)7s - ' + ' '.join('%%(%s)%ss' % (k, v) for k, v in indicatorsfmt) + ' | %(candidate)-34s | %(num)5s | %(mesg)s'
 
-  def __init__(self):
-    logging.Formatter.__init__(self, MyLoggingFormatter.dft_fmt, datefmt='%H:%M:%S')
-
+    logging.Formatter.__init__(self, datefmt='%H:%M:%S')
 
   def format(self, record):
+    if record.msg:
       if record.levelno == 10:   # DEBUG
-          self._fmt = MyLoggingFormatter.dbg_fmt
+        self._fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(threadName)s] %(message)s'
       else:
-          self._fmt = MyLoggingFormatter.dft_fmt
+        self._fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
+    else:
+      self._fmt = self.resultfmt
 
-      return logging.Formatter.format(self, record)
+    return logging.Formatter.format(self, record)
 
-handler = logging.StreamHandler()
-handler.setFormatter(MyLoggingFormatter())
-logger = logging.getLogger('patator')
-logger.setLevel(logging.INFO)
-logger.addHandler(handler)
+class CSVFormatter(logging.Formatter):
+  def __init__(self, indicatorsfmt):
+    fmt = '%(asctime)s,%(levelname)s,'+','.join('%%(%s)s' % name for name, _ in indicatorsfmt)+',%(candidate)s,%(num)s,%(mesg)s'
+
+    logging.Formatter.__init__(self, fmt, datefmt='%H:%M:%S')
+
+class XMLFormatter(logging.Formatter):
+  def __init__(self, indicatorsfmt):
+    fmt = '''<result time="%(asctime)s" level="%(levelname)s">
+''' + '\n'.join('  <{0}>%({0})s</{0}>'.format(name) for name, _ in indicatorsfmt) + '''
+  <candidate>%(candidate)s</candidate>
+  <num>%(num)s</num>
+  <mesg>%(mesg)s</mesg>
+</result>'''
+
+    logging.Formatter.__init__(self, fmt, datefmt='%H:%M:%S')
+
+class Output:
+
+  def __init__(self, indicatorsfmt, argv, log_dir, auto_log):
+
+    self.indicatorsfmt = indicatorsfmt
+    self.cmdline = ' '.join(argv)
+
+    if auto_log:
+      self.log_dir = create_time_dir(log_dir or '/tmp/patator', auto_log)
+    elif log_dir:
+      self.log_dir = create_dir(log_dir)
+    else:
+      self.log_dir = None
+
+    handler_out = logging.StreamHandler()
+    handler_out.setFormatter(TXTFormatter(self.indicatorsfmt))
+    logger.addHandler(handler_out)
+
+    self.audit = logging.getLogger('audit')
+    self.audit.addHandler(logging.NullHandler())
+    self.audit.setLevel(logging.INFO)
+
+    if self.log_dir:
+      handler_log = logging.FileHandler(os.path.join(self.log_dir, 'RUNTIME.log'))
+      handler_log.setFormatter(TXTFormatter(self.indicatorsfmt))
+      logger.addHandler(handler_log)
+
+      handler_csv = logging.FileHandler(os.path.join(self.log_dir, 'RESULTS.csv'))
+      handler_xml = logging.FileHandler(os.path.join(self.log_dir, 'RESULTS.xml'))
+
+      handler_csv.setFormatter(CSVFormatter(self.indicatorsfmt))
+      handler_xml.setFormatter(XMLFormatter(self.indicatorsfmt))
+
+      self.audit.addHandler(handler_csv)
+      self.audit.addHandler(handler_xml)
+
+  def headers(self):
+
+    names = [name for name, _ in self.indicatorsfmt] + ['candidate', 'num', 'mesg']
+
+    if self.log_dir:
+      with open(os.path.join(self.log_dir, 'RUNTIME.log'), 'a') as f:
+        f.write('$ %s\n' % self.cmdline)
+
+      with open(os.path.join(self.log_dir, 'RESULTS.xml'), 'a') as f:
+        f.write('<?xml version="1.0" ?>\n<results>\n')
+
+      with open(os.path.join(self.log_dir, 'RESULTS.csv'), 'a') as f:
+        f.write('time,level,'+','.join(names)+',candidate,num,mesg\n')
+
+    logger.info(' '*70)
+    logger.info(None, extra=dict((n, n) for n in names))
+    logger.info('-'*70)
+
+  def log_result(self, typ, resp, candidate, num):
+
+    results = [(name, value) for (name, _), value in zip(self.indicatorsfmt, resp.indicators())]
+    results += [('candidate', candidate), ('num', num), ('mesg', resp)]
+
+    if typ == 'fail':
+      logger.error(None, extra=dict(results))
+      self.audit.error(None, extra=dict(results))
+    else:
+      logger.info(None, extra=dict(results))
+      self.audit.info(None, extra=dict(results))
+
+  def save(self, resp, num):
+    if self.log_dir:
+      filename = '%d_%s' % (num, ':'.join(map(str, resp.indicators())))
+      with open('%s/%s.txt' % (self.log_dir, filename), 'w') as f:
+        f.write(resp.dump())
+
+  def __del__(self):
+    if self.log_dir:
+      with open(os.path.join(self.log_dir, 'RESULTS.xml'), 'a') as f:
+        f.write('</results>\n')
+
 # }}}
 
 # imports {{{
@@ -1013,6 +1104,8 @@ Please read the README inside for more examples and usage information.
 
     if opts.debug:
       logger.setLevel(logging.DEBUG)
+    else:
+      logger.setLevel(logging.INFO)
 
     if not len(args) > 0:
       parser.print_usage()
@@ -1028,7 +1121,6 @@ Please read the README inside for more examples and usage information.
     self.start_time = 0
     self.total_size = 1
     self.quit_now = False
-    self.log_dir = None
     self.thread_report = []
     self.thread_progress = []
 
@@ -1045,6 +1137,8 @@ Please read the README inside for more examples and usage information.
     self.max_retries = opts.max_retries
     self.num_threads = opts.num_threads
     self.start, self.stop, self.resume = opts.start, opts.stop, opts.resume
+
+    self.output = Output(self.module.Response.indicatorsfmt, argv, opts.log_dir, opts.auto_log)
 
     wlists = {}
     kargs = []
@@ -1126,20 +1220,6 @@ Please read the README inside for more examples and usage information.
       self.update_actions(x)
 
     logger.debug('actions: %s' % self.actions)
-
-    if opts.auto_log:
-      self.log_dir = create_time_dir(opts.log_dir or '/tmp/patator', opts.auto_log)
-    elif opts.log_dir:
-      self.log_dir = create_dir(opts.log_dir)
-    
-    if self.log_dir:
-      log_file = os.path.join(self.log_dir, 'RUNTIME.log')
-      with open(log_file, 'a') as f:
-        f.write('$ %s\n' % ' '.join(argv))
-
-      handler = logging.FileHandler(log_file)
-      handler.setFormatter(MyLoggingFormatter())
-      logging.getLogger('patator').addHandler(handler)
     
   def update_actions(self, arg): 
     actions, conditions = arg.split(':', 1)
@@ -1341,9 +1421,7 @@ Please read the README inside for more examples and usage information.
       self.resume = [int(i) for i in self.resume.split(',')]
       self.total_size -= sum(self.resume)
 
-    logger.info('')
-    logger.info(self.module.Response.logformat % self.module.Response.logheader)
-    logger.info('-' * 70)
+    self.output.headers()
 
     self.start_time = time()
     count = 0
@@ -1526,13 +1604,11 @@ Please read the README inside for more examples and usage information.
         p.current = current
         p.seconds[p.done_count % len(p.seconds)] = seconds
 
-        msg = self.module.Response.logformat % (resp.compact()+(current, offset, resp))
-
         if 'fail' in actions:
-          logger.error(msg)
+          self.output.log_result('fail', resp, current, offset)
 
         elif 'ignore' not in actions:
-          logger.info(msg)
+          self.output.log_result('hit', resp, current, offset)
 
         if 'fail' in actions:
           p.fail_count += 1
@@ -1543,10 +1619,7 @@ Please read the README inside for more examples and usage information.
         elif 'ignore' not in actions:
           p.hits_count += 1
 
-          if self.log_dir:
-            filename = '%d_%s' % (offset, ':'.join(map(str, resp.compact())))
-            with open('%s/%s.txt' % (self.log_dir, filename), 'w') as f:
-              f.write(resp.dump())
+          self.output.save(resp, offset)
 
           self.push_final(resp)
 
@@ -1665,17 +1738,16 @@ class Response_Base:
     ('egrep', 'search for regex in mesg'),
     )
 
-  logformat = '%-5s %-4s %6s | %-34s | %5s | %s'
-  logheader = ('code', 'size', 'time', 'candidate', 'num', 'mesg')
+  indicatorsfmt = [('code', -5), ('size', -4), ('time', 6)]
 
   def __init__(self, code, mesg, timing=0, trace=None):
     self.code = code
     self.mesg = mesg
-    self.time = isinstance(timing, Timing) and timing.time or time 
+    self.time = isinstance(timing, Timing) and timing.time or time
     self.size = len(mesg)
     self.trace = trace
 
-  def compact(self):
+  def indicators(self):
     return self.code, self.size, '%.3f' % self.time
 
   def __str__(self):
@@ -1853,7 +1925,7 @@ try:
   import paramiko 
   l = logging.getLogger('paramiko.transport')
   l.setLevel(logging.CRITICAL)
-  l.addHandler(handler)
+  l.addHandler(logging.NullHandler())
 except ImportError:
   warnings.append('paramiko')
 
@@ -2637,8 +2709,8 @@ class VMauthd_login(TCP_Cache):
     trace = resp + '\r\n'
 
     try:
-        resp = fp.sendcmd(cmd)
-        trace += '%s\r\n%s\r\n' % (cmd, resp)
+      if user is not None or password is not None:
+        with Timing() as timing:
 
           if user is not None:
             cmd = 'USER %s' % user
@@ -2885,14 +2957,13 @@ except ImportError:
 
 class Response_HTTP(Response_Base):
 
-  logformat = '%-4s %-13s %6s | %-32s | %5s | %s'
-  logheader = ('code', 'size:clen', 'time', 'candidate', 'num', 'mesg')
+  indicatorsfmt= [('code', -4), ('size:clen', -13), ('time', 6)]
 
   def __init__(self, code, response, trace, content_length, time):
     Response_Base.__init__(self, code, response, time, trace=trace)
     self.content_length = content_length
 
-  def compact(self):
+  def indicators(self):
     return self.code, '%d:%d' % (self.size, self.content_length), '%.3f' % self.time
 
   def __str__(self):

@@ -690,9 +690,9 @@ class Output:
       with open(os.path.join(self.log_dir, 'RESULTS.csv'), 'a') as f:
         f.write('time,level,'+','.join(names)+',candidate,num,mesg\n')
 
-    logger.info(' '*70)
+    logger.info(' '*77)
     logger.info(None, extra=dict((n, n) for n in names))
-    logger.info('-'*70)
+    logger.info('-'*77)
 
   def log_result(self, typ, resp, candidate, num):
 
@@ -1743,7 +1743,7 @@ class Response_Base:
   def __init__(self, code, mesg, timing=0, trace=None):
     self.code = code
     self.mesg = mesg
-    self.time = isinstance(timing, Timing) and timing.time or time
+    self.time = isinstance(timing, Timing) and timing.time or timing
     self.size = len(mesg)
     self.trace = trace
 
@@ -2846,9 +2846,9 @@ class MSSQL_login:
 
     with Timing() as timing:
       if windows_auth == '0':
-        r = fp.login(none, user, password, none, none, false)
+        r = fp.login(None, user, password, None, None, False)
       else:
-        r = fp.login(none, user, password, domain, password_hash, true)
+        r = fp.login(None, user, password, domain, password_hash, True)
 
     if not r:
       key = fp.replies[TDS_ERROR_TOKEN][0]

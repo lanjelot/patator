@@ -640,6 +640,14 @@ class XMLFormatter(logging.Formatter):
 
     logging.Formatter.__init__(self, fmt, datefmt='%H:%M:%S')
 
+class MsgFilter(logging.Filter):
+
+  def filter(self, record):
+    if record.msg:
+      return 0
+    else:
+      return 1
+
 class Output:
 
   def __init__(self, indicatorsfmt, argv, log_dir, auto_log):
@@ -656,43 +664,44 @@ class Output:
 
     handler_out = logging.StreamHandler()
     handler_out.setFormatter(TXTFormatter(self.indicatorsfmt))
+
     logger.addHandler(handler_out)
 
-    self.audit = logging.getLogger('audit')
-    self.audit.addHandler(logging.NullHandler())
-    self.audit.setLevel(logging.INFO)
-
     if self.log_dir:
-      handler_log = logging.FileHandler(os.path.join(self.log_dir, 'RUNTIME.log'))
-      handler_log.setFormatter(TXTFormatter(self.indicatorsfmt))
-      logger.addHandler(handler_log)
 
+      handler_log = logging.FileHandler(os.path.join(self.log_dir, 'RUNTIME.log'))
       handler_csv = logging.FileHandler(os.path.join(self.log_dir, 'RESULTS.csv'))
       handler_xml = logging.FileHandler(os.path.join(self.log_dir, 'RESULTS.xml'))
 
+      handler_csv.addFilter(MsgFilter())
+      handler_xml.addFilter(MsgFilter())
+
+      handler_log.setFormatter(TXTFormatter(self.indicatorsfmt))
       handler_csv.setFormatter(CSVFormatter(self.indicatorsfmt))
       handler_xml.setFormatter(XMLFormatter(self.indicatorsfmt))
 
-      self.audit.addHandler(handler_csv)
-      self.audit.addHandler(handler_xml)
+      logger.addHandler(handler_log)
+      logger.addHandler(handler_csv)
+      logger.addHandler(handler_xml)
 
   def headers(self):
-
-    names = [name for name, _ in self.indicatorsfmt] + ['candidate', 'num', 'mesg']
 
     if self.log_dir:
       with open(os.path.join(self.log_dir, 'RUNTIME.log'), 'a') as f:
         f.write('$ %s\n' % self.cmdline)
 
-      with open(os.path.join(self.log_dir, 'RESULTS.xml'), 'a') as f:
-        f.write('<?xml version="1.0" ?>\n<results>\n')
-
-      with open(os.path.join(self.log_dir, 'RESULTS.csv'), 'a') as f:
-        f.write('time,level,'+','.join(names)+',candidate,num,mesg\n')
+    names = [name for name, _ in self.indicatorsfmt] + ['candidate', 'num', 'mesg']
 
     logger.info(' '*77)
     logger.info(None, extra=dict((n, n) for n in names))
     logger.info('-'*77)
+
+    if self.log_dir:
+      with open(os.path.join(self.log_dir, 'RESULTS.xml'), 'w') as f:
+        f.write('<?xml version="1.0" ?>\n<results>\n')
+
+      with open(os.path.join(self.log_dir, 'RESULTS.csv'), 'w') as f:
+        f.write('time,level,%s\n' % ','.join(names))
 
   def log_result(self, typ, resp, candidate, num):
 
@@ -701,10 +710,8 @@ class Output:
 
     if typ == 'fail':
       logger.error(None, extra=dict(results))
-      self.audit.error(None, extra=dict(results))
     else:
       logger.info(None, extra=dict(results))
-      self.audit.info(None, extra=dict(results))
 
   def save(self, resp, num):
     if self.log_dir:

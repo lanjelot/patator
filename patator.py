@@ -613,13 +613,13 @@ class TXTFormatter(logging.Formatter):
     logging.Formatter.__init__(self, datefmt='%H:%M:%S')
 
   def format(self, record):
-    if record.msg:
+    if not record.msg or record.msg == 'headers':
+      self._fmt = self.resultfmt
+    else:
       if record.levelno == 10:   # DEBUG
         self._fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(threadName)s] %(message)s'
       else:
         self._fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
-    else:
-      self._fmt = self.resultfmt
 
     return logging.Formatter.format(self, record)
 
@@ -652,15 +652,13 @@ class Output:
 
   def __init__(self, indicatorsfmt, argv, log_dir, auto_log):
 
+    self.log_dir = None
     self.indicatorsfmt = indicatorsfmt
-    self.cmdline = ' '.join(argv)
 
     if auto_log:
       self.log_dir = create_time_dir(log_dir or '/tmp/patator', auto_log)
     elif log_dir:
       self.log_dir = create_dir(log_dir)
-    else:
-      self.log_dir = None
 
     handler_out = logging.StreamHandler()
     handler_out.setFormatter(TXTFormatter(self.indicatorsfmt))
@@ -668,10 +666,31 @@ class Output:
     logger.addHandler(handler_out)
 
     if self.log_dir:
+      runtime_log = os.path.join(self.log_dir, 'RUNTIME.log')
+      results_csv = os.path.join(self.log_dir, 'RESULTS.csv')
+      results_xml = os.path.join(self.log_dir, 'RESULTS.xml')
 
-      handler_log = logging.FileHandler(os.path.join(self.log_dir, 'RUNTIME.log'))
-      handler_csv = logging.FileHandler(os.path.join(self.log_dir, 'RESULTS.csv'))
-      handler_xml = logging.FileHandler(os.path.join(self.log_dir, 'RESULTS.xml'))
+      with open(runtime_log, 'a') as f:
+        f.write('$ %s\n' % ' '.join(argv))
+
+      names = [name for name, _ in self.indicatorsfmt] + ['candidate', 'num', 'mesg']
+
+      if not os.path.exists(results_csv):
+        with open(results_csv, 'w') as f:
+          f.write('time,level,%s\n' % ','.join(names))
+
+      if not os.path.exists(results_xml):
+        with open(results_xml, 'w') as f:
+          f.write('<?xml version="1.0" ?>\n<results>\n')
+
+      else: # remove "</results>\n"
+        with open(results_xml, 'r+') as f:
+          f.seek(-11, 2)
+          f.truncate(f.tell())
+
+      handler_log = logging.FileHandler(runtime_log)
+      handler_csv = logging.FileHandler(results_csv)
+      handler_xml = logging.FileHandler(results_xml)
 
       handler_csv.addFilter(MsgFilter())
       handler_xml.addFilter(MsgFilter())
@@ -686,22 +705,11 @@ class Output:
 
   def headers(self):
 
-    if self.log_dir:
-      with open(os.path.join(self.log_dir, 'RUNTIME.log'), 'a') as f:
-        f.write('$ %s\n' % self.cmdline)
-
     names = [name for name, _ in self.indicatorsfmt] + ['candidate', 'num', 'mesg']
 
     logger.info(' '*77)
-    logger.info(None, extra=dict((n, n) for n in names))
+    logger.info('headers', extra=dict((n, n) for n in names))
     logger.info('-'*77)
-
-    if self.log_dir:
-      with open(os.path.join(self.log_dir, 'RESULTS.xml'), 'w') as f:
-        f.write('<?xml version="1.0" ?>\n<results>\n')
-
-      with open(os.path.join(self.log_dir, 'RESULTS.csv'), 'w') as f:
-        f.write('time,level,%s\n' % ','.join(names))
 
   def log_result(self, typ, resp, candidate, num):
 
@@ -716,7 +724,7 @@ class Output:
   def save(self, resp, num):
     if self.log_dir:
       filename = '%d_%s' % (num, ':'.join(map(str, resp.indicators())))
-      with open('%s/%s.txt' % (self.log_dir, filename), 'w') as f:
+      with open('%s.txt' % os.path.join(self.log_dir, filename), 'w') as f:
         f.write(resp.dump())
 
   def __del__(self):
@@ -2331,7 +2339,7 @@ class SMB_login(TCP_Cache):
   available_options += TCP_Cache.available_options
 
   class Response(Response_Base):
-    logformat = '%-8s %-4s %6s | %-34s | %5s | %s'
+    indicatorsfmt = [('code', -8), ('size', -4), ('time', 6)]
 
   # ripped from medusa smbnt.c
   error_map = {
@@ -2898,7 +2906,7 @@ class Oracle_login:
   available_actions = ()
 
   class Response(Response_Base):
-    logformat = '%-9s %-4s %6s | %-34s | %5s | %s'
+    indicatorsfmt = [('code', -9), ('size', -4), ('time', 6)]
 
   def execute(self, host, port='1521', user='', password='', sid=''):
     dsn = cx_Oracle.makedsn(host, port, sid)

@@ -2972,14 +2972,14 @@ except ImportError:
 
 class Response_HTTP(Response_Base):
 
-  indicatorsfmt = [('code', -4), ('size:clen', -13), ('time', 9)]
+  indicatorsfmt = [('code', -4), ('size:clen', -13), ('time', 6)]
 
   def __init__(self, code, response, timing=0, trace=None, content_length=-1):
     Response_Base.__init__(self, code, response, timing, trace=trace)
     self.content_length = content_length
 
   def indicators(self):
-    return self.code, '%d:%d' % (self.size, self.content_length), '%.6f' % self.time
+    return self.code, '%d:%d' % (self.size, self.content_length), '%.3f' % self.time
 
   def __str__(self):
     lines = re.findall('^(HTTP/.+)$', self.mesg, re.M)
@@ -3164,7 +3164,7 @@ class HTTP_fuzz(TCP_Cache):
 
     http_code = fp.getinfo(pycurl.HTTP_CODE)
     content_length = fp.getinfo(pycurl.CONTENT_LENGTH_DOWNLOAD)
-    response_time = fp.getinfo(pycurl.TOTAL_TIME) - fp.getinfo(pycurl.STARTTRANSFER_TIME)
+    response_time = fp.getinfo(pycurl.TOTAL_TIME) - fp.getinfo(pycurl.PRETRANSFER_TIME)
 
     if persistent == '0':
       self.reset()

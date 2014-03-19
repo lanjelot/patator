@@ -2649,6 +2649,71 @@ class IMAP_login:
 
 # }}}
 
+# Rlogin {{{
+class Rlogin_login(TCP_Cache):
+  '''Brute-force rlogin'''
+
+  usage_hints = (
+    """%prog host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x 'reset:egrep!=Login incorrect.+login:'""",
+    )
+
+  available_options = (
+    ('host', 'target host'),
+    ('port', 'target port [513]'),
+    ('luser', 'client username [root]'),
+    ('user', 'usernames to test'),
+    ('password', 'passwords to test'),
+    ('prompt_re', 'regular expression to match prompts [\w+]'),
+    ('timeout', 'seconds to wait for a response and for prompt_re to match received data [20]'),
+    )
+  available_options += TCP_Cache.available_options
+
+  Response = Response_Base
+
+  def connect(self, host, port, timeout):
+    fp = Telnet()
+
+    for i in range(50):
+      try:
+        fp.sock = socket.create_connection((host, int(port)), timeout=int(timeout), source_address=('', 1023 - i))
+        break
+      except socket.error as e:
+        if (e.errno, e.strerror) != (98, 'Address already in use'):
+          raise e
+
+    self.need_handshake = True
+
+    return TCP_Connection(fp)
+
+  def execute(self, host, port='513', luser='root', user='', password=None, prompt_re='\w+:', timeout='10', persistent='1'):
+
+    fp, _ = self.bind(host, port, timeout=int(timeout))
+
+    trace = ''
+    timeout = int(timeout)
+
+    with Timing() as timing:
+      if self.need_handshake:
+        fp.write('\x00%s\x00%s\x00vt100/9600\x00' % (luser, user))
+        self.need_handshake = False
+      else:
+        fp.write('%s\r' % user)
+
+      _, _, resp = fp.expect([prompt_re], timeout=timeout) # expecting the Password: prompt
+      trace += resp
+
+      if password is not None:
+        fp.write('%s\r' % password)
+        _, _, resp = fp.expect([prompt_re], timeout=timeout) # expecting the login: prompt
+        trace += resp
+
+    if persistent == '0':
+      self.reset()
+
+    mesg = repr(resp.strip())[1:-1]
+    return self.Response(0, mesg, timing, trace)
+# }}}
+
 # VMauthd {{{
 from ssl import wrap_socket
 class LineReceiver_Error(Exception): pass
@@ -3865,6 +3930,7 @@ modules = [
   ('ldap_login', (Controller, LDAP_login)),
   ('smb_login', (Controller, SMB_login)),
   ('smb_lookupsid', (Controller, SMB_lookupsid)),
+  ('rlogin_login', (Controller, Rlogin_login)),
   ('vmauthd_login', (Controller, VMauthd_login)),
   ('mssql_login', (Controller, MSSQL_login)),
   ('oracle_login', (Controller, Oracle_login)),

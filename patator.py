@@ -633,9 +633,9 @@ class XMLFormatter(logging.Formatter):
   def __init__(self, indicatorsfmt):
     fmt = '''<result time="%(asctime)s" level="%(levelname)s">
 ''' + '\n'.join('  <{0}>%({0})s</{0}>'.format(name) for name, _ in indicatorsfmt) + '''
-  <candidate>%(candidate)s</candidate>
+  <candidate><![CDATA[%(candidate)s]]></candidate>
   <num>%(num)s</num>
-  <mesg>%(mesg)s</mesg>
+  <mesg><![CDATA[%(mesg)s]]></mesg>
 </result>'''
 
     logging.Formatter.__init__(self, fmt, datefmt='%H:%M:%S')
@@ -2015,7 +2015,7 @@ class Telnet_login(TCP_Cache):
     ('host', 'target host'),
     ('port', 'target port [23]'),
     ('inputs', 'list of values to input'),
-    ('prompt_re', 'regular expression to match prompts [\w+]'),
+    ('prompt_re', 'regular expression to match prompts [\w+:]'),
     ('timeout', 'seconds to wait for a response and for prompt_re to match received data [20]'),
     )
   available_options += TCP_Cache.available_options
@@ -2663,8 +2663,8 @@ class Rlogin_login(TCP_Cache):
     ('luser', 'client username [root]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
-    ('prompt_re', 'regular expression to match prompts [\w+]'),
-    ('timeout', 'seconds to wait for a response and for prompt_re to match received data [20]'),
+    ('prompt_re', 'regular expression to match prompts [\w+:]'),
+    ('timeout', 'seconds to wait for a response and for prompt_re to match received data [10]'),
     )
   available_options += TCP_Cache.available_options
 
@@ -3698,7 +3698,7 @@ class SNMP_login:
   '''Brute-force SNMP v1/2/3'''
 
   usage_hints = (
-    """%prog host=10.0.0.1 version=2 community=FILE0 1=names.txt -x ignore:mesg='No SNMP response received before timeout'""",
+    """%prog host=10.0.0.1 version=2 community=FILE0 0=names.txt -x ignore:mesg='No SNMP response received before timeout'""",
     """%prog host=10.0.0.1 version=3 user=FILE0 0=logins.txt -x ignore:mesg=unknownUserName""",
     """%prog host=10.0.0.1 version=3 user=myuser auth_key=FILE0 0=passwords.txt -x ignore:mesg=wrongDigest""",
     )

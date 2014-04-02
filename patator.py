@@ -2396,20 +2396,23 @@ class SMB_login(TCP_Cache):
       self.reset()
 
     except impacket_smb.SessionError as e:
-      code = '%04x%04x' % (e.error_class, e.error_code)
 
-      error_class = e.error_classes.get(e.error_class, None) # -> ("ERRNT", nt_msgs)
-      if error_class:
-        class_str = error_class[0] # "ERRNT"
-        error_tuple = error_class[1].get(e.error_code, None) # -> ("STATUS_LOGON_FAILURE","Logon failure: unknown user name or bad password.") or None
-
-        if error_tuple:
-          mesg = '%s %s' % error_tuple
-        else:
-          mesg = '%s' % class_str
+      if e.error_class == 0:
+        code = '%04x' % e.error_code
+        mesg = self.error_map.get(e.error_code & 0x0000fffff, '')
 
       else:
-        mesg = self.error_map.get(e.error_code & 0x0000fffff, '')
+        code = '%x%04x' % (e.error_class, e.error_code)
+
+        error_class = e.error_classes.get(e.error_class, None) # -> ("ERRNT", nt_msgs)
+        if error_class:
+          class_str = error_class[0] # "ERRNT"
+          error_tuple = error_class[1].get(e.error_code, None) # -> ("STATUS_LOGON_FAILURE","Logon failure: unknown user name or bad password.") or None
+
+          if error_tuple:
+            mesg = '%s %s' % error_tuple
+          else:
+            mesg = '%s' % class_str
 
     if persistent == '0':
       self.reset()

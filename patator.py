@@ -3402,14 +3402,54 @@ def dns_query(server, timeout, protocol, qname, qtype, qclass):
   return response
 
 def generate_tld():
+  # NB. does not return an exhaustive list (ie. missing co.uk, co.nz etc.)
+
   from itertools import product
   from string import ascii_lowercase
-  gtld = [
-    'aero', 'arpa', 'asia', 'biz', 'cat', 'com', 'coop', 'edu',
-    'gov', 'info', 'int', 'jobs', 'mil', 'mobi', 'museum', 'name',
-    'net', 'org', 'pro', 'tel', 'travel']
+
+  # http://data.iana.org/TLD/tlds-alpha-by-domain.txt
+  gtld = ['academy', 'actor', 'aero', 'agency', 'archi', 'arpa', 'asia', 'axa',
+    'bar', 'bargains', 'berlin', 'best', 'bid', 'bike', 'biz', 'black', 'blue',
+    'boutique', 'build', 'builders', 'buzz', 'cab', 'camera', 'camp', 'cards',
+    'careers', 'cat', 'catering', 'center', 'ceo', 'cheap', 'christmas',
+    'cleaning', 'clothing', 'club', 'codes', 'coffee', 'cologne', 'com',
+    'community', 'company', 'computer', 'condos', 'construction', 'contractors',
+    'cooking', 'cool', 'coop', 'country', 'cruises', 'dance', 'dating', 'democrat',
+    'diamonds', 'directory', 'dnp', 'domains', 'edu', 'education', 'email',
+    'enterprises', 'equipment', 'estate', 'events', 'expert', 'exposed', 'farm',
+    'fish', 'fishing', 'flights', 'florist', 'foundation', 'futbol', 'gallery',
+    'gift', 'glass', 'gov', 'graphics', 'guitars', 'guru', 'haus', 'holdings',
+    'holiday', 'horse', 'house', 'immobilien', 'industries', 'info', 'ink',
+    'institute', 'int', 'international', 'jetzt', 'jobs', 'kaufen', 'kim',
+    'kitchen', 'kiwi', 'koeln', 'kred', 'land', 'lighting', 'limo', 'link',
+    'london', 'luxury', 'maison', 'management', 'mango', 'marketing', 'meet',
+    'menu', 'miami', 'mil', 'mobi', 'moda', 'moe', 'monash', 'museum', 'nagoya',
+    'name', 'net', 'neustar', 'ninja', 'nyc', 'okinawa', 'onl', 'org', 'partners',
+    'parts', 'photo', 'photography', 'photos', 'pics', 'pink', 'plumbing', 'post',
+    'pro', 'productions', 'properties', 'pub', 'qpon', 'recipes', 'red', 'ren',
+    'rentals', 'repair', 'report', 'reviews', 'rich', 'rodeo', 'ruhr', 'sexy',
+    'shiksha', 'shoes', 'singles', 'social', 'sohu', 'solar', 'solutions',
+    'supplies', 'supply', 'support', 'systems', 'tattoo', 'technology', 'tel',
+    'tienda', 'tips', 'today', 'tokyo', 'tools', 'trade', 'training', 'travel',
+    'uno', 'vacations', 'vegas', 'ventures', 'viajes', 'villas', 'vision', 'vodka',
+    'vote', 'voting', 'voto', 'voyage', 'wang', 'watch', 'webcam', 'wed', 'wien',
+    'wiki', 'works', 'xn--3bst00m', 'xn--3ds443g', 'xn--3e0b707e', 'xn--45brj9c',
+    'xn--55qw42g', 'xn--55qx5d', 'xn--6frz82g', 'xn--6qq986b3xl', 'xn--80ao21a',
+    'xn--80asehdb', 'xn--80aswg', 'xn--90a3ac', 'xn--c1avg', 'xn--cg4bki',
+    'xn--clchc0ea0b2g2a9gcd', 'xn--czru2d', 'xn--d1acj3b', 'xn--fiq228c5hs',
+    'xn--fiq64b', 'xn--fiqs8s', 'xn--fiqz9s', 'xn--fpcrj9c3d', 'xn--fzc2c9e2c',
+    'xn--gecrj9c', 'xn--h2brj9c', 'xn--i1b6b1a6a2e', 'xn--io0a7i', 'xn--j1amh',
+    'xn--j6w193g', 'xn--kprw13d', 'xn--kpry57d', 'xn--l1acc', 'xn--lgbbat1ad8j',
+    'xn--mgb9awbf', 'xn--mgba3a4f16a', 'xn--mgbaam7a8h', 'xn--mgbab2bd',
+    'xn--mgbayh7gpa', 'xn--mgbbh1a71e', 'xn--mgbc0a9azcg', 'xn--mgberp4a5d4ar',
+    'xn--mgbx4cd0ab', 'xn--ngbc5azd', 'xn--nqv7f', 'xn--nqv7fs00ema', 'xn--o3cw4h',
+    'xn--ogbpf8fl', 'xn--p1ai', 'xn--pgbs0dh', 'xn--q9jyb4c', 'xn--rhqv96g',
+    'xn--s9brj9c', 'xn--unup4y', 'xn--wgbh1c', 'xn--wgbl6a', 'xn--xkc2al3hye2a',
+    'xn--xkc2dl3a5ee0h', 'xn--yfro4i67o', 'xn--ygbi2ammx', 'xn--zfr164b', 'xxx',
+    'xyz', 'zone']
 
   cctld = [''.join(i) for i in product(*[ascii_lowercase]*2)]
+
   tld = gtld + cctld
   return tld, len(tld)
 

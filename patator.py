@@ -438,6 +438,15 @@ NB. If you suddenly get STATUS_ACCOUNT_LOCKED_OUT errors for an account
 smb_login host=FILE0 0=hosts.txt user=COMBO10 password_hash=COMBO12:COMBO13 1=pwdump.txt -x ...
              (a)                                         (b)
 }}}
+{{{ rlogin
+
+* Brute-force usernames that root might be allowed to login as with no password (eg. a ~/.rhosts file with the line "+ root").
+rlogin_login host=10.0.0.1 luser=root user=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:
+
+* Brute-force usernames that might be allowed to login as root with no password (eg. a /root/.rhosts file with the line "+ john").
+rlogin_login host=10.0.0.1 user=root luser=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:
+
+}}}
 {{{ MSSQL
 
 * Brute-force authentication.
@@ -2652,12 +2661,14 @@ class IMAP_login:
 
 # }}}
 
-# Rlogin {{{
+# rlogin {{{
 class Rlogin_login(TCP_Cache):
   '''Brute-force rlogin'''
 
   usage_hints = (
-    """%prog host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x 'reset:egrep!=Login incorrect.+login:'""",
+    """Please note that rlogin requires to bind a socket to an Internet domain privileged port.""",
+    """%prog host=10.0.0.1 user=root luser=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:""",
+    """%prog host=10.0.0.1 user=john password=FILE0 0=passwords.txt -x 'reset:egrep!=Login incorrect.+login:'""",
     )
 
   available_options = (

@@ -747,7 +747,8 @@ class Output:
 import re
 import os
 from sys import exc_info, exit, version_info, maxint
-from time import localtime, strftime, sleep, time
+from time import localtime, strftime, sleep
+from timeit import default_timer
 from functools import reduce
 from threading import Thread, active_count
 from select import select
@@ -1321,7 +1322,7 @@ Please read the README inside for more examples and usage information.
     skip_count = sum(p.skip_count for p in self.thread_progress)
     fail_count = sum(p.fail_count for p in self.thread_progress)
 
-    total_time = time() - self.start_time
+    total_time = default_timer() - self.start_time
     speed_avg = done_count / total_time 
 
     if self.total_size >= maxint:
@@ -1447,7 +1448,7 @@ Please read the README inside for more examples and usage information.
 
     self.output.headers()
 
-    self.start_time = time()
+    self.start_time = default_timer()
     count = 0
     for pp in islice(product(*iterables), self.start, self.stop):
 
@@ -1534,7 +1535,7 @@ Please read the README inside for more examples and usage information.
         continue
 
       try_count = 0
-      start_time = time() 
+      start_time = default_timer()
 
       while True:
 
@@ -1578,7 +1579,7 @@ Please read the README inside for more examples and usage information.
           actions = {'fail': None}
 
         actions.update(self.lookup_actions(resp))
-        report_queue.put((actions, pp_prod, resp, time() - start_time))
+        report_queue.put((actions, pp_prod, resp, default_timer() - start_time))
 
         for name in self.module_actions:
           if name in actions:
@@ -1804,11 +1805,11 @@ class Response_Base:
 
 class Timing:
   def __enter__(self):
-    self.t1 = time()
+    self.t1 = default_timer()
     return self
 
   def __exit__(self, exc_type, exc_value, traceback):
-    self.time = time() - self.t1
+    self.time = default_timer() - self.t1
 
 # }}}
 

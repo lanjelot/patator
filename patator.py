@@ -604,7 +604,7 @@ CHANGELOG
 TODO
 ----
   * new option -e ns like in Medusa (not likely to be implemented due to design)
-  * replace dnspython|paramiko|IPy with a better module (scapy|libssh2|... ?)
+  * replace dnspython|paramiko|IPy with a better module (scapy|libssh2|netaddr... ?) // https://netaddr.readthedocs.org/en/latest/tutorial_01.html
   * use impacket/enum_lookupsids to automatically get the sid
 '''
 
@@ -868,6 +868,10 @@ class FileIter:
   def __iter__(self):
     return open(self.filename)
 
+def padhex(d):
+  x = '%x' % d
+  return '0' * (len(x) % 2) + x
+
 # These are examples. You can easily write your own iterator to fit your needs.
 # Or using the PROG keyword, you can call an external program such as:
 #   - seq(1) from coreutils
@@ -892,7 +896,7 @@ class RangeIter:
       if typ == 'hex':
         mn = int(mn, 16)
         mx = int(mx, 16)
-        fmt = '%x'
+        fmt = padhex
 
       elif typ == 'int':
         mn = int(mn)
@@ -925,7 +929,10 @@ class RangeIter:
       x = start
       while x != stop+step:
 
-        yield fmt % x
+        if callable(fmt):
+          yield fmt(x)
+        else:
+          yield fmt % x
         x += step
 
     def letterrange(first, last, charset):
@@ -1768,7 +1775,7 @@ class Response_Base:
   def __init__(self, code, mesg, timing=0, trace=None):
     self.code = code
     self.mesg = mesg
-    self.time = isinstance(timing, Timing) and timing.time or timing
+    self.time = timing.time if isinstance(timing, Timing) else timing
     self.size = len(mesg)
     self.trace = trace
 

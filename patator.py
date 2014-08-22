@@ -3106,6 +3106,7 @@ class HTTP_fuzz(TCP_Cache):
     ('body', 'body data'),
     ('header', 'use custom headers'),
     ('method', 'method to use [GET | POST | HEAD | ...]'),
+    ('auto_urlencode', 'automatically perform URL-encoding [1|0]'),
     ('user_pass', 'username and password for HTTP authentication (user:pass)'),
     ('auth_type', 'type of HTTP authentication [basic | digest | ntlm]'),
     ('follow', 'follow any Location redirect [0|1]'),
@@ -3135,7 +3136,7 @@ class HTTP_fuzz(TCP_Cache):
     return TCP_Connection(fp)
 
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
-    header='', method='GET', user_pass='', auth_type='basic',
+    header='', method='GET', auto_urlencode='1', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1', 
     before_urls='', before_egrep='', after_urls='', max_mem='-1'):
     
@@ -3228,9 +3229,10 @@ class HTTP_fuzz(TCP_Cache):
           query = query.replace(mark, val)
           body = body.replace(mark, val)
 
-    path = quote(path)
-    query = urlencode(parse_qsl(query, True))
-    body = urlencode(parse_qsl(body, True))
+    if auto_urlencode == '1':
+      path = quote(path)
+      query = urlencode(parse_qsl(query, True))
+      body = urlencode(parse_qsl(body, True))
 
     if port:
       host = '%s:%s' % (host, port)

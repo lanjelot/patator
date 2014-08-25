@@ -16,7 +16,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
 __twitter__ = 'http://twitter.com/lanjelot'
-__version__ = '0.6'
+__version__ = '0.7-beta'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
  
@@ -1981,7 +1981,7 @@ class SSH_login(TCP_Cache):
     ('port', 'target port [22]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
-    ('auth_type', 'auth type to use [password|keyboard-interactive]'),
+    ('auth_type', 'auth type to use [password|keyboard-interactive|auto]'),
     )
   available_options += TCP_Cache.available_options
 
@@ -2006,6 +2006,9 @@ class SSH_login(TCP_Cache):
 
           elif auth_type == 'keyboard-interactive':
             fp.auth_interactive(user, lambda a,b,c: [password] if len(c) == 1 else [])
+
+          elif auth_type == 'auto':
+            fp.auth_password(user, password, fallback=True)
 
           else:
             raise NotImplementedError("Incorrect auth_type '%s'" % auth_type)

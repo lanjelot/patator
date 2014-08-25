@@ -16,7 +16,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'http://code.google.com/p/patator/'
 __twitter__ = 'http://twitter.com/lanjelot'
-__version__ = '0.6-beta'
+__version__ = '0.6'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
  
@@ -567,6 +567,14 @@ unzip_pass zipfile=path/to/file.zip password=FILE0 0=passwords.txt -x ignore:cod
 
 CHANGELOG
 ---------
+
+* v0.6 2014/08/25
+  - added CSV and XML output formats
+  - added module execution time column
+  - improved RANGE keyword
+  - new modules: rlogin_login, umbrack_crack
+  - minor bug fixes/improvements in http_fuzz and smb_login
+  - added more TLDs to dns_forward
 
 * v0.5 2013/07/05
   - new modules: mysql_query, tcp_fuzz

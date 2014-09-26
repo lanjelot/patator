@@ -53,12 +53,15 @@ Currently it supports the following modules:
   + mysql_query   : Brute-force MySQL queries
   + pgsql_login   : Brute-force PostgreSQL
   + vnc_login     : Brute-force VNC
+
   + dns_forward   : Forward DNS lookup
   + dns_reverse   : Reverse DNS lookup
   + snmp_login    : Brute-force SNMP v1/2/3
+
   + unzip_pass    : Brute-force the password of encrypted ZIP files
   + keystore_pass : Brute-force the password of Java keystore files
   + umbraco_crack : Crack Umbraco HMAC-SHA1 password hashes
+
   + tcp_fuzz      : Fuzz TCP services
   + dummy_test    : Testing module
 
@@ -66,7 +69,6 @@ Future modules to be implemented:
   - rdp_login
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
-"Whatever the payload to fire, always use the same cannon"
 
 * Why ?
 
@@ -963,7 +965,7 @@ class RangeIter:
       exp = 10**precision
       step *= Decimal(1) / exp
 
-      self.generator = zrange(mn, mx, step, fmt)
+      self.generator = zrange, (mn, mx, step, fmt)
       self.size = int(abs(mx-mn) * exp) + 1
 
       def random_generator():
@@ -971,7 +973,7 @@ class RangeIter:
           yield fmt % (Decimal(random.randint(mn*exp, mx*exp)) / exp)
 
     elif typ in ('hex', 'int'):
-      self.generator = zrange(mn, mx, step, fmt)
+      self.generator = zrange, (mn, mx, step, fmt)
       self.size = abs(mx-mn) + 1
 
       def random_generator():
@@ -989,18 +991,28 @@ class RangeIter:
         return total + 1
 
       first, last = rng.split('-')
-      self.generator = letterrange(first, last, charset)
+      self.generator = letterrange, (first, last, charset)
       self.size = count(last) - count(first) + 1
 
     if random:
-      self.generator = random_generator()
+      self.generator = random_generator, ()
       self.size = maxint
 
   def __iter__(self):
-    return self.generator
+    fn, args = self.generator
+    return fn(*args)
 
   def __len__(self):
     return self.size
+
+class ProgIter:
+
+  def __init__(self, prog):
+    self.prog = prog
+
+  def __iter__(self):
+    p = subprocess.Popen(self.prog.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return p.stdout
 
 # }}}
 
@@ -1440,8 +1452,8 @@ Please read the README inside for more examples and usage information.
 
         logger.debug('prog: %s, size: %s' % (prog, size))
 
-        p = subprocess.Popen(prog.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        iterable, size = chain(p.stdout), int(size)
+        it = ProgIter(prog)
+        iterable, size = chain(it), int(size)
 
       else:
         raise NotImplementedError("Incorrect keyword '%s'" % t)
@@ -3975,13 +3987,14 @@ class Dummy_test:
 
   available_options = (
     ('data', 'data to test'),
+    ('data2', 'data2 to test'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, data):
-    code, mesg = 0, data
+  def execute(self, data, data2):
+    code, mesg = 0, '%s / %s' % (data, data2)
     with Timing() as timing:
       sleep(random.random())
 

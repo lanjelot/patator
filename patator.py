@@ -14,7 +14,7 @@
 __author__  = 'Sebastien Macke'
 __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
-__git__     = 'http://code.google.com/p/patator/'
+__git__     = 'https://github.com/lanjelot/patator'
 __twitter__ = 'http://twitter.com/lanjelot'
 __version__ = '0.7-beta'
 __license__ = 'GPLv2'
@@ -209,7 +209,7 @@ $ ./module host=FILE2 user=FILE1 password=FILE0 2=hosts.txt 1=logins.txt 0=passw
 
 * Keywords
 
-Brute-force a list of hosts with a file containing combo entries (each line := login:password).
+Brute-force a list of hosts with a file containing combo entries (each line => login:password).
 ---------
 ./module host=FILE0 user=COMBO10 password=COMBO11 0=hosts.txt 1=combos.txt
 
@@ -233,7 +233,7 @@ Fuzzing a parameter by iterating over the output of an external program.
 
 Use the -x option to do specific actions upon receiving expected results. For instance:
 
-To ignore responses with status code 200 *AND* a size within a range.
+To ignore responses with status code 200 *AND* a size within a specific range.
 ---------
 ./module host=10.0.0.1 user=FILE0 -x ignore:code=200,size=57-74
 
@@ -253,7 +253,7 @@ and as a result the exception is caught upstream by the controller.
 
 Such exceptions, or failures, are not immediately reported to the user, the
 controller will retry 4 more times (see --max-retries) before reporting the
-failed payload with logging level "FAIL".
+failed payload to the user with the logging level "FAIL".
 
 
 * Read carefully the following examples to get a good understanding of how patator works.
@@ -3011,15 +3011,23 @@ class Oracle_login:
     ('port', 'ports to target [1521]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
-    ('sid', 'sid or service names to test'),
+    ('sid', 'sid to test'),
+    ('service_name', 'service name to test'),
     )
   available_actions = ()
 
   class Response(Response_Base):
     indicatorsfmt = [('code', -9), ('size', -4), ('time', 6)]
 
-  def execute(self, host, port='1521', user='', password='', sid=''):
-    dsn = cx_Oracle.makedsn(host, port, sid)
+  def execute(self, host, port='1521', user='', password='', sid='', service_name=''):
+
+    if sid:
+      dsn = cx_Oracle.makedsn(host=host, port=port, sid=sid)
+    elif service_name:
+      dsn = cx_Oracle.makedsn(host=host, port=port, service_name=service_name)
+    else:
+      raise NotImplementedError("Options sid and service_name cannot be both empty")
+
     try:
       with Timing() as timing:
         fp = cx_Oracle.connect(user, password, dsn, threaded=True)
@@ -3993,7 +4001,7 @@ class Dummy_test:
 
   Response = Response_Base
 
-  def execute(self, data, data2):
+  def execute(self, data, data2=''):
     code, mesg = 0, '%s / %s' % (data, data2)
     with Timing() as timing:
       sleep(random.random())

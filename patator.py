@@ -1591,15 +1591,19 @@ Please read the README inside for more examples and usage information.
             mesg = '%s %s' % (e_type, e_value.args)
 
             #logger.exception(exc_info()[1])
-
             logger.debug('except: %s' % mesg)
-            resp = self.module.Response('xxx', mesg)
+            
+            if str(e_value).find('Failed to connect'):
+              resp = self.module.Response('xxx', 'Failed to connect')
+            else:
+              resp = self.module.Response('xxx', mesg)
 
             if hasattr(module, 'reset'):
               module.reset()
 
             sleep(try_count * .1)
             continue
+
 
 
         else:
@@ -3093,6 +3097,9 @@ class Response_HTTP(Response_Base):
 
   def __str__(self):
     lines = re.findall('^(HTTP/.+)$', self.mesg, re.M)
+    
+    if self.mesg.find('Failed to connect to'):
+        return 'Failed to connect'
     if not lines:
       return 'Unexpected HTTP response'
     else:

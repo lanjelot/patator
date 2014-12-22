@@ -1591,12 +1591,11 @@ Please read the README inside for more examples and usage information.
             mesg = '%s %s' % (e_type, e_value.args)
 
             #logger.exception(exc_info()[1])
-
+            logger.debug('except: %s' % mesg)
+            
             if str(e_value).find('Failed to connect'):
-              logger.debug('except: %s' % mesg)
               resp = self.module.Response('xxx', 'Failed to connect')
             else:
-              logger.debug('except: %s' % mesg)
               resp = self.module.Response('xxx', mesg)
 
             if hasattr(module, 'reset'):

@@ -622,8 +622,23 @@ TODO
 
 # logging {{{
 import logging
+
+class CrossProcessLogger(logging.Logger):
+  def getEffectiveLevel(self):
+    return ns.logger_level
+
+logging.setLoggerClass(CrossProcessLogger)
 logging._levelNames[logging.ERROR] = 'FAIL'
 logger = logging.getLogger('patator')
+
+from multiprocessing.managers import SyncManager, current_process
+import signal
+
+manager = SyncManager()
+manager.start(lambda: signal.signal(signal.SIGINT, signal.SIG_IGN))
+
+ns = manager.Namespace()
+ns.logger_level = logger.level
 
 class TXTFormatter(logging.Formatter):
   def __init__(self, indicatorsfmt):
@@ -636,7 +651,7 @@ class TXTFormatter(logging.Formatter):
       self._fmt = self.resultfmt
     else:
       if record.levelno == 10:   # DEBUG
-        self._fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(threadName)s] %(message)s'
+        self._fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(processName)s] %(message)s'
       else:
         self._fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
 
@@ -760,7 +775,6 @@ from sys import exc_info, exit, version_info, maxint
 from time import localtime, strftime, sleep
 from timeit import default_timer
 from functools import reduce
-from threading import Thread, active_count
 from select import select
 from itertools import islice
 import string
@@ -773,14 +787,15 @@ import socket
 import subprocess
 import hashlib
 from collections import defaultdict
+from multiprocessing import Process, active_children, Queue
 try:
   # python3+
-  from queue import Queue, Empty, Full
+  from queue import Empty, Full
   from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl, quote_plus
   from io import StringIO
 except ImportError:
   # python2.6+
-  from Queue import Queue, Empty, Full
+  from Queue import Empty, Full
   from urllib import quote, urlencode, quote_plus
   from urlparse import urlparse, urlunparse, parse_qsl
   from cStringIO import StringIO
@@ -1014,9 +1029,23 @@ class ProgIter:
     p = subprocess.Popen(self.prog.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p.stdout
 
+class TimeoutError(Exception):
+  pass
+
+def raise_timeout(signum, frame):
+  if signum == signal.SIGALRM:
+    raise TimeoutError('timed out')
+
 # }}}
 
 # Controller {{{
+ns.actions = {}
+ns.free_list = []
+ns.paused = False
+ns.quit_now = False
+ns.start_time = 0
+ns.total_size = 1
+
 class Controller:
 
   builtin_actions = (
@@ -1135,8 +1164,9 @@ Please read the README inside for more examples and usage information.
     exe_grp.add_option('-X', dest='condition_delim', default=',', metavar='str', help="delimiter string in conditions (default is ',')")
 
     opt_grp = OptionGroup(parser, 'Optimization')
-    opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between tests (default is 0)')
-    opt_grp.add_option('--max-retries', dest='max_retries', type='int', default=4, metavar='N', help='skip payload after N failures (default is 4) (-1 for unlimited)')
+    opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between each test (default is 0)')
+    opt_grp.add_option('--timeout', dest='timeout', type='int', default=0, metavar='N', help='wait N seconds for a response before retrying payload (default is 0)')
+    opt_grp.add_option('--max-retries', dest='max_retries', type='int', default=4, metavar='N', help='skip payload after N retries (default is 4) (-1 for unlimited)')
     opt_grp.add_option('-t', '--threads', dest='num_threads', type='int', default=10, metavar='N', help='number of threads (default is 10)')
 
     log_grp = OptionGroup(parser, 'Logging')
@@ -1155,9 +1185,9 @@ Please read the README inside for more examples and usage information.
     opts, args = parser.parse_args(argv[1:])
 
     if opts.debug:
-      logger.setLevel(logging.DEBUG)
+      ns.logger_level = logging.DEBUG
     else:
-      logger.setLevel(logging.INFO)
+      ns.logger_level = logging.INFO
 
     if not len(args) > 0:
       parser.print_usage()
@@ -1167,12 +1197,6 @@ Please read the README inside for more examples and usage information.
     return opts, args
 
   def __init__(self, module, argv):
-    self.actions = {}
-    self.free_list = []
-    self.paused = False
-    self.start_time = 0
-    self.total_size = 1
-    self.quit_now = False
     self.thread_report = []
     self.thread_progress = []
 
@@ -1181,14 +1205,18 @@ Please read the README inside for more examples and usage information.
     self.enc_keys = []
 
     self.module = module
+
     opts, args = self.parse_usage(argv)
 
     self.combo_delim = opts.combo_delim
     self.condition_delim = opts.condition_delim
     self.rate_limit = opts.rate_limit
+    self.timeout = opts.timeout
     self.max_retries = opts.max_retries
     self.num_threads = opts.num_threads
-    self.start, self.stop, self.resume = opts.start, opts.stop, opts.resume
+    self.start, self.stop = opts.start, opts.stop
+
+    self.resume = [int(i) for i in opts.resume.split(',')] if opts.resume else None
 
     self.output = Output(self.module.Response.indicatorsfmt, argv, opts.log_dir, opts.auto_log)
 
@@ -1271,11 +1299,12 @@ Please read the README inside for more examples and usage information.
     for x in opts.actions:
       self.update_actions(x)
 
-    logger.debug('actions: %s' % self.actions)
+    logger.debug('actions: %s' % ns.actions)
     
   def update_actions(self, arg): 
-    actions, conditions = arg.split(':', 1)
+    ns_actions = ns.actions
 
+    actions, conditions = arg.split(':', 1)
     for action in actions.split(','):
 
       conds = [c.split('=', 1) for c in conditions.split(self.condition_delim)]
@@ -1288,14 +1317,16 @@ Please read the README inside for more examples and usage information.
       if name not in self.available_actions:
         raise NotImplementedError('Unsupported action: %s' % name)
 
-      if name not in self.actions:
-        self.actions[name] = []
+      if name not in ns_actions:
+        ns_actions[name] = []
 
-      self.actions[name].append((conds, opts))
+      ns_actions[name].append((conds, opts))
+
+    ns.actions = ns_actions
 
   def lookup_actions(self, resp):
     actions = {}
-    for action, conditions in self.actions.items():
+    for action, conditions in ns.actions.items():
       for condition, opts in conditions:
         for key, val in condition:
           if key[-1] == '!':
@@ -1310,7 +1341,7 @@ Please read the README inside for more examples and usage information.
 
   def check_free(self, payload):
     # free_list: 'host=10.0.0.1', 'user=anonymous', 'host=10.0.0.7,user=test', ...
-    for m in self.free_list:
+    for m in ns.free_list:
       args = m.split(',', 1)
       for arg in args:
         k, v = arg.split('=', 1)
@@ -1322,8 +1353,8 @@ Please read the README inside for more examples and usage information.
     return False
 
   def register_free(self, payload, opts):
-    self.free_list.append(','.join('%s=%s' % (k, payload[k]) for k in opts.split('+')))
-    logger.debug('free_list updated: %s' % self.free_list)
+    ns.free_list += [','.join('%s=%s' % (k, payload[k]) for k in opts.split('+'))]
+    logger.debug('free_list updated: %s' % ns.free_list)
   
   def fire(self):
     logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
@@ -1332,13 +1363,14 @@ Please read the README inside for more examples and usage information.
       self.start_threads()
       self.monitor_progress()
     except KeyboardInterrupt:
-      self.quit_now = True
+      ns.quit_now = True
     except:
-      self.quit_now = True
+      ns.quit_now = True
       logger.exception(exc_info()[1])
 
     try:
-      while active_count() > 1:
+      while len(active_children()) > 1:
+        logger.debug('active: %s' % active_children())
         sleep(.1)
       self.report_progress()
     except KeyboardInterrupt:
@@ -1349,19 +1381,19 @@ Please read the README inside for more examples and usage information.
     skip_count = sum(p.skip_count for p in self.thread_progress)
     fail_count = sum(p.fail_count for p in self.thread_progress)
 
-    total_time = default_timer() - self.start_time
+    total_time = default_timer() - ns.start_time
     speed_avg = done_count / total_time 
 
-    if self.total_size >= maxint:
-      self.total_size = -1
+    if ns.total_size >= maxint:
+      ns.total_size = -1
 
     self.show_final()
 
     logger.info('Hits/Done/Skip/Fail/Size: %d/%d/%d/%d/%d, Avg: %d r/s, Time: %s' % (
-      hits_count, done_count, skip_count, fail_count, self.total_size, speed_avg,
+      hits_count, done_count, skip_count, fail_count, ns.total_size, speed_avg,
       pprint_seconds(total_time, '%dh %dm %ds')))
 
-    if self.quit_now:
+    if ns.quit_now:
       resume = []
       for i, p in enumerate(self.thread_progress):
         c = p.done_count + p.skip_count
@@ -1391,20 +1423,24 @@ Please read the README inside for more examples and usage information.
     # consumers
     for num in range(self.num_threads):
       report_queue = Queue(maxsize=1000)
-      t = Thread(target=self.consume, args=(task_queues[num], report_queue))
+      t = Process(name='Consumer-%d' % num, target=self.consume, args=(task_queues[num], report_queue))
       t.daemon = True
       t.start()
       self.thread_report.append(report_queue)
       self.thread_progress.append(Progress())
 
     # producer
-    t = Thread(target=self.produce, args=(task_queues,))
+    t = Process(name='Producer', target=self.produce, args=(task_queues,))
     t.daemon = True
     t.start()
 
   def produce(self, task_queues):
 
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     iterables = []
+    total_size = 1
+
     for _, (t, v, _) in self.iter_keys.items():
 
       if t in ('FILE', 'COMBO'):
@@ -1458,26 +1494,30 @@ Please read the README inside for more examples and usage information.
       else:
         raise NotImplementedError("Incorrect keyword '%s'" % t)
 
-      self.total_size *= size
+      total_size *= size
       iterables.append(iterable)
 
     if not iterables:
       iterables.append(chain(['']))
 
     if self.stop:
-      self.total_size = self.stop - self.start
+      total_size = self.stop - self.start
     else:
-      self.total_size -= self.start
+      total_size -= self.start
 
     if self.resume:
-      self.resume = [int(i) for i in self.resume.split(',')]
-      self.total_size -= sum(self.resume)
+      total_size -= sum(self.resume)
 
     self.output.headers()
 
-    self.start_time = default_timer()
+    ns.total_size = total_size
+    ns.start_time = default_timer()
+
     count = 0
     for pp in islice(product(*iterables), self.start, self.stop):
+
+      if ns.quit_now:
+        break
 
       cid = count % self.num_threads
       prod = [str(p).strip('\r\n') for p in pp]
@@ -1492,8 +1532,8 @@ Please read the README inside for more examples and usage information.
           continue
 
       while True:
-        if self.quit_now:
-          return
+        if ns.quit_now:
+          break
 
         try:
           task_queues[cid].put_nowait(prod)
@@ -1504,20 +1544,29 @@ Please read the README inside for more examples and usage information.
       count += 1
 
     for q in task_queues:
-      q.put(None)
+      q.cancel_join_thread()
+
+      if not ns.quit_now:
+        q.put(None)
+
+    logger.debug('producer exits')
 
   def consume(self, task_queue, report_queue):
+
     module = self.module()
 
+    signal.signal(signal.SIGALRM, raise_timeout)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     def shutdown():
-      logger.debug('thread exits')
+      report_queue.cancel_join_thread()
       if hasattr(module, '__del__'):
         module.__del__()
+      logger.debug('consumer exits')
 
     while True:
-      if self.quit_now:
-        shutdown()
-        return
+      if ns.quit_now:
+        return shutdown()
 
       try:
         prod = task_queue.get_nowait()
@@ -1526,8 +1575,7 @@ Please read the README inside for more examples and usage information.
         continue
 
       if prod is None:
-        shutdown()
-        return
+        return shutdown()
       
       payload = self.payload.copy()
  
@@ -1566,14 +1614,13 @@ Please read the README inside for more examples and usage information.
 
       while True:
 
-        while self.paused and not self.quit_now:
+        while ns.paused and not ns.quit_now:
           sleep(1)
 
-        if self.quit_now:
-          shutdown()
-          return
+        if ns.quit_now:
+          return shutdown()
 
-        if self.rate_limit:
+        if self.rate_limit > 0:
           sleep(self.rate_limit)
 
         if try_count <= self.max_retries or self.max_retries < 0:
@@ -1584,16 +1631,16 @@ Please read the README inside for more examples and usage information.
           logger.debug('payload: %s [try %d/%d]' % (payload, try_count, self.max_retries+1))
 
           try:
+            signal.alarm(self.timeout)
             resp = module.execute(**payload)
 
           except:
-            e_type, e_value, _ = exc_info()
-            mesg = '%s %s' % (e_type, e_value.args)
-
-            #logger.exception(exc_info()[1])
-
+            mesg = '%s %s' % exc_info()[:2]
             logger.debug('except: %s' % mesg)
-            resp = self.module.Response('xxx', mesg)
+
+            logger.exception(exc_info()[1])
+
+            resp = self.module.Response('xxx', mesg, timing=default_timer()-start_time)
 
             if hasattr(module, 'reset'):
               module.reset()
@@ -1601,6 +1648,8 @@ Please read the README inside for more examples and usage information.
             sleep(try_count * .1)
             continue
 
+          finally:
+            signal.alarm(0)
 
         else:
           actions = {'fail': None}
@@ -1625,7 +1674,7 @@ Please read the README inside for more examples and usage information.
         break
        
   def monitor_progress(self):
-    while active_count() > 1 and not self.quit_now:
+    while len(active_children()) > 1 and not ns.quit_now:
       self.report_progress()
       self.monitor_interaction()
 
@@ -1633,7 +1682,7 @@ Please read the README inside for more examples and usage information.
     for i, pq in enumerate(self.thread_report):
       p = self.thread_progress[i]
 
-      for _ in range(pq.maxsize):
+      while True:
 
         try:
           actions, current, resp, seconds = pq.get_nowait()
@@ -1678,7 +1727,7 @@ Please read the README inside for more examples and usage information.
         p.done_count += 1
 
         if 'quit' in actions:
-          self.quit_now = True
+          ns.quit_now = True
 
 
   def monitor_interaction(self):
@@ -1700,20 +1749,20 @@ Please read the README inside for more examples and usage information.
        ''')
 
     elif command == 'q':
-      self.quit_now = True
+      ns.quit_now = True
 
     elif command == 'p':
-      self.paused = not self.paused
-      logger.info(self.paused and 'Paused' or 'Unpaused')
+      ns.paused = not ns.paused
+      logger.info(ns.paused and 'Paused' or 'Unpaused')
 
     elif command == 'd':
-      logger.setLevel(logging.DEBUG)
+      ns.logger_level = logging.DEBUG
 
     elif command == 'D':
-      logger.setLevel(logging.INFO)
+      ns.logger_level = logging.INFO
 
     elif command == 'a':
-      logger.info(self.actions)
+      logger.info(repr(ns.actions))
 
     elif command.startswith('x'):
       _, arg = command.split(' ', 1)
@@ -1723,34 +1772,39 @@ Please read the README inside for more examples and usage information.
         logger.warn('usage: x actions:conditions')
 
     else: # show progress
-      total_count = sum(p.done_count+p.skip_count for p in self.thread_progress)
-      speed_avg = self.num_threads / (sum(sum(p.seconds) / len(p.seconds) for p in self.thread_progress) / self.num_threads)
-      if self.total_size >= maxint:
+
+      thread_progress = self.thread_progress
+      num_threads = self.num_threads
+      total_size = ns.total_size
+
+      total_count = sum(p.done_count+p.skip_count for p in thread_progress)
+      speed_avg = num_threads / (sum(sum(p.seconds) / len(p.seconds) for p in thread_progress) / num_threads)
+      if total_size >= maxint:
         etc_time = 'inf'
         remain_time = 'inf'
       else:
-        remain_seconds = (self.total_size - total_count) / speed_avg
+        remain_seconds = (total_size - total_count) / speed_avg
         remain_time = pprint_seconds(remain_seconds, '%02d:%02d:%02d')
         etc_seconds = datetime.now() + timedelta(seconds=remain_seconds)
         etc_time = etc_seconds.strftime('%H:%M:%S')
 
       logger.info('Progress: {0:>3}% ({1}/{2}) | Speed: {3:.0f} r/s | ETC: {4} ({5} remaining) {6}'.format(
-        total_count * 100/self.total_size,
+        total_count * 100/total_size,
         total_count,
-        self.total_size,
+        total_size,
         speed_avg,
         etc_time,
         remain_time,
-        self.paused and '| Paused' or ''))
+        ns.paused and '| Paused' or ''))
 
       if command == 'f':
-        for i, p in enumerate(self.thread_progress):
+        for i, p in enumerate(thread_progress):
           total_count = p.done_count + p.skip_count
           logger.info(' {0:>3}: {1:>3}% ({2}/{3}) {4}'.format(
             '#%d' % (i+1),
-            int(100*total_count/(1.0*self.total_size/self.num_threads)),
+            int(100*total_count/(1.0*total_size/num_threads)),
             total_count,
-            self.total_size/self.num_threads,
+            total_size/num_threads,
             p.current))
 
 # }}}
@@ -1790,7 +1844,7 @@ class Response_Base:
     ('egrep', 'search for regex in mesg'),
     )
 
-  indicatorsfmt = [('code', -5), ('size', -4), ('time', 6)]
+  indicatorsfmt = [('code', -5), ('size', -4), ('time', 7)]
 
   def __init__(self, code, mesg, timing=0, trace=None):
     self.code = code
@@ -2385,6 +2439,9 @@ class SMB_Connection(TCP_Connection):
   def close(self):
     self.fp.get_socket().close()
 
+class Response_SMB(Response_Base):
+  indicatorsfmt = [('code', -8), ('size', -4), ('time', 6)]
+
 class SMB_login(TCP_Cache):
   '''Brute-force SMB'''
 
@@ -2403,8 +2460,7 @@ class SMB_login(TCP_Cache):
     )
   available_options += TCP_Cache.available_options
 
-  class Response(Response_Base):
-    indicatorsfmt = [('code', -8), ('size', -4), ('time', 6)]
+  Response = Response_SMB
 
   # ripped from medusa smbnt.c
   error_map = {
@@ -2437,7 +2493,7 @@ class SMB_login(TCP_Cache):
 
     return SMB_Connection(fp)
 
-  def execute(self, host, port='139', user=None, password=None, password_hash=None, domain='', persistent='1'):
+  def execute(self, host, port='139', user=None, password='', password_hash=None, domain='', persistent='1'):
 
     with Timing() as timing:
       fp, _ = self.bind(host, port)
@@ -2448,8 +2504,11 @@ class SMB_login(TCP_Cache):
         fp.login_standard('', '') # to get workgroup or domain (Primary Domain)
       else:
         with Timing() as timing:
-          if password is None:
-            lmhash, nthash = password_hash.split(':')
+          if password_hash:
+            if ':' in password_hash:
+              lmhash, nthash = password_hash.split(':')
+            else:
+              lmhash, nthash = 'aad3b435b51404eeaad3b435b51404ee', password_hash
             fp.login(user, '', domain, lmhash, nthash)
 
           else:
@@ -3023,6 +3082,9 @@ try:
 except ImportError:
   warnings.append('cx_Oracle')
 
+class Response_Oracle(Response_Base):
+  indicatorsfmt = [('code', -9), ('size', -4), ('time', 6)]
+
 class Oracle_login:
   '''Brute-force Oracle'''
 
@@ -3041,8 +3103,7 @@ class Oracle_login:
     )
   available_actions = ()
 
-  class Response(Response_Base):
-    indicatorsfmt = [('code', -9), ('size', -4), ('time', 6)]
+  Response = Response_Oracle
 
   def execute(self, host, port='1521', user='', password='', sid='', service_name=''):
 

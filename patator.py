@@ -180,7 +180,7 @@ Each keyword is numbered in order to:
   - match the corresponding wordlist
   - and indicate in what order to iterate over all the wordlists
 
-For instance, this would be the classic order:
+For example, this would be the classic order:
 ---------
 $ ./module host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
 10.0.0.1 root password
@@ -231,7 +231,7 @@ Fuzzing a parameter by iterating over the output of an external program.
 
 * Actions & Conditions
 
-Use the -x option to do specific actions upon receiving expected results. For instance:
+Use the -x option to do specific actions upon receiving expected results. For example:
 
 To ignore responses with status code 200 *AND* a size within a specific range.
 ---------
@@ -248,7 +248,7 @@ specify ORed conditions.
 * Failures
 
 During execution, failures may happen, such as a TCP connect timeout for
-instance. A failure is actually an exception that the module does not expect,
+example. By definition a failure is an exception that the module does not expect,
 and as a result the exception is caught upstream by the controller.
 
 Such exceptions, or failures, are not immediately reported to the user, the
@@ -887,7 +887,7 @@ def padhex(d):
 #   - seq(1) from coreutils
 #   - http://hashcat.net/wiki/doku.php?id=maskprocessor
 #   - john -stdout -i
-# For instance:
+# For example:
 # $ ./dummy_test data=PROG0 0='seq 1 80'
 # $ ./dummy_test data=PROG0 0='mp64.bin ?l?l?l',$(mp64.bin --combination ?l?l?l)
 class RangeIter:
@@ -1973,11 +1973,17 @@ class FTP_login(TCP_Cache):
 # }}}
 
 # SSH {{{
+
+# logging.NullHandler only available since python 2.7
+class NullHandler(logging.Handler):
+  def emit(self, record):
+    pass
+
 try:
   import paramiko 
   l = logging.getLogger('paramiko.transport')
   l.setLevel(logging.CRITICAL)
-  l.addHandler(logging.NullHandler())
+  l.addHandler(NullHandler())
 except ImportError:
   warnings.append('paramiko')
 

@@ -650,7 +650,7 @@ class TXTFormatter(logging.Formatter):
     if not record.msg or record.msg == 'headers':
       self._fmt = self.resultfmt
     else:
-      if record.levelno == 10:   # DEBUG
+      if record.levelno == logging.DEBUG:
         self._fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(processName)s] %(message)s'
       else:
         self._fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
@@ -1638,7 +1638,8 @@ Please read the README inside for more examples and usage information.
             mesg = '%s %s' % exc_info()[:2]
             logger.debug('except: %s' % mesg)
 
-            logger.exception(exc_info()[1])
+            #if logger.isEnabledFor(logging.DEBUG):
+            #  logger.exception(exc_info()[1])
 
             resp = self.module.Response('xxx', mesg, timing=default_timer()-start_time)
 

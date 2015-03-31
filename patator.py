@@ -152,7 +152,7 @@ Java             | keystore files | http://www.oracle.com/technetwork/java/javas
 python           |                | http://www.python.org/                             |     2.7 |
 --------------------------------------------------------------------------------------------------
 
-* Shortcuts (optionnal)
+* Shortcuts (optional)
 ln -s path/to/patator.py /usr/bin/ftp_login
 ln -s path/to/patator.py /usr/bin/http_fuzz
 so on ...

@@ -27,6 +27,7 @@ Currently it supports the following modules:
 * vnc_login     : Brute-force VNC
 * dns_forward   : Brute-force DNS
 * dns_reverse   : Brute-force DNS (reverse lookup subnets)
+* ike_enum      : Enumerate IKE transforms
 * snmp_login    : Brute-force SNMPv1/2 and SNMPv3
 * unzip_pass    : Brute-force the password of encrypted ZIP files
 * keystore_pass : Brute-force the password of Java keystore files

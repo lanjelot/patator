@@ -57,6 +57,7 @@ Currently it supports the following modules:
   + dns_forward   : Forward DNS lookup
   + dns_reverse   : Reverse DNS lookup
   + snmp_login    : Brute-force SNMP v1/2/3
+  + ike_enum      : Enumerate IKE transforms
 
   + unzip_pass    : Brute-force the password of encrypted ZIP files
   + keystore_pass : Brute-force the password of Java keystore files
@@ -631,7 +632,7 @@ logging.setLoggerClass(CrossProcessLogger)
 logging._levelNames[logging.ERROR] = 'FAIL'
 logger = logging.getLogger('patator')
 
-from multiprocessing.managers import SyncManager, current_process
+from multiprocessing.managers import SyncManager
 import signal
 
 manager = SyncManager()
@@ -787,7 +788,7 @@ import socket
 import subprocess
 import hashlib
 from collections import defaultdict
-from multiprocessing import Process, active_children, Queue
+from multiprocessing import Process, active_children, current_process, Queue
 try:
   # python3+
   from queue import Empty, Full
@@ -3932,6 +3933,131 @@ class SNMP_login:
 
 # }}}
 
+# IKE {{{
+if not which('ike-scan'):
+  warnings.append('ike-scan')
+
+# http://www.iana.org/assignments/ipsec-registry/ipsec-registry.xhtml
+IKE_ENC   = [('1', 'DES'), ('2', 'IDEA'), ('3', 'BLOWFISH'), ('4', 'RC5'), ('5', '3DES'), ('6', 'CAST'), ('7/128', 'AES128'), ('7/192', 'AES192'), ('7/256', 'AES256'), ('8', 'Camellia')]
+IKE_HASH  = [('1', 'MD5'), ('2', 'SHA1'), ('3', 'Tiger'), ('4', 'SHA2-256'), ('5', 'SHA2-384'), ('6', 'SHA2-512')]
+IKE_AUTH  = [('1', 'PSK'), ('2', 'DSS Sig'), ('3', 'RSA Sig'), ('4', 'RSA Enc'), ('5', 'Revised RSA Enc'),
+            #('6', 'EIGAMEL Enc'), ('7', 'Revised EIGAMEL Enc'), ('8', 'ECDSA Sig'), # Reserved
+            #('9', 'ECDSA SHA-256'), ('10', 'ECDSA SHA-384'), ('11', 'ECDSA SHA-512'), # RFC4754
+             ('65001', 'XAUTH'), ('64221', 'Hybrid'), ('64222', 'Hybrid 64222')] #, ('64223', 'Hybrid 64223'), ... ('65002', 'Hybrid 65002') ...
+IKE_GROUP = [('1', 'modp768'), ('2', 'modp1024'), ('5', 'modp1536'),
+            #('3', 'ecc3'), ('4', 'ecc4'), # any implementations?
+            # '6', '7', '8', '9', '10', '11', '12', '13', # only in draft, not RFC
+             ('14', 'modp2048')] #, ('15', 'modp3072'), ('16', 'modp4096'), ('17', 'modp6144'), ('18', 'modp8192')] # RFC3526
+            # '19', '20', '21', '22', '23', '24', '25', '26', # RFC5903
+            # '27', '28', '29', '30', # RFC6932
+
+def generate_transforms():
+  lists = map(lambda l: [i[0] for i in l], [IKE_ENC, IKE_HASH, IKE_AUTH, IKE_GROUP])
+  return map(lambda p: ','.join(p), product(*[chain(l) for l in lists])), reduce(lambda x,y: x*y, map(len, lists))
+
+class Controller_IKE(Controller):
+
+  results = defaultdict(list)
+
+  def show_final(self):
+    ''' Expected output:
++ 10.0.0.1:500 (Main Mode)
+    Encryption       Hash         Auth      Group
+    ---------- ----------   ---------- ----------
+          3DES        MD5          PSK   modp1024
+          3DES        MD5        XAUTH   modp1024
+        AES128       SHA1          PSK   modp1024
+        AES128       SHA1        XAUTH   modp1024
+
++ 10.0.0.1:500 (Aggressive Mode)
+    Encryption       Hash         Auth      Group
+    ---------- ----------   ---------- ----------
+          3DES        MD5          PSK   modp1024
+          3DES        MD5        XAUTH   modp1024
+        AES128       SHA1          PSK   modp1024
+        AES128       SHA1        XAUTH   modp1024
+    '''
+
+    ike_enc = dict(IKE_ENC)
+    ike_hsh = dict(IKE_HASH)
+    ike_ath = dict(IKE_AUTH)
+    ike_grp = dict(IKE_GROUP)
+
+    for endpoint, transforms in self.results.iteritems():
+      print('\n+ %s' % endpoint)
+      print('    %10s %10s %12s %10s' % ('Encryption', 'Hash', 'Auth', 'Group'))
+      print('    %10s %10s %12s %10s' % ('-'*10, '-'*10, '-'*10, '-'*10))
+      for transform in transforms:
+        e, h, a, g = transform.split(',')
+        enc = ike_enc[e]
+        hsh = ike_hsh[h]
+        ath = ike_ath[a]
+        grp = ike_grp[g]
+        print('    %10s %10s %12s %10s' % (enc, hsh, ath, grp))
+
+  def push_final(self, resp):
+    if hasattr(resp, 'rrs'):
+      endpoint, transform = resp.rrs
+      self.results[endpoint].append(transform)
+
+class IKE_enum:
+  '''Enumerate IKE transforms'''
+
+  usage_hints = [
+    """%prog host=10.0.0.1 transform=MOD0 0=TRANS -x ignore:fgrep=NO-PROPOSAL""",
+    """%prog host=10.0.0.1 transform=MOD0 0=TRANS -x ignore:fgrep=NO-PROPOSAL aggressive=RANGE1 1=int:0-1""",
+    ]
+
+  available_options = (
+    ('host', 'target host'),
+    ('host', 'target port [500]'),
+    ('transform', 'transform to test [5,1,1,2]'),
+    ('aggressive', 'use aggressive mode [0|1]'),
+    ('groupname', 'identification value for aggressive mode [foo]'),
+    )
+  available_actions = ()
+
+  available_keys = {
+    'TRANS': generate_transforms,
+    }
+
+  Response = Response_Base
+
+  def __init__(self):
+    uid = current_process().name[9:]
+    self.sport = '51%s' % uid
+
+  def execute(self, host, port='500', transform='5,1,1,2', aggressive='0', groupname='foo'):
+
+    cmd = ['ike-scan', '-M', '--sport', self.sport, host, '--dport', port, '--trans', transform]
+    if aggressive == '1':
+      cmd.append('-A')
+      if groupname:
+        cmd.extend(['--id', groupname])
+
+    with Timing() as timing:
+      p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      out, err = p.communicate()
+      code = p.returncode
+
+    trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
+    logger.debug('trace: %s' % repr(trace))
+
+    has_sa = 'SA=(' in out
+    if has_sa:
+      mesg = 'Handshake returned: %s (%s)' % (re.search('SA=\((.+) LifeType', out).group(1), re.search('\t(.+) Mode Handshake returned', out).group(1))
+    else:
+      mesg = out.strip().split('\n')[1].split('\t')[-1]
+
+    resp = self.Response(code, mesg, timing, trace)
+    if has_sa:
+      endpoint = '%s:%s (%s Mode)' % (host, port, 'Aggressive' if aggressive == '1' else 'Main')
+      resp.rrs = endpoint, transform
+
+    return resp
+
+# }}}
+
 # Unzip {{{
 if not which('unzip'):
   warnings.append('unzip')
@@ -3955,15 +4081,14 @@ class Unzip_pass:
   def execute(self, zipfile, password):
     zipfile = os.path.abspath(zipfile)
     cmd = ['unzip', '-t', '-q', '-P', password, zipfile]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out = p.stdout.read()
-    err = p.stderr.read()
 
     with Timing() as timing:
-      code = p.wait()
+      p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      out, err = p.communicate()
+      code = p.returncode
 
     mesg = repr(out.strip())[1:-1]
-    trace = '[out]\n%s\n[err]\n%s' % (out, err)
+    trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
 
     return self.Response(code, mesg, timing, trace)
       
@@ -3993,15 +4118,14 @@ class Keystore_pass:
   def execute(self, keystore, password, storetype='jks'):
     keystore = os.path.abspath(keystore)
     cmd = ['keytool', '-list', '-keystore', keystore, '-storepass', password, '-storetype', storetype]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out = p.stdout.read()
-    err = p.stderr.read()
 
     with Timing() as timing:
-      code = p.wait()
+      p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      out, err = p.communicate()
+      code = p.returncode
 
     mesg = repr(out.strip())[1:-1]
-    trace = '[out]\n%s\n[err]\n%s' % (out, err)
+    trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
 
     return self.Response(code, mesg, timing, trace)
 
@@ -4128,6 +4252,7 @@ modules = [
   ('dns_forward', (Controller_DNS, DNS_forward)),
   ('dns_reverse', (Controller_DNS, DNS_reverse)),
   ('snmp_login', (Controller, SNMP_login)),
+  ('ike_enum', (Controller_IKE, IKE_enum)),
   
   ('unzip_pass', (Controller, Unzip_pass)),
   ('keystore_pass', (Controller, Keystore_pass)),
@@ -4149,6 +4274,7 @@ dependencies = {
   'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/', '1.10.0'],
   'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy', '0.75'],
   'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/', '4.2.1'],
+  'ike-scan': [('ike_enum',), 'http://www.nta-monitor.com/tools-resources/security-tools/ike-scan', '1.9'],
   'unzip': [('unzip_pass',), 'http://www.info-zip.org/', '6.0'],
   'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/', '6'],
   'python': [('ftp_login',), 'http://www.python.org/', '2.7'],

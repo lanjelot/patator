@@ -101,7 +101,7 @@ Tested against phpMyAdmin 4.2.7.1.
 * IKE : Enumerate transforms supported by VPN peer
 
 ```
-# ike_enum host=10.0.0.1  transform=MOD0 0=TRANS aggressive=RANGE1 1=int:0-1 -x ignore:fgrep='NO-PROPOSAL'
+# ike_enum host=10.0.0.1 transform=MOD0 0=TRANS aggressive=RANGE1 1=int:0-1 -x ignore:fgrep='NO-PROPOSAL'
 16:52:58 patator    INFO - Starting Patator v0.7-beta (https://github.com/lanjelot/patator) at 2015-04-05 16:52 AEST
 16:52:58 patator    INFO -
 16:52:58 patator    INFO - code  size    time | candidate                          |   num | mesg

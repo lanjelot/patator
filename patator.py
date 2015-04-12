@@ -544,7 +544,7 @@ dns_reverse host=NET0 0=216.239.32.0-216.239.47.255,8.8.8.0/24 -x ignore:code=3 
 
 * SNMPv1/2 : Find valid community names.
 ----------
-snmp_login host=10.0.0.1 community=FILE0 1=names.txt -x ignore:mesg='No SNMP response received before timeout'
+snmp_login host=10.0.0.1 community=FILE0 0=names.txt -x ignore:mesg='No SNMP response received before timeout'
 
 
 * SNMPv3 : Find valid usernames.

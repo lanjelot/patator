@@ -144,7 +144,7 @@ pysnmp           | SNMP           | http://pysnmp.sourceforge.net/              
 --------------------------------------------------------------------------------------------------
 pyasn1           | SNMP           | http://sourceforge.net/projects/pyasn1/            |   0.1.2 |
 --------------------------------------------------------------------------------------------------
-IPy              | NETx keywords  | https://github.com/haypo/python-ipy                |    0.75 |
+IPy              | NET keyword    | https://github.com/haypo/python-ipy                |    0.75 |
 --------------------------------------------------------------------------------------------------
 unzip            | ZIP passwords  | http://www.info-zip.org/                           |     6.0 |
 --------------------------------------------------------------------------------------------------
@@ -622,25 +622,45 @@ TODO
 # }}}
 
 # logging {{{
+class Logger:
+  def __init__(self, pipe):
+    self.pipe = pipe
+    self.name = current_process().name
+
+# neat but wont work on windows
+#  def __getattr__(self, action):
+#    def send(*args):
+#      self.pipe.send((self.name, action, args))
+#    return send
+
+  def send(self, action, *args):
+    self.pipe.send((self.name, action, args))
+
+  def quit(self):
+    self.send('quit')
+
+  def headers(self):
+    self.send('headers')
+
+  def result(self, *args):
+    self.send('result', *args)
+
+  def save(self, *args):
+    self.send('save', *args)
+
+  def setLevel(self, level):
+    self.send('setLevel', level)
+
+  def warn(self, msg):
+    self.send('warn', msg)
+
+  def info(self, msg):
+    self.send('info', msg)
+
+  def debug(self, msg):
+    self.send('debug', msg)
+
 import logging
-
-class CrossProcessLogger(logging.Logger):
-  def getEffectiveLevel(self):
-    return ns.logger_level
-
-logging.setLoggerClass(CrossProcessLogger)
-logging._levelNames[logging.ERROR] = 'FAIL'
-logger = logging.getLogger('patator')
-
-from multiprocessing.managers import SyncManager
-import signal
-
-manager = SyncManager()
-manager.start(lambda: signal.signal(signal.SIGINT, signal.SIG_IGN))
-
-ns = manager.Namespace()
-ns.logger_level = logger.level
-
 class TXTFormatter(logging.Formatter):
   def __init__(self, indicatorsfmt):
     self.resultfmt = '%(asctime)s %(name)-7s %(levelname)7s - ' + ' '.join('%%(%s)%ss' % (k, v) for k, v in indicatorsfmt) + ' | %(candidate)-34s | %(num)5s | %(mesg)s'
@@ -652,7 +672,7 @@ class TXTFormatter(logging.Formatter):
       self._fmt = self.resultfmt
     else:
       if record.levelno == logging.DEBUG:
-        self._fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(processName)s] %(message)s'
+        self._fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(pname)s] %(message)s'
       else:
         self._fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
 
@@ -683,89 +703,101 @@ class MsgFilter(logging.Filter):
     else:
       return 1
 
-class Output:
+def process_logs(pipe, indicatorsfmt, argv, log_dir):
 
-  def __init__(self, indicatorsfmt, argv, log_dir, auto_log):
+  ignore_ctrlc()
 
-    self.log_dir = None
-    self.indicatorsfmt = indicatorsfmt
+  logging._levelNames[logging.ERROR] = 'FAIL'
 
-    if auto_log:
-      self.log_dir = create_time_dir(log_dir or '/tmp/patator', auto_log)
-    elif log_dir:
-      self.log_dir = create_dir(log_dir)
+  handler_out = logging.StreamHandler()
+  handler_out.setFormatter(TXTFormatter(indicatorsfmt))
 
-    handler_out = logging.StreamHandler()
-    handler_out.setFormatter(TXTFormatter(self.indicatorsfmt))
+  logger = logging.getLogger('patator')
+  logger.setLevel(logging.DEBUG)
+  logger.addHandler(handler_out)
 
-    logger.addHandler(handler_out)
+  if log_dir:
+    runtime_log = os.path.join(log_dir, 'RUNTIME.log')
+    results_csv = os.path.join(log_dir, 'RESULTS.csv')
+    results_xml = os.path.join(log_dir, 'RESULTS.xml')
 
-    if self.log_dir:
-      runtime_log = os.path.join(self.log_dir, 'RUNTIME.log')
-      results_csv = os.path.join(self.log_dir, 'RESULTS.csv')
-      results_xml = os.path.join(self.log_dir, 'RESULTS.xml')
+    with open(runtime_log, 'a') as f:
+      f.write('$ %s\n' % ' '.join(argv))
 
-      with open(runtime_log, 'a') as f:
-        f.write('$ %s\n' % ' '.join(argv))
+    names = [name for name, _ in indicatorsfmt] + ['candidate', 'num', 'mesg']
 
-      names = [name for name, _ in self.indicatorsfmt] + ['candidate', 'num', 'mesg']
+    if not os.path.exists(results_csv):
+      with open(results_csv, 'w') as f:
+        f.write('time,level,%s\n' % ','.join(names))
 
-      if not os.path.exists(results_csv):
-        with open(results_csv, 'w') as f:
-          f.write('time,level,%s\n' % ','.join(names))
+    if not os.path.exists(results_xml):
+      with open(results_xml, 'w') as f:
+        f.write('<?xml version="1.0" ?>\n<results>\n')
 
-      if not os.path.exists(results_xml):
-        with open(results_xml, 'w') as f:
-          f.write('<?xml version="1.0" ?>\n<results>\n')
+    else: # remove "</results>\n"
+      with open(results_xml, 'r+') as f:
+        f.seek(-11, 2)
+        f.truncate(f.tell())
 
-      else: # remove "</results>\n"
-        with open(results_xml, 'r+') as f:
-          f.seek(-11, 2)
-          f.truncate(f.tell())
+    handler_log = logging.FileHandler(runtime_log)
+    handler_csv = logging.FileHandler(results_csv)
+    handler_xml = logging.FileHandler(results_xml)
 
-      handler_log = logging.FileHandler(runtime_log)
-      handler_csv = logging.FileHandler(results_csv)
-      handler_xml = logging.FileHandler(results_xml)
+    handler_csv.addFilter(MsgFilter())
+    handler_xml.addFilter(MsgFilter())
 
-      handler_csv.addFilter(MsgFilter())
-      handler_xml.addFilter(MsgFilter())
+    handler_log.setFormatter(TXTFormatter(indicatorsfmt))
+    handler_csv.setFormatter(CSVFormatter(indicatorsfmt))
+    handler_xml.setFormatter(XMLFormatter(indicatorsfmt))
 
-      handler_log.setFormatter(TXTFormatter(self.indicatorsfmt))
-      handler_csv.setFormatter(CSVFormatter(self.indicatorsfmt))
-      handler_xml.setFormatter(XMLFormatter(self.indicatorsfmt))
+    logger.addHandler(handler_log)
+    logger.addHandler(handler_csv)
+    logger.addHandler(handler_xml)
 
-      logger.addHandler(handler_log)
-      logger.addHandler(handler_csv)
-      logger.addHandler(handler_xml)
+  while True:
 
-  def headers(self):
+    pname, action, args = pipe.recv()
 
-    names = [name for name, _ in self.indicatorsfmt] + ['candidate', 'num', 'mesg']
+    if action == 'quit':
+      if log_dir:
+        with open(os.path.join(log_dir, 'RESULTS.xml'), 'a') as f:
+          f.write('</results>\n')
+      break
 
-    logger.info(' '*77)
-    logger.info('headers', extra=dict((n, n) for n in names))
-    logger.info('-'*77)
+    elif action == 'headers':
 
-  def log_result(self, typ, resp, candidate, num):
+      names = [name for name, _ in indicatorsfmt] + ['candidate', 'num', 'mesg']
 
-    results = [(name, value) for (name, _), value in zip(self.indicatorsfmt, resp.indicators())]
-    results += [('candidate', candidate), ('num', num), ('mesg', resp)]
+      logger.info(' '*77)
+      logger.info('headers', extra=dict((n, n) for n in names))
+      logger.info('-'*77)
 
-    if typ == 'fail':
-      logger.error(None, extra=dict(results))
-    else:
-      logger.info(None, extra=dict(results))
+    elif action == 'result':
 
-  def save(self, resp, num):
-    if self.log_dir:
-      filename = '%d_%s' % (num, ':'.join(map(str, resp.indicators())))
-      with open('%s.txt' % os.path.join(self.log_dir, filename), 'w') as f:
-        f.write(resp.dump())
+      typ, resp, candidate, num = args
 
-  def __del__(self):
-    if self.log_dir:
-      with open(os.path.join(self.log_dir, 'RESULTS.xml'), 'a') as f:
-        f.write('</results>\n')
+      results = [(name, value) for (name, _), value in zip(indicatorsfmt, resp.indicators())]
+      results += [('candidate', candidate), ('num', num), ('mesg', resp)]
+
+      if typ == 'fail':
+        logger.error(None, extra=dict(results))
+      else:
+        logger.info(None, extra=dict(results))
+
+    elif action == 'save':
+
+      resp, num = args
+
+      if log_dir:
+        filename = '%d_%s' % (num, '-'.join(map(str, resp.indicators())))
+        with open('%s.txt' % os.path.join(log_dir, filename), 'w') as f:
+          f.write(resp.dump())
+
+    elif action == 'setLevel':
+      logger.setLevel(args[0])
+
+    else: # 'warn', 'info', 'debug'
+      getattr(logger, action)(args[0], extra={'pname': pname})
 
 # }}}
 
@@ -773,8 +805,8 @@ class Output:
 import re
 import os
 from sys import exc_info, exit, version_info, maxint
-from time import localtime, strftime, sleep
-from timeit import default_timer
+from time import localtime, strftime, sleep, time
+from platform import system
 from functools import reduce
 from select import select
 from itertools import islice
@@ -788,7 +820,10 @@ import socket
 import subprocess
 import hashlib
 from collections import defaultdict
-from multiprocessing import Process, active_children, current_process, Queue
+from multiprocessing import Process, active_children, current_process, Queue, Pipe
+from multiprocessing.managers import SyncManager
+import signal
+import ctypes
 try:
   # python3+
   from queue import Empty, Full
@@ -801,13 +836,13 @@ except ImportError:
   from urlparse import urlparse, urlunparse, parse_qsl
   from cStringIO import StringIO
 
-warnings = []
+notfound = []
 try:
   from IPy import IP
   has_ipy = True
 except ImportError:
   has_ipy = False
-  warnings.append('IPy')
+  notfound.append('IPy')
 
 # imports }}}
 
@@ -1030,23 +1065,53 @@ class ProgIter:
     p = subprocess.Popen(self.prog.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p.stdout
 
+class Progress:
+  def __init__(self):
+    self.current = ''
+    self.done_count = 0
+    self.hits_count = 0
+    self.skip_count = 0
+    self.fail_count = 0
+    self.seconds = [1]*25 # avoid division by zero early bug condition
+
 class TimeoutError(Exception):
   pass
+
+def on_windows():
+  return 'win' in system().lower()
+
+def ignore_ctrlc():
+  if on_windows():
+    ctypes.windll.kernel32.SetConsoleCtrlHandler(0, 1)
+  else:
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+def handle_alarm():
+  if not on_windows():
+    signal.signal(signal.SIGALRM, raise_timeout)
 
 def raise_timeout(signum, frame):
   if signum == signal.SIGALRM:
     raise TimeoutError('timed out')
 
+def enable_alarm(timeout):
+  if not on_windows():
+    signal.alarm(timeout)
+
+def disable_alarm():
+  if not on_windows():
+     signal.alarm(0)
+
+# SyncManager.start(initializer) only available since python2.7
+class MyManager(SyncManager):
+  @classmethod
+  def _run_server(cls, registry, address, authkey, serializer, writer, initializer=None, initargs=()):
+    ignore_ctrlc()
+    super(MyManager, cls)._run_server(registry, address, authkey, serializer, writer)
+
 # }}}
 
 # Controller {{{
-ns.actions = {}
-ns.free_list = []
-ns.paused = False
-ns.quit_now = False
-ns.start_time = 0
-ns.total_size = 1
-
 class Controller:
 
   builtin_actions = (
@@ -1185,11 +1250,6 @@ Please read the README inside for more examples and usage information.
     parser = self.usage_parser(argv[0])
     opts, args = parser.parse_args(argv[1:])
 
-    if opts.debug:
-      ns.logger_level = logging.DEBUG
-    else:
-      ns.logger_level = logging.INFO
-
     if not len(args) > 0:
       parser.print_usage()
       print('ERROR: wrong usage. Please read the README inside for more information.')
@@ -1219,7 +1279,37 @@ Please read the README inside for more examples and usage information.
 
     self.resume = [int(i) for i in opts.resume.split(',')] if opts.resume else None
 
-    self.output = Output(self.module.Response.indicatorsfmt, argv, opts.log_dir, opts.auto_log)
+    if opts.auto_log:
+      log_dir = create_time_dir(opts.log_dir or '/tmp/patator', opts.auto_log)
+    elif opts.log_dir:
+      log_dir = create_dir(opts.log_dir)
+    else:
+      log_dir = None
+
+    manager = MyManager()
+    manager.start()
+
+    self.ns = manager.Namespace()
+    self.ns.actions = {}
+    self.ns.free_list = []
+    self.ns.paused = False
+    self.ns.quit_now = False
+    self.ns.start_time = 0
+    self.ns.total_size = 1
+
+    pipe = Pipe(duplex=False)
+
+    logsvc = Process(name='LogSvc', target=process_logs, args=(pipe[0], module.Response.indicatorsfmt, argv, log_dir))
+    logsvc.daemon = True
+    logsvc.start()
+
+    global logger
+    logger = Logger(pipe[1])
+
+    if opts.debug:
+      logger.setLevel(logging.DEBUG)
+    else:
+      logger.setLevel(logging.INFO)
 
     wlists = {}
     kargs = []
@@ -1259,8 +1349,8 @@ Please read the README inside for more examples and usage information.
           self.iter_keys[i][2].append(k)
 
           if not has_ipy:
-            logger.warn('IPy (https://github.com/haypo/python-ipy) is required for using NETx keywords.')
-            logger.warn('Please read the README inside for more information.')
+            print('IPy (https://github.com/haypo/python-ipy) is required for using NET keyword.')
+            print('Please read the README inside for more information.')
             exit(3)
 
         else:
@@ -1300,10 +1390,10 @@ Please read the README inside for more examples and usage information.
     for x in opts.actions:
       self.update_actions(x)
 
-    logger.debug('actions: %s' % ns.actions)
+    logger.debug('actions: %s' % self.ns.actions)
     
   def update_actions(self, arg): 
-    ns_actions = ns.actions
+    ns_actions = self.ns.actions
 
     actions, conditions = arg.split(':', 1)
     for action in actions.split(','):
@@ -1323,11 +1413,11 @@ Please read the README inside for more examples and usage information.
 
       ns_actions[name].append((conds, opts))
 
-    ns.actions = ns_actions
+    self.ns.actions = ns_actions
 
   def lookup_actions(self, resp):
     actions = {}
-    for action, conditions in ns.actions.items():
+    for action, conditions in self.ns.actions.items():
       for condition, opts in conditions:
         for key, val in condition:
           if key[-1] == '!':
@@ -1342,7 +1432,7 @@ Please read the README inside for more examples and usage information.
 
   def check_free(self, payload):
     # free_list: 'host=10.0.0.1', 'user=anonymous', 'host=10.0.0.7,user=test', ...
-    for m in ns.free_list:
+    for m in self.ns.free_list:
       args = m.split(',', 1)
       for arg in args:
         k, v = arg.split('=', 1)
@@ -1354,8 +1444,8 @@ Please read the README inside for more examples and usage information.
     return False
 
   def register_free(self, payload, opts):
-    ns.free_list += [','.join('%s=%s' % (k, payload[k]) for k in opts.split('+'))]
-    logger.debug('free_list updated: %s' % ns.free_list)
+    self.ns.free_list += [','.join('%s=%s' % (k, payload[k]) for k in opts.split('+'))]
+    logger.debug('free_list updated: %s' % self.ns.free_list)
   
   def fire(self):
     logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
@@ -1366,28 +1456,28 @@ Please read the README inside for more examples and usage information.
     except KeyboardInterrupt:
       pass
     except:
-      logger.exception(exc_info()[1])
+      logging.exception(exc_info()[1])
     finally:
-      ns.quit_now = True
+      self.ns.quit_now = True
 
     try:
       # waiting for reports enqueued by consumers to be flushed
       while True:
         active = active_children()
         self.report_progress()
-        if not len(active)> 1:
+        if not len(active) > 2: # SyncManager and LogSvc
           break
         logger.debug('active: %s' % active)
         sleep(.1)
     except KeyboardInterrupt:
       pass
 
-    if ns.total_size >= maxint:
+    if self.ns.total_size >= maxint:
       total_size = -1
     else:
-      total_size = ns.total_size
+      total_size = self.ns.total_size
 
-    total_time = default_timer() - ns.start_time
+    total_time = time() - self.ns.start_time
 
     hits_count = sum(p.hits_count for p in self.thread_progress)
     done_count = sum(p.done_count for p in self.thread_progress)
@@ -1413,39 +1503,37 @@ Please read the README inside for more examples and usage information.
         
       logger.info('To resume execution, pass --resume %s' % ','.join(resume))
 
+    logger.quit()
+    while len(active_children()) > 1:
+      sleep(.1)
+
   def push_final(self, resp): pass
   def show_final(self): pass
 
   def start_threads(self):
-
-    class Progress:
-      def __init__(self):
-        self.current = ''
-        self.done_count = 0
-        self.hits_count = 0
-        self.skip_count = 0
-        self.fail_count = 0
-        self.seconds = [1]*25 # avoid division by zero early bug condition
 
     task_queues = [Queue() for _ in range(self.num_threads)]
 
     # consumers
     for num in range(self.num_threads):
       report_queue = Queue()
-      t = Process(name='Consumer-%d' % num, target=self.consume, args=(task_queues[num], report_queue))
+      t = Process(name='Consumer-%d' % num, target=self.consume, args=(task_queues[num], report_queue, logger.pipe))
       t.daemon = True
       t.start()
       self.thread_report.append(report_queue)
       self.thread_progress.append(Progress())
 
     # producer
-    t = Process(name='Producer', target=self.produce, args=(task_queues,))
+    t = Process(name='Producer', target=self.produce, args=(task_queues, logger.pipe))
     t.daemon = True
     t.start()
 
-  def produce(self, task_queues):
+  def produce(self, task_queues, pipe):
 
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    ignore_ctrlc()
+
+    global logger
+    logger = Logger(pipe)
 
     iterables = []
     total_size = 1
@@ -1517,15 +1605,15 @@ Please read the README inside for more examples and usage information.
     if self.resume:
       total_size -= sum(self.resume)
 
-    self.output.headers()
+    self.ns.total_size = total_size
+    self.ns.start_time = time()
 
-    ns.total_size = total_size
-    ns.start_time = default_timer()
+    logger.headers()
 
     count = 0
     for pp in islice(product(*iterables), self.start, self.stop):
 
-      if ns.quit_now:
+      if self.ns.quit_now:
         break
 
       cid = count % self.num_threads
@@ -1541,7 +1629,7 @@ Please read the README inside for more examples and usage information.
           continue
 
       while True:
-        if ns.quit_now:
+        if self.ns.quit_now:
           break
 
         try:
@@ -1552,14 +1640,14 @@ Please read the README inside for more examples and usage information.
 
       count += 1
 
-    if not ns.quit_now:
+    if not self.ns.quit_now:
       for q in task_queues:
         q.put(None)
 
     logger.debug('producer done')
 
     while True:
-      if ns.quit_now:
+      if self.ns.quit_now:
         for q in task_queues:
           q.cancel_join_thread()
         break
@@ -1567,12 +1655,15 @@ Please read the README inside for more examples and usage information.
 
     logger.debug('producer exits')
 
-  def consume(self, task_queue, report_queue):
+  def consume(self, task_queue, report_queue, pipe):
+
+    ignore_ctrlc()
+    handle_alarm()
+
+    global logger
+    logger = Logger(pipe)
 
     module = self.module()
-
-    signal.signal(signal.SIGALRM, raise_timeout)
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     def shutdown():
       if hasattr(module, '__del__'):
@@ -1580,7 +1671,7 @@ Please read the README inside for more examples and usage information.
       logger.debug('consumer done')
 
     while True:
-      if ns.quit_now:
+      if self.ns.quit_now:
         return shutdown()
 
       try:
@@ -1625,14 +1716,14 @@ Please read the README inside for more examples and usage information.
         continue
 
       try_count = 0
-      start_time = default_timer()
+      start_time = time()
 
       while True:
 
-        while ns.paused and not ns.quit_now:
+        while self.ns.paused and not self.ns.quit_now:
           sleep(1)
 
-        if ns.quit_now:
+        if self.ns.quit_now:
           return shutdown()
 
         if self.rate_limit > 0:
@@ -1646,17 +1737,16 @@ Please read the README inside for more examples and usage information.
           logger.debug('payload: %s [try %d/%d]' % (payload, try_count, self.max_retries+1))
 
           try:
-            signal.alarm(self.timeout)
+            enable_alarm(self.timeout)
             resp = module.execute(**payload)
 
           except:
             mesg = '%s %s' % exc_info()[:2]
-            logger.debug('except: %s' % mesg)
+            logger.debug('caught: %s' % mesg)
 
-            #if logger.isEnabledFor(logging.DEBUG):
-            #  logger.exception(exc_info()[1])
+            #logging.exception(exc_info()[1])
 
-            resp = self.module.Response('xxx', mesg, timing=default_timer()-start_time)
+            resp = self.module.Response('xxx', mesg, timing=time()-start_time)
 
             if hasattr(module, 'reset'):
               module.reset()
@@ -1665,13 +1755,13 @@ Please read the README inside for more examples and usage information.
             continue
 
           finally:
-            signal.alarm(0)
+            disable_alarm()
 
         else:
           actions = {'fail': None}
 
         actions.update(self.lookup_actions(resp))
-        report_queue.put((actions, pp_prod, resp, default_timer() - start_time))
+        report_queue.put((actions, pp_prod, resp, time() - start_time))
 
         for name in self.module_actions:
           if name in actions:
@@ -1690,8 +1780,8 @@ Please read the README inside for more examples and usage information.
         break
        
   def monitor_progress(self):
-    # loop until SyncManager and Producer are the only children left alive
-    while len(active_children()) > 2 and not ns.quit_now:
+    # loop until SyncManager, LogSvc and Producer are the only children left alive
+    while len(active_children()) > 3 and not self.ns.quit_now:
       self.report_progress()
       self.monitor_interaction()
 
@@ -1723,10 +1813,10 @@ Please read the README inside for more examples and usage information.
         p.seconds[p.done_count % len(p.seconds)] = seconds
 
         if 'fail' in actions:
-          self.output.log_result('fail', resp, current, offset)
+          logger.result('fail', resp, current, offset)
 
         elif 'ignore' not in actions:
-          self.output.log_result('hit', resp, current, offset)
+          logger.result('hit', resp, current, offset)
 
         if 'fail' in actions:
           p.fail_count += 1
@@ -1737,21 +1827,33 @@ Please read the README inside for more examples and usage information.
         elif 'ignore' not in actions:
           p.hits_count += 1
 
-          self.output.save(resp, offset)
+          logger.save(resp, offset)
 
           self.push_final(resp)
 
         p.done_count += 1
 
         if 'quit' in actions:
-          ns.quit_now = True
+          self.ns.quit_now = True
 
 
   def monitor_interaction(self):
-    from sys import stdin
-    i, _, _ = select([stdin], [], [], .1)
-    if not i: return
-    command = i[0].readline().strip()
+
+    if on_windows():
+      import msvcrt
+      if not msvcrt.kbhit():
+        sleep(.1)
+        return
+
+      command = msvcrt.getche()
+      if command == 'x':
+        command += raw_input()
+
+    else:
+      from sys import stdin
+      i, _, _ = select([stdin], [], [], .1)
+      if not i: return
+      command = i[0].readline().strip()
 
     if command == 'h':
       logger.info('''Available commands:
@@ -1766,20 +1868,20 @@ Please read the README inside for more examples and usage information.
        ''')
 
     elif command == 'q':
-      ns.quit_now = True
+      self.ns.quit_now = True
 
     elif command == 'p':
-      ns.paused = not ns.paused
-      logger.info(ns.paused and 'Paused' or 'Unpaused')
+      self.ns.paused = not self.ns.paused
+      logger.info(self.ns.paused and 'Paused' or 'Unpaused')
 
     elif command == 'd':
-      ns.logger_level = logging.DEBUG
+      logger.setLevel(logging.DEBUG)
 
     elif command == 'D':
-      ns.logger_level = logging.INFO
+      logger.setLevel(logging.INFO)
 
     elif command == 'a':
-      logger.info(repr(ns.actions))
+      logger.info(repr(self.ns.actions))
 
     elif command.startswith('x'):
       _, arg = command.split(' ', 1)
@@ -1792,7 +1894,7 @@ Please read the README inside for more examples and usage information.
 
       thread_progress = self.thread_progress
       num_threads = self.num_threads
-      total_size = ns.total_size
+      total_size = self.ns.total_size
 
       total_count = sum(p.done_count+p.skip_count for p in thread_progress)
       speed_avg = num_threads / (sum(sum(p.seconds) / len(p.seconds) for p in thread_progress) / num_threads)
@@ -1812,7 +1914,7 @@ Please read the README inside for more examples and usage information.
         speed_avg,
         etc_time,
         remain_time,
-        ns.paused and '| Paused' or ''))
+        self.ns.paused and '| Paused' or ''))
 
       if command == 'f':
         for i, p in enumerate(thread_progress):
@@ -1903,11 +2005,11 @@ class Response_Base:
 
 class Timing:
   def __enter__(self):
-    self.t1 = default_timer()
+    self.t1 = time()
     return self
 
   def __exit__(self, exc_type, exc_value, traceback):
-    self.time = default_timer() - self.t1
+    self.time = time() - self.t1
 
 # }}}
 
@@ -1982,7 +2084,7 @@ from ftplib import FTP, Error as FTP_Error
 try:
   from ftplib import FTP_TLS # New in python 2.7
 except ImportError:
-  logger.warn('TLS support to FTP was implemented in python 2.7')
+  notfound.append('ftp-tls')
 
 class FTP_login(TCP_Cache):
   '''Brute-force FTP'''
@@ -2052,11 +2154,9 @@ class NullHandler(logging.Handler):
 
 try:
   import paramiko 
-  l = logging.getLogger('paramiko.transport')
-  l.setLevel(logging.CRITICAL)
-  l.addHandler(NullHandler())
+  logging.getLogger('paramiko.transport').addHandler(NullHandler())
 except ImportError:
-  warnings.append('paramiko')
+  notfound.append('paramiko')
 
 def load_keyfile(keyfile):
   for cls in (paramiko.RSAKey, paramiko.DSSKey, paramiko.ECDSAKey):
@@ -2401,7 +2501,7 @@ class Finger_lookup:
 
 # LDAP {{{
 if not which('ldapsearch'):
-  warnings.append('openldap')
+  notfound.append('openldap')
 
 # Because python-ldap-2.4.4 did not allow using a PasswordPolicyControl
 # during bind authentication (cf. http://article.gmane.org/gmane.comp.python.ldap/1003),
@@ -2449,7 +2549,7 @@ try:
   from impacket import smb as impacket_smb
   from impacket.dcerpc import dcerpc, transport, lsarpc
 except ImportError:
-  warnings.append('impacket')
+  notfound.append('impacket')
 
 class SMB_Connection(TCP_Connection):
 
@@ -2965,7 +3065,7 @@ class VMauthd_login(TCP_Cache):
 try:
   import _mysql
 except ImportError:
-  warnings.append('mysql-python')
+  notfound.append('mysql-python')
 
 class MySQL_login:
   '''Brute-force MySQL'''
@@ -3043,7 +3143,7 @@ try:
   from impacket import tds
   from impacket.tds import TDS_ERROR_TOKEN, TDS_LOGINACK_TOKEN
 except ImportError:
-  warnings.append('impacket')
+  notfound.append('impacket')
 class MSSQL_login:
   '''Brute-force MSSQL'''
 
@@ -3097,7 +3197,7 @@ class MSSQL_login:
 try:
   import cx_Oracle
 except ImportError:
-  warnings.append('cx_Oracle')
+  notfound.append('cx_Oracle')
 
 class Response_Oracle(Response_Base):
   indicatorsfmt = [('code', -9), ('size', -4), ('time', 6)]
@@ -3148,7 +3248,7 @@ class Oracle_login:
 try:
   import psycopg2
 except ImportError:
-  warnings.append('psycopg')
+  notfound.append('psycopg')
 
 class Pgsql_login:
   '''Brute-force PostgreSQL'''
@@ -3189,7 +3289,7 @@ class Pgsql_login:
 try:
   import pycurl
 except ImportError:
-  warnings.append('pycurl')
+  notfound.append('pycurl')
 
 class Response_HTTP(Response_Base):
 
@@ -3400,7 +3500,7 @@ class HTTP_fuzz(TCP_Cache):
 try:
   from Crypto.Cipher import DES
 except ImportError:
-  warnings.append('pycrypto')
+  notfound.append('pycrypto')
 
 class VNC_Error(Exception): pass
 class VNC:
@@ -3543,7 +3643,7 @@ try:
   import dns.query
   import dns.reversename
 except ImportError:
-  warnings.append('dnspython')
+  notfound.append('dnspython')
 
 def dns_query(server, timeout, protocol, qname, qtype, qclass):
   request = dns.message.make_query(qname, qtype, qclass)
@@ -3890,7 +3990,7 @@ class DNS_forward:
 try:
   from pysnmp.entity.rfc3413.oneliner import cmdgen
 except ImportError:
-  warnings.append('pysnmp')
+  notfound.append('pysnmp')
 
 class SNMP_login:
   '''Brute-force SNMP v1/2/3'''
@@ -3950,7 +4050,7 @@ class SNMP_login:
 
 # IKE {{{
 if not which('ike-scan'):
-  warnings.append('ike-scan')
+  notfound.append('ike-scan')
 
 # http://www.iana.org/assignments/ipsec-registry/ipsec-registry.xhtml
 IKE_ENC   = [('1', 'DES'), ('2', 'IDEA'), ('3', 'BLOWFISH'), ('4', 'RC5'), ('5', '3DES'), ('6', 'CAST'), ('7/128', 'AES128'), ('7/192', 'AES192'), ('7/256', 'AES256'), ('8', 'Camellia')]
@@ -4075,7 +4175,7 @@ class IKE_enum:
 
 # Unzip {{{
 if not which('unzip'):
-  warnings.append('unzip')
+  notfound.append('unzip')
 
 class Unzip_pass:
   '''Brute-force the password of encrypted ZIP files'''
@@ -4111,7 +4211,7 @@ class Unzip_pass:
 
 # Keystore {{{
 if not which('keytool'):
-  warnings.append('java')
+  notfound.append('java')
 
 class Keystore_pass:
   '''Brute-force the password of Java keystore files'''
@@ -4292,7 +4392,7 @@ dependencies = {
   'ike-scan': [('ike_enum',), 'http://www.nta-monitor.com/tools-resources/security-tools/ike-scan', '1.9'],
   'unzip': [('unzip_pass',), 'http://www.info-zip.org/', '6.0'],
   'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/', '6'],
-  'python': [('ftp_login',), 'http://www.python.org/', '2.7'],
+  'ftp-tls': [('ftp_login',), 'TLS support unavailable before python 2.7'],
   }
 # }}}
 
@@ -4325,11 +4425,15 @@ Available modules:
 
   # dependencies
   abort = False
-  for w in set(warnings):
-    mods, url, ver = dependencies[w]
-    if name in mods:
-      print('ERROR: %s %s (%s) is required to run %s.' % (w, ver, url, name))
-      abort = True
+  for k in set(notfound):
+    args = dependencies[k]
+    if name in args[0]:
+      if len(args) == 2:
+        print('WARNING: %s' % args[1])
+      else:
+        url, ver = args[1:]
+        print('ERROR: %s %s (%s) is required to run %s.' % (k, ver, url, name))
+        abort = True
 
   if abort:
     print('Please read the README inside for more information.')

@@ -1078,7 +1078,7 @@ class TimeoutError(Exception):
   pass
 
 def on_windows():
-  return 'win' in system().lower()
+  return 'Win' in system()
 
 def ignore_ctrlc():
   if on_windows():

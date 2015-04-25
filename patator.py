@@ -4094,6 +4094,7 @@ class IKE_enum:
     ('transform', 'transform to test [5,1,1,2]'),
     ('aggressive', 'use aggressive mode [0|1]'),
     ('groupname', 'identification value for aggressive mode [foo]'),
+    ('vid', 'comma-separated vendor IDs to use'),
     )
   available_actions = ()
 
@@ -4107,13 +4108,15 @@ class IKE_enum:
     uid = current_process().name[9:]
     self.sport = '51%s' % uid
 
-  def execute(self, host, port='500', transform='5,1,1,2', aggressive='0', groupname='foo'):
+  def execute(self, host, port='500', transform='5,1,1,2', aggressive='0', groupname='foo', vid=''):
 
     cmd = ['ike-scan', '-M', '--sport', self.sport, host, '--dport', port, '--trans', transform]
     if aggressive == '1':
       cmd.append('-A')
       if groupname:
         cmd.extend(['--id', groupname])
+    for v in vid.split(','):
+      cmd.extend(['--vendor', v])
 
     with Timing() as timing:
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

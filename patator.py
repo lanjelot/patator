@@ -2615,8 +2615,7 @@ class SMB_login(TCP_Cache):
       self.reset()
 
     except SessionError as e:
-      # Something failed, bye
-      code = str(hex(e.getErrorCode()))
+      code = '%x' % e.getErrorCode()
       mesg = nt_errors.ERROR_MESSAGES[e.getErrorCode()][0]
 
     if persistent == '0':
@@ -2633,6 +2632,7 @@ class DCE_Connection(TCP_Connection):
   def close(self):
     self.smbt.get_socket().close()
 
+# impacket/examples/lookupsid.py is much faster because it queries 1000 SIDs per packet
 class SMB_lookupsid(TCP_Cache):
   '''Brute-force SMB SID-lookup'''
 
@@ -2652,37 +2652,42 @@ class SMB_lookupsid(TCP_Cache):
 
   Response = Response_Base
 
-  def connect(self, host, port, user, password):
+  def connect(self, host, port, user, password, sid):
     smbt = transport.SMBTransport(host, int(port), r'\lsarpc', user, password)
 
     dce = smbt.get_dce_rpc()
     dce.connect()
     dce.bind(lsat.MSRPC_UUID_LSAT)
 
+    op2 = lsat.hLsarOpenPolicy2(dce, MAXIMUM_ALLOWED | lsat.POLICY_LOOKUP_NAMES)
+
+    if sid is None:
+      res = lsad.hLsarQueryInformationPolicy2(dce, op2['PolicyHandle'], lsad.POLICY_INFORMATION_CLASS.PolicyAccountDomainInformation)
+      sid = res['PolicyInformation']['PolicyAccountDomainInfo']['DomainSid'].formatCanonical()
+
+    self.sid = sid
+    self.policy_handle = op2['PolicyHandle']
+
     return DCE_Connection(dce, smbt)
 
   def execute(self, host, port='139', user='', password='', sid=None, rid=None, persistent='1'):
 
-    try:
-      fp, _ = self.bind(host, port, user, password)
-    except SessionError, e:
-      error_code = nt_errors.ERROR_MESSAGES[e.getErrorCode()][0]
-      # Something failed, bye
-      return self.Response(1, error_code )
+    fp, _ = self.bind(host, port, user, password, sid)
 
     if rid:
-      sid = '%s-%s' % (sid, rid)
+      sid = '%s-%s' % (self.sid, rid)
+    else:
+      sid = self.sid
 
-    op2 = lsat.hLsarOpenPolicy2(fp, MAXIMUM_ALLOWED | lsat.POLICY_LOOKUP_NAMES)
     try:
-      res = lsat.hLsarLookupSids(fp, op2['PolicyHandle'], [sid],lsat.LSAP_LOOKUP_LEVEL.LsapLookupWksta)
-      code, names = 0, []
+      res = lsat.hLsarLookupSids(fp, self.policy_handle, [sid], lsat.LSAP_LOOKUP_LEVEL.LsapLookupWksta)
 
+      code, names = 0, []
       for n, item in enumerate(res['TranslatedNames']['Names']):
-        if item['Use'] != SID_NAME_USE.SidTypeUnknown:
-          names.append("%s\\%s (%s)" % (res['ReferencedDomains']['Domains'][item['DomainIndex']]['Name'], item['Name'], SID_NAME_USE.enumItems(item['Use']).name))
-    except Exception, e:
-      code, names = 1, ['unknown'] # STATUS_SOME_NOT_MAPPED
+        names.append("%s\\%s (%s)" % (res['ReferencedDomains']['Domains'][item['DomainIndex']]['Name'], item['Name'], SID_NAME_USE.enumItems(item['Use']).name[7:]))
+
+    except lsat.DCERPCSessionError:
+      code, names = 1, ['unknown'] # STATUS_NONE_MAPPED
 
     if persistent == '0':
       self.reset()

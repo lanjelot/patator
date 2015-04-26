@@ -2598,8 +2598,7 @@ class SMB_login(TCP_Cache):
 
     try:
       if user is None:
-        fp.login('', '') # to get computer name
-        fp.login_standard('', '') # to get workgroup or domain (Primary Domain)
+        fp.login('', '') # retrieve workgroup/domain and computer name
       else:
         with Timing() as timing:
           if password_hash:

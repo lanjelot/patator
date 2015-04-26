@@ -627,7 +627,7 @@ TODO
 class Logger:
   def __init__(self, pipe):
     self.pipe = pipe
-    self.name = current_process().name
+    self.name = multiprocessing.current_process().name
 
 # neat but wont work on windows
 #  def __getattr__(self, action):
@@ -806,7 +806,7 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
 # imports {{{
 import re
 import os
-from sys import exc_info, exit, version_info, maxint
+import sys
 from time import localtime, strftime, sleep, time
 from platform import system
 from functools import reduce
@@ -822,8 +822,7 @@ import socket
 import subprocess
 import hashlib
 from collections import defaultdict
-from multiprocessing import Process, active_children, current_process, Queue, Pipe
-from multiprocessing.managers import SyncManager
+import multiprocessing
 import signal
 import ctypes
 try:
@@ -846,6 +845,33 @@ except ImportError:
   has_ipy = False
   notfound.append('IPy')
 
+import multiprocessing.forking
+class _Popen(multiprocessing.forking.Popen):
+    def __init__(self, *args, **kw):
+        if hasattr(sys, 'frozen'):
+            # We have to set original _MEIPASS2 value from sys._MEIPASS
+            # to get --onefile mode working.
+            os.putenv('_MEIPASS2', sys._MEIPASS)
+        try:
+            super(_Popen, self).__init__(*args, **kw)
+        finally:
+            if hasattr(sys, 'frozen'):
+                # On some platforms (e.g. AIX) 'os.unsetenv()' is not
+                # available. In those cases we cannot delete the variable
+                # but only set it to the empty string. The bootloader
+                # can handle this case.
+                if hasattr(os, 'unsetenv'):
+                    os.unsetenv('_MEIPASS2')
+                else:
+                    os.putenv('_MEIPASS2', '')
+
+class Process(multiprocessing.Process):
+    _Popen = _Popen
+
+# So BaseManager.start() uses this new Process class
+multiprocessing.Process = Process
+from multiprocessing.managers import SyncManager
+
 # imports }}}
 
 # utils {{{
@@ -854,12 +880,15 @@ def which(program):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
 
   fpath, fname = os.path.split(program)
+  if on_windows() and fname[-4:] != '.exe' :
+    fname += '.exe'
+
   if fpath:
     if is_exe(program):
       return program
   else:
     for path in os.environ["PATH"].split(os.pathsep):
-      exe_file = os.path.join(path, program)
+      exe_file = os.path.join(path, fname)
       if is_exe(exe_file):
         return exe_file
 
@@ -882,7 +911,7 @@ def create_dir(top_path):
         for root, dirs, files in os.walk(top_path):
           if dirs:
             print("Directory '%s' contains sub-directories, safely aborting..." % root)
-            exit(0)
+            sys.exit(0)
           for f in files:
             os.unlink(os.path.join(root, f))
           break
@@ -1057,7 +1086,7 @@ class RangeIter:
 
     if random:
       self.generator = random_generator, ()
-      self.size = maxint
+      self.size = sys.maxint
 
   def __iter__(self):
     fn, args = self.generator
@@ -1263,7 +1292,7 @@ Please read the README inside for more examples and usage information.
     if not len(args) > 0:
       parser.print_usage()
       print('ERROR: wrong usage. Please read the README inside for more information.')
-      exit(2)
+      sys.exit(2)
 
     return opts, args
 
@@ -1300,7 +1329,7 @@ Please read the README inside for more examples and usage information.
     self.ns.start_time = 0
     self.ns.total_size = 1
 
-    pipe = Pipe(duplex=False)
+    pipe = multiprocessing.Pipe(duplex=False)
 
     logsvc = Process(name='LogSvc', target=process_logs, args=(pipe[0], module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log)))
     logsvc.daemon = True
@@ -1354,7 +1383,7 @@ Please read the README inside for more examples and usage information.
           if not has_ipy:
             print('IPy (https://github.com/haypo/python-ipy) is required for using NET keyword.')
             print('Please read the README inside for more information.')
-            exit(3)
+            sys.exit(3)
 
         else:
           for i, j in self.find_combo_keys(v):
@@ -1459,14 +1488,14 @@ Please read the README inside for more examples and usage information.
     except KeyboardInterrupt:
       pass
     except:
-      logging.exception(exc_info()[1])
+      logging.exception(sys.exc_info()[1])
     finally:
       self.ns.quit_now = True
 
     try:
       # waiting for reports enqueued by consumers to be flushed
       while True:
-        active = active_children()
+        active = multiprocessing.active_children()
         self.report_progress()
         if not len(active) > 2: # SyncManager and LogSvc
           break
@@ -1475,7 +1504,7 @@ Please read the README inside for more examples and usage information.
     except KeyboardInterrupt:
       pass
 
-    if self.ns.total_size >= maxint:
+    if self.ns.total_size >= sys.maxint:
       total_size = -1
     else:
       total_size = self.ns.total_size
@@ -1507,7 +1536,7 @@ Please read the README inside for more examples and usage information.
       logger.info('To resume execution, pass --resume %s' % ','.join(resume))
 
     logger.quit()
-    while len(active_children()) > 1:
+    while len(multiprocessing.active_children()) > 1:
       sleep(.1)
 
   def push_final(self, resp): pass
@@ -1515,11 +1544,11 @@ Please read the README inside for more examples and usage information.
 
   def start_threads(self):
 
-    task_queues = [Queue() for _ in range(self.num_threads)]
+    task_queues = [multiprocessing.Queue() for _ in range(self.num_threads)]
 
     # consumers
     for num in range(self.num_threads):
-      report_queue = Queue()
+      report_queue = multiprocessing.Queue()
       t = Process(name='Consumer-%d' % num, target=self.consume, args=(task_queues[num], report_queue, logger.pipe))
       t.daemon = True
       t.start()
@@ -1584,7 +1613,7 @@ Please read the README inside for more examples and usage information.
         if m:
           prog, size = m.groups()
         else:
-          prog, size = v, maxint
+          prog, size = v, sys.maxint
 
         logger.debug('prog: %s, size: %s' % (prog, size))
 
@@ -1744,10 +1773,10 @@ Please read the README inside for more examples and usage information.
             resp = module.execute(**payload)
 
           except:
-            mesg = '%s %s' % exc_info()[:2]
+            mesg = '%s %s' % sys.exc_info()[:2]
             logger.debug('caught: %s' % mesg)
 
-            #logging.exception(exc_info()[1])
+            #logging.exception(sys.exc_info()[1])
 
             resp = self.module.Response('xxx', mesg, timing=time()-start_time)
 
@@ -1784,7 +1813,7 @@ Please read the README inside for more examples and usage information.
        
   def monitor_progress(self):
     # loop until SyncManager, LogSvc and Producer are the only children left alive
-    while len(active_children()) > 3 and not self.ns.quit_now:
+    while len(multiprocessing.active_children()) > 3 and not self.ns.quit_now:
       self.report_progress()
       self.monitor_interaction()
 
@@ -1853,8 +1882,7 @@ Please read the README inside for more examples and usage information.
         command += raw_input()
 
     else:
-      from sys import stdin
-      i, _, _ = select([stdin], [], [], .1)
+      i, _, _ = select([sys.stdin], [], [], .1)
       if not i: return
       command = i[0].readline().strip()
 
@@ -1901,7 +1929,7 @@ Please read the README inside for more examples and usage information.
 
       total_count = sum(p.done_count+p.skip_count for p in thread_progress)
       speed_avg = num_threads / (sum(sum(p.seconds) / len(p.seconds) for p in thread_progress) / num_threads)
-      if total_size >= maxint:
+      if total_size >= sys.maxint:
         etc_time = 'inf'
         remain_time = 'inf'
       else:
@@ -2150,10 +2178,12 @@ class FTP_login(TCP_Cache):
 
 # SSH {{{
 
-# logging.NullHandler only available since python 2.7
-class NullHandler(logging.Handler):
-  def emit(self, record):
-    pass
+try:
+  from logging import NullHandler # only available since python 2.7
+except ImportError:
+  class NullHandler(logging.Handler):
+    def emit(self, record):
+      pass
 
 try:
   import paramiko 
@@ -3560,7 +3590,7 @@ class VNC:
           btgt = btgt | (1 << 7-i)
       newkey.append(btgt)
 
-    if version_info[0] == 2:
+    if sys.version_info[0] == 2:
       return ''.join(chr(c) for c in newkey)
     else:
       return bytes(newkey)
@@ -4107,7 +4137,7 @@ class IKE_enum:
   Response = Response_Base
 
   def __init__(self):
-    uid = current_process().name[9:]
+    uid = multiprocessing.current_process().name[9:]
     self.sport = '51%s' % uid
 
   def execute(self, host, port='500', transform='5,1,1,2', aggressive='0', groupname='foo', vid=''):
@@ -4368,8 +4398,7 @@ dependencies = {
 
 # main {{{
 if __name__ == '__main__':
-  from sys import argv
-  from os.path import basename
+  multiprocessing.freeze_support()
 
   def show_usage():
     print(__banner__)
@@ -4378,20 +4407,20 @@ if __name__ == '__main__':
 Available modules:
 %s''' % '\n'.join('  + %-13s : %s' % (k, v[1].__doc__) for k, v in modules))
 
-    exit(2)
+    sys.exit(2)
 
   available = dict(modules)
-  name = basename(argv[0]).lower()
+  name = os.path.basename(sys.argv[0]).lower()
 
   if name not in available:
-    if len(argv) == 1:
+    if len(sys.argv) == 1:
       show_usage()
 
-    name = basename(argv[1]).lower()
+    name = os.path.basename(sys.argv[1]).lower()
     if name not in available:
       show_usage()
 
-    argv = argv[1:]
+    argv = sys.argv[1:]
 
   # dependencies
   abort = False
@@ -4407,7 +4436,7 @@ Available modules:
 
   if abort:
     print('Please read the README inside for more information.')
-    exit(3)
+    sys.exit(3)
 
   # start
   ctrl, module = available[name]

@@ -140,11 +140,13 @@ pycrypto         | VNC            | http://www.dlitz.net/software/pycrypto/     
 --------------------------------------------------------------------------------------------------
 dnspython        | DNS            | http://www.dnspython.org/                          |  1.10.0 |
 --------------------------------------------------------------------------------------------------
+IPy              | NET keyword    | https://github.com/haypo/python-ipy                |    0.75 |
+--------------------------------------------------------------------------------------------------
 pysnmp           | SNMP           | http://pysnmp.sourceforge.net/                     |   4.2.1 |
 --------------------------------------------------------------------------------------------------
 pyasn1           | SNMP           | http://sourceforge.net/projects/pyasn1/            |   0.1.2 |
 --------------------------------------------------------------------------------------------------
-IPy              | NET keyword    | https://github.com/haypo/python-ipy                |    0.75 |
+ike-scan         | IKE            | http://www.nta-monitor.com/tools-resources/        |     1.9 |
 --------------------------------------------------------------------------------------------------
 unzip            | ZIP passwords  | http://www.info-zip.org/                           |     6.0 |
 --------------------------------------------------------------------------------------------------
@@ -863,6 +865,14 @@ def which(program):
 
   return None
 
+def build_logdir(opt_dir, opt_auto):
+    if opt_auto:
+      return create_time_dir(opt_dir or '/tmp/patator', opt_auto)
+    elif opt_dir:
+      return create_dir(opt_dir)
+    else:
+      return None
+
 def create_dir(top_path):
   top_path = os.path.abspath(top_path)
   if os.path.isdir(top_path):
@@ -1279,13 +1289,6 @@ Please read the README inside for more examples and usage information.
 
     self.resume = [int(i) for i in opts.resume.split(',')] if opts.resume else None
 
-    if opts.auto_log:
-      log_dir = create_time_dir(opts.log_dir or '/tmp/patator', opts.auto_log)
-    elif opts.log_dir:
-      log_dir = create_dir(opts.log_dir)
-    else:
-      log_dir = None
-
     manager = MyManager()
     manager.start()
 
@@ -1299,7 +1302,7 @@ Please read the README inside for more examples and usage information.
 
     pipe = Pipe(duplex=False)
 
-    logsvc = Process(name='LogSvc', target=process_logs, args=(pipe[0], module.Response.indicatorsfmt, argv, log_dir))
+    logsvc = Process(name='LogSvc', target=process_logs, args=(pipe[0], module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log)))
     logsvc.daemon = True
     logsvc.start()
 
@@ -4349,7 +4352,7 @@ dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
   'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.0'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
-  'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'http://oss.coresecurity.com/projects/impacket.html', 'svn#765'],
+  'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '5.1.1'],
   'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/', '1.2.3'],
   'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.4.5'],

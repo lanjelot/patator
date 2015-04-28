@@ -4162,7 +4162,10 @@ class IKE_enum:
     if has_sa:
       mesg = 'Handshake returned: %s (%s)' % (re.search('SA=\((.+) LifeType', out).group(1), re.search('\t(.+) Mode Handshake returned', out).group(1))
     else:
-      mesg = out.strip().split('\n')[1].split('\t')[-1]
+      try:
+        mesg = out.strip().split('\n')[1].split('\t')[-1]
+      except:
+        mesg = ' '.join(repr(s) for s in filter(None, [out, err]))
 
     resp = self.Response(code, mesg, timing, trace)
     if has_sa:
@@ -4420,7 +4423,7 @@ Available modules:
     if name not in available:
       show_usage()
 
-    argv = sys.argv[1:]
+    del sys.argv[0]
 
   # dependencies
   abort = False
@@ -4440,7 +4443,7 @@ Available modules:
 
   # start
   ctrl, module = available[name]
-  powder = ctrl(module, [name] + argv[1:])
+  powder = ctrl(module, [name] + sys.argv[1:])
   powder.fire()
 
 # }}}

@@ -734,11 +734,37 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
 
     if not os.path.exists(results_xml):
       with open(results_xml, 'w') as f:
-        f.write('<?xml version="1.0" ?>\n<results>\n')
+        f.write('<?xml version="1.0" ?>\n<root>\n<infos>\n')
+        f.write('<cmdline><![CDATA[%s]]></cmdline>\n' % ' '.join(argv))
+        f.write('<module>%s</module>\n' % argv[0])
+        f.write('<options>\n')
 
-    else: # remove "</results>\n"
+        i = 0
+        del argv[0]
+        while i < len(argv):
+          arg = argv[i]
+          if arg[0] == '-':
+            if arg in ('-d', '--debug'):
+              f.write('  <option type="global" name="%s"/>\n' % arg)
+            else:
+              if not arg.startswith('--') and len(arg) > 2:
+                name, value = arg[:2], arg[2:]
+              elif '=' in arg:
+                name, value = arg.split('=', 1)
+              else:
+                name, value = arg, argv[i+1]
+                i += 1
+              f.write('  <option type="global" name="%s"><![CDATA[%s]]></option>\n' % (name, value))
+          else:
+            name, value = arg.split('=', 1)
+            f.write('  <option type="module" name="%s"><![CDATA[%s]]></option>\n' % (name, value))
+          i += 1
+        f.write('</options>\n</infos>\n')
+        f.write('<results>\n')
+
+    else: # remove "</results>\n</root>\n"
       with open(results_xml, 'r+') as f:
-        f.seek(-11, 2)
+        f.seek(-19, 2)
         f.truncate(f.tell())
 
     handler_log = logging.FileHandler(runtime_log)
@@ -763,7 +789,7 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
     if action == 'quit':
       if log_dir:
         with open(os.path.join(log_dir, 'RESULTS.xml'), 'a') as f:
-          f.write('</results>\n')
+          f.write('</results>\n</root>\n')
       break
 
     elif action == 'headers':

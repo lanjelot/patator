@@ -1267,6 +1267,7 @@ Please read the README inside for more examples and usage information.
     exe_grp.add_option('-e', dest='encodings', action='append', default=[], metavar='arg', help='encode everything between two tags, see Syntax below')
     exe_grp.add_option('-C', dest='combo_delim', default=':', metavar='str', help="delimiter string in combo files (default is ':')")
     exe_grp.add_option('-X', dest='condition_delim', default=',', metavar='str', help="delimiter string in conditions (default is ',')")
+    exe_grp.add_option('--allow-ignore-failures', action='store_true', default=False, dest='allow_ignore_failures', help="failures cannot be ignored with -x (this is by design to avoid false negatives) this option overrides this behavior")
 
     opt_grp = OptionGroup(parser, 'Optimization')
     opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between each test (default is 0)')
@@ -1315,6 +1316,7 @@ Please read the README inside for more examples and usage information.
     self.max_retries = opts.max_retries
     self.num_threads = opts.num_threads
     self.start, self.stop = opts.start, opts.stop
+    self.allow_ignore_failures = opts.allow_ignore_failures
 
     self.resume = [int(i) for i in opts.resume.split(',')] if opts.resume else None
 
@@ -1845,7 +1847,8 @@ Please read the README inside for more examples and usage information.
         p.seconds[p.done_count % len(p.seconds)] = seconds
 
         if 'fail' in actions:
-          logger.result('fail', resp, current, offset)
+          if not self.allow_ignore_failures or 'ignore' not in actions:
+            logger.result('fail', resp, current, offset)
 
         elif 'ignore' not in actions:
           logger.result('hit', resp, current, offset)

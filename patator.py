@@ -2016,7 +2016,7 @@ class Response_Base:
     return getattr(self, 'match_'+key)(val)
 
   def match_code(self, val):
-    return val == str(self.code)
+    return re.match('%s$' % val, str(self.code))
 
   def match_size(self, val):
     return match_range(self.size, val)

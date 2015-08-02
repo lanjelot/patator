@@ -2149,6 +2149,9 @@ class FTP_login(TCP_Cache):
 
     banner = fp.connect(host, int(port))
 
+    if tls != '0':
+      fp.auth()
+
     return TCP_Connection(fp, banner)
 
   def execute(self, host, port='21', tls='0', user=None, password=None, timeout='10', persistent='1'):
@@ -2458,11 +2461,11 @@ class SMTP_login(SMTP_Base):
         with Timing() as timing:
           resp = fp.login(user, password)
 
-      logger.debug('No error: %s' % resp)
+      logger.debug('No error: %s' % str(resp))
       self.reset()
 
     except (SMTPHeloError,SMTPAuthenticationError,SMTPException) as resp:
-      logger.debug('SMTPError: %s' % resp)
+      logger.debug('SMTPError: %s' % str(resp))
 
     if persistent == '0':
       self.reset()

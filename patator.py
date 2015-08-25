@@ -3540,7 +3540,7 @@ class VNC:
     resp = self.fp.recv(99)
     logger.debug('Security types supported: %s' % repr(resp))
 
-    if minor in ('7', '8'):
+    if major == '4' or (major == '3' and int(minor) >= 7):
       code = ord(resp[0:1])
       if code == 0:
         raise VNC_Error('Session setup failed: %s' % resp.decode('ascii', 'ignore'))

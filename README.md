@@ -23,6 +23,7 @@ Currently it supports the following modules:
 * oracle_login  : Brute-force Oracle
 * mysql_login   : Brute-force MySQL
 * mysql_query   : Brute-force MySQL queries
+* rdp_login     : Brute-force RDP (NLA)
 * pgsql_login   : Brute-force PostgreSQL
 * vnc_login     : Brute-force VNC
 * dns_forward   : Brute-force DNS

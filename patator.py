@@ -51,6 +51,7 @@ Currently it supports the following modules:
   + oracle_login  : Brute-force Oracle
   + mysql_login   : Brute-force MySQL
   + mysql_query   : Brute-force MySQL queries
+  * rdp_login     : Brute-force RDP (NLA)
   + pgsql_login   : Brute-force PostgreSQL
   + vnc_login     : Brute-force VNC
 
@@ -67,7 +68,7 @@ Currently it supports the following modules:
   + dummy_test    : Testing module
 
 Future modules to be implemented:
-  - rdp_login
+  - rdp_login w/no NLA
 
 The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
 
@@ -133,6 +134,8 @@ impacket         | SMB            | https://github.com/CoreSecurity/impacket    
 cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   5.1.1 |
 --------------------------------------------------------------------------------------------------
 mysql-python     | MySQL          | http://sourceforge.net/projects/mysql-python/      |   1.2.3 |
+--------------------------------------------------------------------------------------------------
+xfreerdp         | RDP (NLA)      | https://github.com/FreeRDP/FreeRDP/                |   1.2.0 |
 --------------------------------------------------------------------------------------------------
 psycopg          | PostgreSQL     | http://initd.org/psycopg/                          |   2.4.5 |
 --------------------------------------------------------------------------------------------------
@@ -3499,6 +3502,54 @@ class HTTP_fuzz(TCP_Cache):
 
 # }}}
 
+# {{{ RDP
+if not which('xfreerdp'):
+  notfound.append('xfreerdp')
+
+class RDP_login:
+  '''Brute-force RDP (NLA)'''
+
+  usage_hints = (
+    """%prog host=10.0.0.1 user='administrator' password=FILE0 0=passwords.txt""",
+    )
+
+  available_options = (
+    ('host', 'target host'),
+    ('port', 'target port [3389]'),
+    ('user', 'usernames to test'),
+    ('password', 'passwords to test'),
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, host, port='3389', user=None, password=None):
+
+    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert-ignore', '+auth-only', '/sec:nla']
+
+    with Timing() as timing:
+      p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      out, err = p.communicate()
+      code = p.returncode
+
+    err = err.replace('''Authentication only. Don't connect to X.
+credssp_recv() error: -1
+freerdp_set_last_error 0x20009\n''', '')
+    err = err.replace(''', check credentials.
+If credentials are valid, the NTLMSSP implementation may be to blame.
+Error: protocol security negotiation or connection failure
+Authentication only, exit status 1
+Authentication only, exit status 1''', '')
+    err = err.replace('''Authentication only. Don't connect to X.
+Authentication only, exit status 0
+Authentication only, exit status 0''', 'OK')
+
+    mesg = repr((out + err).strip())[1:-1]
+    trace = '[out]\n%s\n[err]\n%s' % (out, err)
+
+    return self.Response(code, mesg, timing, trace)
+# }}}
+
 # VNC {{{
 try:
   from Crypto.Cipher import DES
@@ -4369,7 +4420,7 @@ modules = [
   ('oracle_login', (Controller, Oracle_login)),
   ('mysql_login', (Controller, MySQL_login)),
   ('mysql_query', (Controller, MySQL_query)),
-  #'rdp_login', 
+  ('rdp_login', (Controller, RDP_login)),
   ('pgsql_login', (Controller, Pgsql_login)),
   ('vnc_login', (Controller, VNC_login)),
 
@@ -4393,6 +4444,7 @@ dependencies = {
   'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '5.1.1'],
   'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/', '1.2.3'],
+  'xfreerdp': [('rdp_login',), 'https://github.com/FreeRDP/FreeRDP.git', '1.2.0-beta1'],
   'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.4.5'],
   'pycrypto': [('vnc_login',), 'http://www.dlitz.net/software/pycrypto/', '2.3'],
   'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/', '1.10.0'],

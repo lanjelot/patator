@@ -692,13 +692,22 @@ class CSVFormatter(logging.Formatter):
 class XMLFormatter(logging.Formatter):
   def __init__(self, indicatorsfmt):
     fmt = '''<result time="%(asctime)s" level="%(levelname)s">
-''' + '\n'.join('  <{0}>%({0})s</{0}>'.format(name) for name, _ in indicatorsfmt) + '''
-  <candidate><![CDATA[%(candidate)s]]></candidate>
+''' + '\n'.join('  <{0}>%({1})s</{0}>'.format(name.replace(':', '_'), name) for name, _ in indicatorsfmt) + '''
+  <candidate>%(candidate)s</candidate>
   <num>%(num)s</num>
-  <mesg><![CDATA[%(mesg)s]]></mesg>
+  <mesg>%(mesg)s</mesg>
+  <target %(target)s/>
 </result>'''
 
     logging.Formatter.__init__(self, fmt, datefmt='%H:%M:%S')
+
+  def format(self, record):
+
+    for k, v in record.__dict__.iteritems():
+      if isinstance(v, basestring):
+        record.__dict__[k] = xmlescape(v)
+
+    return super(XMLFormatter, self).format(record)
 
 class MsgFilter(logging.Filter):
 
@@ -712,7 +721,12 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
 
   ignore_ctrlc()
 
-  logging._levelNames[logging.ERROR] = 'FAIL'
+  try:
+    # python3
+    logging._levelToName[logging.ERROR] = 'FAIL'
+  except:
+    # python2
+    logging._levelNames[logging.ERROR] = 'FAIL'
 
   handler_out = logging.StreamHandler()
   handler_out.setFormatter(TXTFormatter(indicatorsfmt))
@@ -720,6 +734,8 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
   logger = logging.getLogger('patator')
   logger.setLevel(logging.DEBUG)
   logger.addHandler(handler_out)
+
+  names = [name for name, _ in indicatorsfmt] + ['candidate', 'num', 'mesg']
 
   if log_dir:
     runtime_log = os.path.join(log_dir, 'RUNTIME.log')
@@ -729,19 +745,44 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
     with open(runtime_log, 'a') as f:
       f.write('$ %s\n' % ' '.join(argv))
 
-    names = [name for name, _ in indicatorsfmt] + ['candidate', 'num', 'mesg']
-
     if not os.path.exists(results_csv):
       with open(results_csv, 'w') as f:
         f.write('time,level,%s\n' % ','.join(names))
 
     if not os.path.exists(results_xml):
       with open(results_xml, 'w') as f:
-        f.write('<?xml version="1.0" ?>\n<results>\n')
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n<root>\n')
+        f.write('<start utc=%s local=%s/>\n' % (xmlquoteattr(strfutctime()), xmlquoteattr(strflocaltime())))
+        f.write('<cmdline>%s</cmdline>\n' % xmlescape(' '.join(argv)))
+        f.write('<module>%s</module>\n' % xmlescape(argv[0]))
+        f.write('<options>\n')
 
-    else: # remove "</results>\n"
+        i = 0
+        del argv[0]
+        while i < len(argv):
+          arg = argv[i]
+          if arg[0] == '-':
+            if arg in ('-d', '--debug'):
+              f.write('  <option type="global" name=%s/>\n' % xmlquoteattr(arg))
+            else:
+              if not arg.startswith('--') and len(arg) > 2:
+                name, value = arg[:2], arg[2:]
+              elif '=' in arg:
+                name, value = arg.split('=', 1)
+              else:
+                name, value = arg, argv[i+1]
+                i += 1
+              f.write('  <option type="global" name=%s>%s</option>\n' % (xmlquoteattr(name), xmlescape(value)))
+          else:
+            name, value = arg.split('=', 1)
+            f.write('  <option type="module" name=%s>%s</option>\n' % (xmlquoteattr(name), xmlescape(value)))
+          i += 1
+        f.write('</options>\n')
+        f.write('<results>\n')
+
+    else: # remove "</results>...</root>"
       with open(results_xml, 'r+') as f:
-        f.seek(-11, 2)
+        f.seek(f.read().find('</results>'))
         f.truncate(f.tell())
 
     handler_log = logging.FileHandler(runtime_log)
@@ -766,12 +807,10 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
     if action == 'quit':
       if log_dir:
         with open(os.path.join(log_dir, 'RESULTS.xml'), 'a') as f:
-          f.write('</results>\n')
+          f.write('</results>\n<stop utc=%s local=%s/>\n</root>\n' % (xmlquoteattr(strfutctime()), xmlquoteattr(strflocaltime())))
       break
 
     elif action == 'headers':
-
-      names = [name for name, _ in indicatorsfmt] + ['candidate', 'num', 'mesg']
 
       logger.info(' '*77)
       logger.info('headers', extra=dict((n, n) for n in names))
@@ -782,7 +821,7 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
       typ, resp, candidate, num = args
 
       results = [(name, value) for (name, _), value in zip(indicatorsfmt, resp.indicators())]
-      results += [('candidate', candidate), ('num', num), ('mesg', resp)]
+      results += [('candidate', candidate), ('num', num), ('mesg', str(resp)), ('target', resp.str_target())]
 
       if typ == 'fail':
         logger.error(None, extra=dict(results))
@@ -810,7 +849,7 @@ def process_logs(pipe, indicatorsfmt, argv, log_dir):
 import re
 import os
 import sys
-from time import localtime, strftime, sleep, time
+from time import localtime, gmtime, strftime, sleep, time
 from platform import system
 from functools import reduce
 from select import select
@@ -828,17 +867,20 @@ from collections import defaultdict
 import multiprocessing
 import signal
 import ctypes
+from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 try:
   # python3+
   from queue import Empty, Full
   from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl, quote_plus
   from io import StringIO
+  from sys import maxsize as maxint
 except ImportError:
   # python2.6+
   from Queue import Empty, Full
   from urllib import quote, urlencode, quote_plus
   from urlparse import urlparse, urlunparse, parse_qsl
   from cStringIO import StringIO
+  from sys import maxint
 
 notfound = []
 try:
@@ -878,6 +920,12 @@ from multiprocessing.managers import SyncManager
 # imports }}}
 
 # utils {{{
+def strfutctime():
+  return strftime("%Y-%m-%d %H:%M:%S", gmtime())
+
+def strflocaltime():
+  return strftime("%Y-%m-%d %H:%M:%S %Z", localtime())
+
 def which(program):
   def is_exe(fpath):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
@@ -1089,7 +1137,7 @@ class RangeIter:
 
     if random:
       self.generator = random_generator, ()
-      self.size = sys.maxint
+      self.size = maxint
 
   def __iter__(self):
     fn, args = self.generator
@@ -1509,7 +1557,7 @@ Please read the README inside for more examples and usage information.
     except KeyboardInterrupt:
       pass
 
-    if self.ns.total_size >= sys.maxint:
+    if self.ns.total_size >= maxint:
       total_size = -1
     else:
       total_size = self.ns.total_size
@@ -1618,7 +1666,7 @@ Please read the README inside for more examples and usage information.
         if m:
           prog, size = m.groups()
         else:
-          prog, size = v, sys.maxint
+          prog, size = v, maxint
 
         logger.debug('prog: %s, size: %s' % (prog, size))
 
@@ -1935,7 +1983,7 @@ Please read the README inside for more examples and usage information.
 
       total_count = sum(p.done_count+p.skip_count for p in thread_progress)
       speed_avg = num_threads / (sum(sum(p.seconds) / len(p.seconds) for p in thread_progress) / num_threads)
-      if total_size >= sys.maxint:
+      if total_size >= maxint:
         etc_time = 'inf'
         remain_time = 'inf'
       else:
@@ -2039,6 +2087,8 @@ class Response_Base:
   def dump(self):
     return self.trace or str(self)
 
+  def str_target(self):
+    return ''
 
 class Timing:
   def __enter__(self):
@@ -3301,9 +3351,10 @@ class Response_HTTP(Response_Base):
 
   indicatorsfmt = [('code', -4), ('size:clen', -13), ('time', 6)]
 
-  def __init__(self, code, response, timing=0, trace=None, content_length=-1):
+  def __init__(self, code, response, timing=0, trace=None, content_length=-1, target={}):
     Response_Base.__init__(self, code, response, timing, trace=trace)
     self.content_length = content_length
+    self.target = target
 
   def indicators(self):
     return self.code, '%d:%d' % (self.size, self.content_length), '%.3f' % self.time
@@ -3311,7 +3362,7 @@ class Response_HTTP(Response_Base):
   def __str__(self):
     lines = re.findall('^(HTTP/.+)$', self.mesg, re.M)
     if lines:
-      return lines[-1]
+      return lines[-1].rstrip('\r')
     else:
       return self.mesg
 
@@ -3323,6 +3374,9 @@ class Response_HTTP(Response_Base):
 
   def match_egrep(self, val):
     return re.search(val, self.mesg, re.M)
+
+  def str_target(self):
+    return ' '.join('%s=%s' % (k, xmlquoteattr(str(v))) for k, v in self.target.iteritems())
 
   available_conditions = Response_Base.available_conditions
   available_conditions += (
@@ -3487,6 +3541,18 @@ class HTTP_fuzz(TCP_Cache):
     url = urlunparse((scheme, host, path, params, query, fragment))
     perform_fp(fp, method, url, header, body)
 
+    target = {}
+    target['ip'] = fp.getinfo(pycurl.PRIMARY_IP)
+    target['port'] = fp.getinfo(pycurl.PRIMARY_PORT)
+    target['hostname'] = host
+
+    for h in header.split('\n'):
+      if ': ' in h:
+        k, v = h.split(': ', 1)
+        if k.lower() == 'host':
+          target['vhost'] = v.rstrip('\r')
+          break
+
     if after_urls:
       for after_url in after_urls.split(','):
         perform_fp(fp, 'GET', after_url)
@@ -3498,7 +3564,7 @@ class HTTP_fuzz(TCP_Cache):
     if persistent == '0':
       self.reset()
 
-    return self.Response(http_code, response.getvalue(), response_time, trace.getvalue(), content_length)
+    return self.Response(http_code, response.getvalue(), response_time, trace.getvalue(), content_length, target)
 
 # }}}
 

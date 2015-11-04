@@ -3418,6 +3418,7 @@ class HTTP_fuzz(TCP_Cache):
     ('timeout_tcp', 'seconds to wait for a TCP handshake [10]'),
     ('timeout', 'seconds to wait for a HTTP response [20]'),
     ('before_urls', 'comma-separated URLs to query before the main request'),
+    ('before_header', 'use a custom header in the before_urls request'),
     ('before_egrep', 'extract data from the before_urls response to place in the main request'),
     ('after_urls', 'comma-separated URLs to query after the main request'),
     ('max_mem', 'store no more than N bytes of request+response data in memory [-1 (unlimited)]'),
@@ -3439,7 +3440,7 @@ class HTTP_fuzz(TCP_Cache):
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
     header='', method='GET', auto_urlencode='1', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
-    before_urls='', before_egrep='', after_urls='', max_mem='-1'):
+    before_urls='', before_header='', before_egrep='', after_urls='', max_mem='-1'):
 
     if url:
       scheme, host, path, params, query, fragment = urlparse(url)
@@ -3519,7 +3520,7 @@ class HTTP_fuzz(TCP_Cache):
 
     if before_urls:
       for before_url in before_urls.split(','):
-        perform_fp(fp, 'GET', before_url)
+        perform_fp(fp, 'GET', before_url, before_header)
 
       if before_egrep:
         for be in before_egrep.split('|'):

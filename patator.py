@@ -19,7 +19,7 @@ __twitter__ = 'http://twitter.com/lanjelot'
 __version__ = '0.7-beta'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
- 
+
 # README {{{
 
 '''
@@ -316,7 +316,7 @@ ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwo
 telnet_login host=10.0.0.1 inputs='FILE0\nFILE1' 0=logins.txt 1=passwords.txt
  prompt_re='tux login:|Password:' -x reset:egrep!='Login incorrect.+tux login:'
  (b)                             (c)
- 
+
 NB. If you get errors like "telnet connection closed", try decreasing the number of threads,
     the server may be enforcing a maximum number of concurrent connections.
 
@@ -340,7 +340,7 @@ smtp_rcpt host=10.0.0.1 user=FILE0@localhost 0=logins.txt helo='ehlo mx.fb.com' 
 * Brute-force authentication.
   (a) Send a fake hostname (by default your host fqdn is sent)
 ------------             (a)
-smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE1 0=logins.txt 1=passwords.txt 
+smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE1 0=logins.txt 1=passwords.txt
 
 }}}
 {{{ HTTP
@@ -364,7 +364,7 @@ NB. You may be able to go 10 times faster using webef (http://www.hsc.fr/ressour
   (b) Follow redirects using cookies sent by server.
   (c) Ignore failed authentications.
 ---------                                             (a)         (b)        (b)
-http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST follow=1 accept_cookie=1 
+http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST follow=1 accept_cookie=1
  body='pma_username=root&pma_password=FILE0&server=1&lang=en' 0=passwords.txt
  -x ignore:fgrep='Cannot log in to the MySQL server'
              (c)
@@ -375,7 +375,7 @@ http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST follow=1 accept_c
 ---------
 http_fuzz url=http://NET0/FILE1 0=10.0.0.0/24 1=dirs.txt -x ignore:fgrep!='Index of'
  -l /tmp/directory_listings                                             (a)
-      (b)  
+      (b)
 
 * Brute-force Basic authentication.
   (a) Single mode (login == password).
@@ -1269,7 +1269,7 @@ Examples:
 
 Module options:
 %s ''' % ('\n'.join('  %-14s: %s' % (k, v) for k, v in self.module.available_options))
-   
+
     epilog = '''
 Syntax:
  -x actions:conditions
@@ -1278,7 +1278,7 @@ Syntax:
     action     := "%s"
     conditions := condition=value[,condition=value]*
     condition  := "%s"
-''' % ('" | "'.join(k for k, v in available_actions), 
+''' % ('" | "'.join(k for k, v in available_actions),
        '" | "'.join(k for k, v in available_conditions))
 
     epilog += '''
@@ -1328,7 +1328,7 @@ Please read the README inside for more examples and usage information.
 
     log_grp = OptionGroup(parser, 'Logging')
     log_grp.add_option('-l', dest='log_dir', metavar='DIR', help="save output and response data into DIR ")
-    log_grp.add_option('-L', dest='auto_log', metavar='SFX', help="automatically save into DIR/yyyy-mm-dd/hh:mm:ss_SFX (DIR defaults to '/tmp/patator')") 
+    log_grp.add_option('-L', dest='auto_log', metavar='SFX', help="automatically save into DIR/yyyy-mm-dd/hh:mm:ss_SFX (DIR defaults to '/tmp/patator')")
 
     dbg_grp = OptionGroup(parser, 'Debugging')
     dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='enable debug messages')
@@ -1409,7 +1409,7 @@ Please read the README inside for more examples and usage information.
           if v.startswith('@'):
             p = os.path.expanduser(v[1:])
             v = open(p).read()
-          kargs.append((k, v)) 
+          kargs.append((k, v))
 
     iter_vals = [v for k, v in sorted(wlists.items())]
     logger.debug('kargs: %s' % kargs) # [('host', 'NET0'), ('user', 'COMBO10'), ('password', 'COMBO11'), ('domain', 'MOD2')]
@@ -1443,7 +1443,7 @@ Please read the README inside for more examples and usage information.
             if i not in self.iter_keys:
               self.iter_keys[i] = ('COMBO', iter_vals[i], [])
             self.iter_keys[i][2].append((j, k))
-          
+
           else:
             for i in self.find_module_keys(v):
               if i not in self.iter_keys:
@@ -1476,15 +1476,15 @@ Please read the README inside for more examples and usage information.
       self.update_actions(x)
 
     logger.debug('actions: %s' % self.ns.actions)
-    
-  def update_actions(self, arg): 
+
+  def update_actions(self, arg):
     ns_actions = self.ns.actions
 
     actions, conditions = arg.split(':', 1)
     for action in actions.split(','):
 
       conds = [c.split('=', 1) for c in conditions.split(self.condition_delim)]
-     
+
       if '=' in action:
         name, opts = action.split('=')
       else:
@@ -1531,7 +1531,7 @@ Please read the README inside for more examples and usage information.
   def register_free(self, payload, opts):
     self.ns.free_list += [','.join('%s=%s' % (k, payload[k]) for k in opts.split('+'))]
     logger.debug('free_list updated: %s' % self.ns.free_list)
-  
+
   def fire(self):
     logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
 
@@ -1569,7 +1569,7 @@ Please read the README inside for more examples and usage information.
     skip_count = sum(p.skip_count for p in self.thread_progress)
     fail_count = sum(p.fail_count for p in self.thread_progress)
 
-    speed_avg = done_count / total_time 
+    speed_avg = done_count / total_time
 
     self.show_final()
 
@@ -1585,7 +1585,7 @@ Please read the README inside for more examples and usage information.
           if i < len(self.resume):
             c += self.resume[i]
         resume.append(str(c))
-        
+
       logger.info('To resume execution, pass --resume %s' % ','.join(resume))
 
     logger.quit()
@@ -1767,9 +1767,9 @@ Please read the README inside for more examples and usage information.
 
       if prod is None:
         return shutdown()
-      
+
       payload = self.payload.copy()
- 
+
       for i, (t, _, keys) in self.iter_keys.items():
         if t == 'FILE':
           for k in keys:
@@ -1778,7 +1778,7 @@ Please read the README inside for more examples and usage information.
           for k in keys:
             payload[k] = payload[k].replace('NET%d' % i, prod[i])
         elif t == 'COMBO':
-          for j, k in keys: 
+          for j, k in keys:
             payload[k] = payload[k].replace('COMBO%d%d' % (i, j), prod[i].split(self.combo_delim)[j])
         elif t == 'MOD':
           for k in keys:
@@ -1792,7 +1792,7 @@ Please read the README inside for more examples and usage information.
 
       for k, m, e in self.enc_keys:
         payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(m.group(1)), payload[k])
-  
+
       logger.debug('product: %s' % prod)
       pp_prod = ':'.join(prod)
 
@@ -1863,7 +1863,7 @@ Please read the README inside for more examples and usage information.
           continue
 
         break
-       
+
   def monitor_progress(self):
     # loop until SyncManager, LogSvc and Producer are the only children left alive
     while len(multiprocessing.active_children()) > 3 and not self.ns.quit_now:
@@ -1880,7 +1880,7 @@ Please read the README inside for more examples and usage information.
           actions, current, resp, seconds = pq.get_nowait()
           #logger.info('actions reported: %s' % '+'.join(actions))
 
-        except Empty: 
+        except Empty:
           break
 
         if actions == 'skip':
@@ -2223,7 +2223,7 @@ class FTP_login(TCP_Cache):
       logger.debug('No error: %s' % resp)
       self.reset()
 
-    except FTP_Error as e: 
+    except FTP_Error as e:
       resp = str(e)
       logger.debug('FTP_Error: %s' % resp)
 
@@ -2245,7 +2245,7 @@ except ImportError:
       pass
 
 try:
-  import paramiko 
+  import paramiko
   logging.getLogger('paramiko.transport').addHandler(NullHandler())
 except ImportError:
   notfound.append('paramiko')
@@ -2369,7 +2369,7 @@ class Telnet_login(TCP_Cache):
       logger.debug('raw banner: %s' % repr(raw))
       trace += raw
       self.prompt_count += 1
-  
+
     if inputs is not None:
       with Timing() as timing:
         for val in inputs.split(r'\n'):
@@ -2421,7 +2421,7 @@ class SMTP_Base(TCP_Cache):
 
     if helo:
       cmd, name = helo.split(' ', 1)
-      
+
       if cmd.lower() == 'ehlo':
         resp = fp.ehlo(name)
       else:
@@ -2431,7 +2431,7 @@ class SMTP_Base(TCP_Cache):
       resp = fp.starttls()
 
     return TCP_Connection(fp, resp)
-    
+
 
 class SMTP_vrfy(SMTP_Base):
   '''Enumerate valid users using SMTP VRFY'''
@@ -2508,7 +2508,7 @@ class SMTP_login(SMTP_Base):
 
     with Timing() as timing:
       fp, resp = self.bind(host, port, ssl, helo, starttls, timeout=timeout)
-    
+
     try:
       if user is not None and password is not None:
         with Timing() as timing:
@@ -2661,7 +2661,7 @@ class SMB_login(TCP_Cache):
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt"""
     """ -x ignore:fgrep='unknown user name or bad password'""",
     )
-  
+
   available_options = (
     ('host', 'target host'),
     ('port', 'target port [139]'),
@@ -3129,7 +3129,7 @@ class MySQL_login:
   usage_hints = (
     """%prog host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:fgrep='Access denied for user'""",
     )
-  
+
   available_options = (
     ('host', 'target host'),
     ('port', 'target port [3306]'),
@@ -3265,7 +3265,7 @@ class Oracle_login:
     """%prog host=10.0.0.1 sid=FILE0 0=sids.txt -x ignore:code=ORA-12505""",
     """%prog host=10.0.0.1 user=SYS password=FILE0 0=passwords.txt -x ignore:code=ORA-01017""",
     )
-  
+
   available_options = (
     ('host', 'hostnames or subnets to target'),
     ('port', 'ports to target [1521]'),
@@ -3295,7 +3295,7 @@ class Oracle_login:
 
     except cx_Oracle.DatabaseError as e:
       code, mesg = e.args[0].message[:-1].split(': ', 1)
-      
+
     return self.Response(code, mesg, timing)
 
 # }}}
@@ -3312,7 +3312,7 @@ class Pgsql_login:
   usage_hints = (
     """%prog host=10.0.0.1 user=postgres password=FILE0 0=passwords.txt -x ignore:fgrep='password authentication failed for user'""",
     )
-  
+
   available_options = (
     ('host', 'target host'),
     ('port', 'target port [5432]'),
@@ -3336,7 +3336,7 @@ class Pgsql_login:
     except psycopg2.OperationalError as e:
       logger.debug('OperationalError: %s' % e)
       code, mesg = '1', str(e)[:-1]
-  
+
     return self.Response(code, mesg, timing)
 
 # }}}
@@ -3418,9 +3418,10 @@ class HTTP_fuzz(TCP_Cache):
     ('timeout_tcp', 'seconds to wait for a TCP handshake [10]'),
     ('timeout', 'seconds to wait for a HTTP response [20]'),
     ('before_urls', 'comma-separated URLs to query before the main request'),
+    ('before_header', 'use a custom header in the before_urls request'),
     ('before_egrep', 'extract data from the before_urls response to place in the main request'),
     ('after_urls', 'comma-separated URLs to query after the main request'),
-    ('max_mem', 'store no more than N bytes of request+response data in memory [-1 (unlimited)]'), 
+    ('max_mem', 'store no more than N bytes of request+response data in memory [-1 (unlimited)]'),
     )
   available_options += TCP_Cache.available_options
 
@@ -3438,9 +3439,9 @@ class HTTP_fuzz(TCP_Cache):
 
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
     header='', method='GET', auto_urlencode='1', user_pass='', auth_type='basic',
-    follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1', 
-    before_urls='', before_egrep='', after_urls='', max_mem='-1'):
-    
+    follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
+    before_urls='', before_header='', before_egrep='', after_urls='', max_mem='-1'):
+
     if url:
       scheme, host, path, params, query, fragment = urlparse(url)
       if ':' in host:
@@ -3468,7 +3469,7 @@ class HTTP_fuzz(TCP_Cache):
       elif t in (pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):
         trace.write(s)
         response.write(s)
-        
+
     max_mem = int(max_mem)
     response, trace = StringIO(), StringIO()
 
@@ -3485,19 +3486,19 @@ class HTTP_fuzz(TCP_Cache):
         fp.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_NTLM)
       else:
         raise NotImplementedError("Incorrect auth_type '%s'" % auth_type)
-    
+
     if ssl_cert:
       fp.setopt(pycurl.SSLCERT, ssl_cert)
 
     if accept_cookie == '1':
-      fp.setopt(pycurl.COOKIEFILE, '') 
-      # warning: do not pass a Cookie: header into HTTPHEADER if using COOKIEFILE as it will 
+      fp.setopt(pycurl.COOKIEFILE, '')
+      # warning: do not pass a Cookie: header into HTTPHEADER if using COOKIEFILE as it will
       # produce requests with more than one Cookie: header
       # and the server will process only one of them (eg. Apache only reads the last one)
 
     def perform_fp(fp, method, url, header='', body=''):
       #logger.debug('perform: %s' % url)
-      fp.setopt(pycurl.URL, url) 
+      fp.setopt(pycurl.URL, url)
 
       if method == 'GET':
         fp.setopt(pycurl.HTTPGET, 1)
@@ -3519,7 +3520,7 @@ class HTTP_fuzz(TCP_Cache):
 
     if before_urls:
       for before_url in before_urls.split(','):
-        perform_fp(fp, 'GET', before_url)
+        perform_fp(fp, 'GET', before_url, before_header)
 
       if before_egrep:
         for be in before_egrep.split('|'):
@@ -3701,7 +3702,7 @@ class VNC:
 
     else:
       raise VNC_Error('Unknown response: %s (code: %s)' % (repr(resp), code))
-         
+
 
   def gen_key(self, key):
     newkey = []
@@ -3725,7 +3726,7 @@ class VNC_login:
   usage_hints = (
     """%prog host=10.0.0.1 password=FILE0 0=passwords.txt -t 1 -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0""",
     )
-  
+
   available_options = (
     ('host', 'target host'),
     ('port', 'target port [5900]'),
@@ -3939,7 +3940,7 @@ class Controller_DNS(Controller):
     noips = {'example.wordpress.com': ['blog.example.com'],
     '''
 
-    for name, hinfo in self.hostmap.items(): 
+    for name, hinfo in self.hostmap.items():
       for ip in hinfo.ip:
         ip = IP(ip)
         ipmap[ip].name.add(name)
@@ -4086,7 +4087,7 @@ class DNS_forward:
     'SRV': generate_srv,
     }
 
-  Response = Response_Base  
+  Response = Response_Base
 
   def execute(self, name, server='8.8.8.8', timeout='5', protocol='udp', qtype='ANY', qclass='IN'):
 
@@ -4120,7 +4121,7 @@ class SNMP_login:
     """%prog host=10.0.0.1 version=3 user=FILE0 0=logins.txt -x ignore:mesg=unknownUserName""",
     """%prog host=10.0.0.1 version=3 user=myuser auth_key=FILE0 0=passwords.txt -x ignore:mesg=wrongDigest""",
     )
-  
+
   available_options = (
     ('host', 'target host'),
     ('port', 'target port [161]'),
@@ -4162,7 +4163,7 @@ class SNMP_login:
     if not errorIndication:
       mesg = '%s' % varBinds
     else:
-      mesg = '%s' % errorIndication 
+      mesg = '%s' % errorIndication
 
     return self.Response(code, mesg, timing)
 
@@ -4332,7 +4333,7 @@ class Unzip_pass:
     trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
 
     return self.Response(code, mesg, timing, trace)
-      
+
 # }}}
 
 # Keystore {{{
@@ -4494,7 +4495,7 @@ modules = [
   ('dns_reverse', (Controller_DNS, DNS_reverse)),
   ('snmp_login', (Controller, SNMP_login)),
   ('ike_enum', (Controller_IKE, IKE_enum)),
-  
+
   ('unzip_pass', (Controller, Unzip_pass)),
   ('keystore_pass', (Controller, Keystore_pass)),
   ('umbraco_crack', (Controller, Umbraco_crack)),

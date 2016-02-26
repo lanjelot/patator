@@ -675,6 +675,10 @@ class TXTFormatter(logging.Formatter):
   def format(self, record):
     if not record.msg or record.msg == 'headers':
       self._fmt = self.resultfmt
+
+      if not all(True if 0x20 <= ord(c) < 0x7f else False for c in record.candidate):
+        record.candidate = repr(record.candidate)
+
     else:
       if record.levelno == logging.DEBUG:
         self._fmt = '%(asctime)s %(name)-7s %(levelname)7s [%(pname)s] %(message)s'
@@ -688,6 +692,11 @@ class CSVFormatter(logging.Formatter):
     fmt = '%(asctime)s,%(levelname)s,'+','.join('%%(%s)s' % name for name, _ in indicatorsfmt)+',%(candidate)s,%(num)s,%(mesg)s'
 
     logging.Formatter.__init__(self, fmt, datefmt='%H:%M:%S')
+
+  def format(self, record):
+    for k in ['candidate', 'mesg']:
+      record.__dict__[k] = '"%s"' % record.__dict__[k].replace('"', '""')
+    return logging.Formatter.format(self, record)
 
 class XMLFormatter(logging.Formatter):
   def __init__(self, indicatorsfmt):
@@ -856,7 +865,6 @@ from select import select
 from itertools import islice
 import string
 import random
-from binascii import hexlify
 from base64 import b64encode
 from datetime import timedelta, datetime
 from struct import unpack
@@ -1033,7 +1041,7 @@ def padhex(d):
 # $ ./dummy_test data=PROG0 0='mp64.bin ?l?l?l',$(mp64.bin --combination ?l?l?l)
 class RangeIter:
 
-  def __init__(self, typ, rng, random=None): #random.Random()):
+  def __init__(self, typ, rng, random=None):
 
     if typ in ('hex', 'int', 'float'):
 
@@ -1044,15 +1052,15 @@ class RangeIter:
       mn = m.group(1)
       mx = m.group(2)
 
-      if typ == 'hex':
-        mn = int(mn, 16)
-        mx = int(mx, 16)
-        fmt = padhex
+      if typ in ('hex', 'int'):
 
-      elif typ == 'int':
-        mn = int(mn)
-        mx = int(mx)
-        fmt = '%d'
+        mn = int(mn, 16 if '0x' in mn else 10)
+        mx = int(mx, 16 if '0x' in mx else 10)
+
+        if typ == 'hex':
+          fmt = padhex
+        elif typ == 'int':
+          fmt = '%d'
 
       elif typ == 'float':
         from decimal import Decimal
@@ -1212,7 +1220,8 @@ class Controller:
     )
 
   available_encodings = {
-    'hex': (hexlify, 'encode in hexadecimal'),
+    'hex': (lambda s: s.encode('hex'), 'encode in hexadecimal'),
+    'unhex': (lambda s: s.decode('hex'), 'decode from hexadecimal'),
     'b64': (b64encode, 'encode in base64'),
     'md5': (md5hex, 'hash in md5'),
     'sha1': (sha1hex, 'hash in sha1'),
@@ -1466,7 +1475,7 @@ Please read the README inside for more examples and usage information.
                   self.payload[k] = v
 
     logger.debug('iter_keys: %s' % self.iter_keys) # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['name'])
-    logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hexlify), ('header', 'B64', b64encode), ...
+    logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hex), ('header', 'B64', b64encode), ...
     logger.debug('payload: %s' % self.payload)
 
     self.available_actions = [k for k, _ in self.builtin_actions + self.module.available_actions]
@@ -1597,11 +1606,11 @@ Please read the README inside for more examples and usage information.
 
   def start_threads(self):
 
-    task_queues = [multiprocessing.Queue() for _ in range(self.num_threads)]
+    task_queues = [multiprocessing.Queue(maxsize=10000) for _ in range(self.num_threads)]
 
     # consumers
     for num in range(self.num_threads):
-      report_queue = multiprocessing.Queue()
+      report_queue = multiprocessing.Queue(maxsize=1000)
       t = Process(name='Consumer-%d' % num, target=self.consume, args=(task_queues[num], report_queue, logger.pipe))
       t.daemon = True
       t.start()
@@ -1702,7 +1711,7 @@ Please read the README inside for more examples and usage information.
         break
 
       cid = count % self.num_threads
-      prod = [str(p).strip('\r\n') for p in pp]
+      prod = [str(p).rstrip('\r\n') for p in pp]
 
       if self.resume:
         idx = count % len(self.resume)
@@ -4441,7 +4450,7 @@ class Dummy_test:
   '''Testing module'''
 
   usage_hints = (
-    """%prog data=RANGE0 0=hex:0x00-0xffff""",
+    """%prog data=_@@_RANGE0_@@_ 0=hex:0x00-0xff -e _@@_:unhex""",
     """%prog data=RANGE0 0=int:10-0""",
     """%prog data=PROG0 0='seq -w 10 -1 0'""",
     """%prog data=PROG0 0='mp64.bin -i ?l?l?l',$(mp64.bin --combination -i ?l?l?l)""",

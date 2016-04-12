@@ -1892,6 +1892,9 @@ Please read the README inside for more examples and usage information.
         except Empty:
           break
 
+        if 'quit' in actions:
+          self.ns.quit_now = True
+
         if actions == 'skip':
           p.skip_count += 1
           continue
@@ -1927,9 +1930,6 @@ Please read the README inside for more examples and usage information.
           self.push_final(resp)
 
         p.done_count += 1
-
-        if 'quit' in actions:
-          self.ns.quit_now = True
 
 
   def monitor_interaction(self):

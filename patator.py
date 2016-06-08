@@ -865,6 +865,7 @@ from select import select
 from itertools import islice
 import string
 import random
+from decimal import Decimal
 from base64 import b64encode
 from datetime import timedelta, datetime
 from struct import unpack
@@ -1042,12 +1043,14 @@ def padhex(d):
 class RangeIter:
 
   def __init__(self, typ, rng, random=None):
+    if typ not in ['hex', 'int', 'float', 'letters', 'lower', 'lowercase', 'upper', 'uppercase']:
+      raise ValueError("Incorrect range type '%s'" % typ)
 
     if typ in ('hex', 'int', 'float'):
 
-      m = re.match(r'(-?.+?)-(-?.+)$', rng) # 5-50 or -5-50 or 5--50 or -5--50
+      m = re.match('(-?[^-]+)-(-?[^-]+)$', rng) # 5-50 or -5-50 or 5--50 or -5--50
       if not m:
-        raise NotImplementedError("Unsupported range '%s'" % rng)
+        raise ValueError("Unsupported range '%s'" % rng)
 
       mn = m.group(1)
       mx = m.group(2)
@@ -1063,7 +1066,6 @@ class RangeIter:
           fmt = '%d'
 
       elif typ == 'float':
-        from decimal import Decimal
         mn = Decimal(mn)
         mx = Decimal(mx)
 
@@ -1080,9 +1082,6 @@ class RangeIter:
 
     elif typ in ('upper', 'uppercase'):
       charset = [c for c in string.uppercase]
-
-    else:
-      raise NotImplementedError("Incorrect type '%s'" % typ)
 
     def zrange(start, stop, step, fmt):
       x = start
@@ -1500,7 +1499,7 @@ Please read the README inside for more examples and usage information.
         name, opts = action, None
 
       if name not in self.available_actions:
-        raise NotImplementedError('Unsupported action: %s' % name)
+        raise ValueError('Unsupported action: %s' % name)
 
       if name not in ns_actions:
         ns_actions[name] = []
@@ -1632,6 +1631,10 @@ Please read the README inside for more examples and usage information.
     iterables = []
     total_size = 1
 
+    def abort(msg):
+      logger.warn(msg)
+      self.ns.quit_now = True
+
     for _, (t, v, _) in self.iter_keys.items():
 
       if t in ('FILE', 'COMBO'):
@@ -1640,7 +1643,14 @@ Please read the README inside for more examples and usage information.
 
         for fname in v.split(','):
           fpath = os.path.expanduser(fname)
-          size += sum(1 for _ in open(fpath))
+
+          if not os.path.isfile(fpath):
+            return abort("No such file '%s'" % fpath)
+
+          with open(fpath) as f:
+            for _ in f:
+              size += 1
+
           files.append(FileIter(fpath))
 
         iterable = chain(*files)
@@ -1661,11 +1671,12 @@ Please read the README inside for more examples and usage information.
         for r in v.split(','):
           typ, opt = r.split(':', 1)
 
-          if typ not in ['hex', 'int', 'float', 'letters', 'lower', 'lowercase', 'upper', 'uppercase']:
-            raise NotImplementedError("Incorrect range type '%s'" % typ)
+          try:
+            it = RangeIter(typ, opt)
+            size += len(it)
+          except ValueError as e:
+            return abort("Invalid range '%s' of type '%s', %s" % (opt, typ, e))
 
-          it = RangeIter(typ, opt)
-          size += len(it)
           ranges.append(it)
 
         iterable = chain(*ranges)
@@ -1683,7 +1694,7 @@ Please read the README inside for more examples and usage information.
         iterable, size = chain(it), int(size)
 
       else:
-        raise NotImplementedError("Incorrect keyword '%s'" % t)
+        return abort("Incorrect keyword '%s'" % t)
 
       total_size *= size
       iterables.append(iterable)
@@ -1892,9 +1903,6 @@ Please read the README inside for more examples and usage information.
         except Empty:
           break
 
-        if 'quit' in actions:
-          self.ns.quit_now = True
-
         if actions == 'skip':
           p.skip_count += 1
           continue
@@ -1930,6 +1938,9 @@ Please read the README inside for more examples and usage information.
           self.push_final(resp)
 
         p.done_count += 1
+
+        if 'quit' in actions:
+          self.ns.quit_now = True
 
 
   def monitor_interaction(self):
@@ -2320,7 +2331,7 @@ class SSH_login(TCP_Cache):
               fp.auth_password(user, password, fallback=True)
 
             else:
-              raise NotImplementedError("Incorrect auth_type '%s'" % auth_type)
+              raise ValueError("Incorrect auth_type '%s'" % auth_type)
 
       logger.debug('No error')
       code, mesg = '0', banner
@@ -3294,7 +3305,7 @@ class Oracle_login:
     elif service_name:
       dsn = cx_Oracle.makedsn(host=host, port=port, service_name=service_name)
     else:
-      raise NotImplementedError("Options sid and service_name cannot be both empty")
+      raise ValueError("Options sid and service_name cannot be both empty")
 
     try:
       with Timing() as timing:
@@ -3494,7 +3505,7 @@ class HTTP_fuzz(TCP_Cache):
       elif auth_type == 'ntlm':
         fp.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_NTLM)
       else:
-        raise NotImplementedError("Incorrect auth_type '%s'" % auth_type)
+        raise ValueError("Incorrect auth_type '%s'" % auth_type)
 
     if ssl_cert:
       fp.setopt(pycurl.SSLCERT, ssl_cert)
@@ -4159,7 +4170,7 @@ class SNMP_login:
         return self.Response('1', 'SNMPv3 requires passphrases to be at least 8 characters long')
 
     else:
-      raise NotImplementedError("Incorrect SNMP version '%s'" % version)
+      raise ValueError("Incorrect SNMP version '%s'" % version)
 
     with Timing() as timing:
       errorIndication, errorStatus, errorIndex, varBinds = cmdgen.CommandGenerator().getCmd(

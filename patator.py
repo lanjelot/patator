@@ -1492,19 +1492,19 @@ Please read the README inside for more examples and usage information.
     for action in actions.split(','):
 
       conds = [c.split('=', 1) for c in conditions.split(self.condition_delim)]
-
-      if '=' in action:
-        name, opts = action.split('=')
-      else:
-        name, opts = action, None
-
-      if name not in self.available_actions:
-        raise ValueError('Unsupported action: %s' % name)
-
-      if name not in ns_actions:
-        ns_actions[name] = []
-
-      ns_actions[name].append((conds, opts))
+      for cond in conds:
+        if '=' in action:
+          name, opts = action.split('=')
+        else:
+          name, opts = action, None
+  
+        if name not in self.available_actions:
+          raise ValueError('Unsupported action: %s' % name)
+  
+        if name not in ns_actions:
+          ns_actions[name] = []
+  
+        ns_actions[name].append(([cond], opts))
 
     self.ns.actions = ns_actions
 

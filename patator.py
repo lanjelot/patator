@@ -4492,7 +4492,7 @@ try:
 except ImportError:
   notfound.append('ajpy')
 
-def prepare_ajp_forward_request(target_host, req_uri, method=AjpForwardRequest.GET):
+def prepare_ajp_forward_request(target_host, req_uri, method):
   fr = AjpForwardRequest(AjpForwardRequest.SERVER_TO_CONTAINER)
   fr.method = method
   fr.protocol = "HTTP/1.1"
@@ -4674,6 +4674,7 @@ dependencies = {
   'unzip': [('unzip_pass',), 'http://www.info-zip.org/', '6.0'],
   'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/', '6'],
   'ftp-tls': [('ftp_login',), 'TLS support unavailable before python 2.7'],
+  'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/ajpy', '0.1'],
   }
 # }}}
 

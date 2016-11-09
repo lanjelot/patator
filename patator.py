@@ -4492,7 +4492,7 @@ try:
 except ImportError:
   notfound.append('ajpy')
 
-def prepare_ajp_forward_request(target_host, req_uri, method=AjpForwardRequest.GET):
+def prepare_ajp_forward_request(target_host, req_uri, method):
   fr = AjpForwardRequest(AjpForwardRequest.SERVER_TO_CONTAINER)
   fr.method = method
   fr.protocol = "HTTP/1.1"

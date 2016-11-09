@@ -4488,77 +4488,25 @@ class Dummy_test:
 
 # AJP {{{
 try:
-  from  ajpy.ajp import AjpForwardRequest
+  from ajpy.ajp import AjpForwardRequest
 except ImportError:
   notfound.append('ajpy')
 
-def prepare_ajp_forward_request(target_host, req_uri, method=AjpForwardRequest.GET):
-  fr = AjpForwardRequest(AjpForwardRequest.SERVER_TO_CONTAINER)
-  fr.method = method
-  fr.protocol = "HTTP/1.1"
-  fr.req_uri = req_uri
-  fr.remote_addr = target_host
-  fr.remote_host = None
-  fr.server_name = target_host
-  fr.server_port = 80
-  fr.request_headers = {
-    'SC_REQ_ACCEPT': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'SC_REQ_CONNECTION': 'keep-alive',
-    'SC_REQ_CONTENT_LENGTH': '0',
-    'SC_REQ_HOST': target_host,
-    'SC_REQ_USER_AGENT': 'Mozilla/5.0 (X11; Linux x86_64; rv:46.0) Gecko/20100101 Firefox/46.0',
-    'Accept-Encoding': 'gzip, deflate, sdch',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Upgrade-Insecure-Requests': '1',
-    'Cache-Control': 'max-age=0'
-  }
-  fr.is_ssl = False
+class AJP_Connection(TCP_Connection):
+  def close(self):
+    sock, stream = self.fp
+    sock.close()
 
-  fr.attributes = []
-
-  return fr
-class Response_AJP(Response_Base):
-
-  indicatorsfmt = [('code', -4), ('size:clen', -13), ('time', 6)]
-
-  def __init__(self, code, status, response, timing=0, content_length=-1, target={}):
-    Response_Base.__init__(self, code, response, timing)
-    self.content_length = content_length
-    self.target = target
-    self.status = status
-
-  def indicators(self):
-    return self.code, '%d:%d' % (self.size, self.content_length), '%.3f' % self.time
-
-  def __str__(self):
-    return self.status
-
-  def match_clen(self, val):
-    return match_range(self.content_length, val)
-
-  def match_fgrep(self, val):
-    return val in self.mesg
-
-  def match_egrep(self, val):
-    return re.search(val, self.mesg, re.M)
-
-  def str_target(self):
-    return ' '.join('%s=%s' % (k, xmlquoteattr(str(v))) for k, v in self.target.iteritems())
-
-  available_conditions = Response_Base.available_conditions
-  available_conditions += (
-    ('clen', 'match Content-Length header (N or N-M or N- or -N)'),
-    )
+class Response_AJP(Response_HTTP):
+  pass
 
 class AJP_fuzz(TCP_Cache):
   '''Brute-force AJP'''
 
   usage_hints = [
     """%prog url=ajp://10.0.0.1/FILE0 0=paths.txt -x ignore:code=404 -x ignore,retry:code=500""",
-
     """%prog url=ajp://10.0.0.1/manager/html user_pass=COMBO00:COMBO01 0=combos.txt"""
     """ -x ignore:code=401""",
-
     ]
 
   available_options = (
@@ -4569,16 +4517,40 @@ class AJP_fuzz(TCP_Cache):
 
   Response = Response_AJP
 
+  def prepare_ajp_forward_request(self, target_host, req_uri, method=AjpForwardRequest.GET):
+    fr = AjpForwardRequest(AjpForwardRequest.SERVER_TO_CONTAINER)
+    fr.method = method
+    fr.protocol = "HTTP/1.1"
+    fr.req_uri = req_uri
+    fr.remote_addr = target_host
+    fr.remote_host = None
+    fr.server_name = target_host
+    fr.server_port = 80
+    fr.request_headers = {
+      'SC_REQ_ACCEPT': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'SC_REQ_CONNECTION': 'keep-alive',
+      'SC_REQ_CONTENT_LENGTH': '0',
+      'SC_REQ_HOST': target_host,
+      'SC_REQ_USER_AGENT': 'Mozilla/5.0 (X11; Linux x86_64; rv:46.0) Gecko/20100101 Firefox/46.0',
+      'Accept-Encoding': 'gzip, deflate, sdch',
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Upgrade-Insecure-Requests': '1',
+      'Cache-Control': 'max-age=0'
+    }
+    fr.is_ssl = False
+    fr.attributes = []
+
+    return fr
+
   def connect(self, host, port):
-    self.target_host = host
-    self.target_port = port
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.connect((host, int(port)))
+    stream = sock.makefile("rb", bufsize=0)
 
-    self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    self.socket.connect((self.target_host, self.target_port))
-    self.stream = self.socket.makefile("rb", bufsize=0)
+    return AJP_Connection((sock, stream))
 
-  def execute(self, url=None, host=None, port='8009', scheme='ajp', path='/', params='', query='',    header='', user_pass=''):
+  def execute(self, url=None, host=None, port='8009', path='/', params='', query='', header='', user_pass='', persistent='1'):
 
     if url:
       scheme, host, path, params, query, fragment = urlparse(url)
@@ -4587,33 +4559,38 @@ class AJP_fuzz(TCP_Cache):
       del url
 
     req_uri = urlunparse(('', '', path, params, query, fragment))
-    fr = prepare_ajp_forward_request(host, req_uri, method=AjpForwardRequest.REQUEST_METHODS.get('GET'))
-    fr.request_headers['SC_REQ_AUTHORIZATION'] = "Basic " + user_pass.encode('base64').replace('\n', '')
+
+    fr = self.prepare_ajp_forward_request(host, req_uri, method=AjpForwardRequest.REQUEST_METHODS.get('GET'))
+    fr.request_headers['SC_REQ_AUTHORIZATION'] = "Basic " + b64encode(user_pass)
 
     headers = [h.strip('\r') for h in header.split('\n') if h]
     for h in headers:
-      k,_,v = h.partition(':')
+      k, _, v = h.partition(':')
       fr.request_headers[k] = v
 
-    self.connect(host, int(port))
-    start = time()
-    responses = fr.send_and_receive(self.socket, self.stream)
-    end = time()
+    (sock, stream), _ = self.bind(host, port)
+
+    with Timing() as timing:
+      responses = fr.send_and_receive(sock, stream)
 
     snd_hdrs_res = responses[0]
     http_code = snd_hdrs_res.http_status_code
     http_status_msg = snd_hdrs_res.http_status_msg
     content_length = int(snd_hdrs_res.response_headers.get('Content-Length', 0))
-    response_time = end - start
+
     data_res = responses[1:-1]
     data = ''
     for dr in data_res:
       data += dr.data
 
     target = {}
-    target['ip'] = self.target_host
-    target['port'] = self.target_port
-    return self.Response(http_code, http_status_msg, data, response_time, content_length, target)
+    target['ip'] = host
+    target['port'] = port
+
+    if persistent == '0':
+      self.reset()
+
+    return self.Response(http_code, http_status_msg, timing, data, content_length, target)
 
 # }}}
 
@@ -4660,6 +4637,7 @@ modules = [
 dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
   'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.0'],
+  'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
   'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '5.1.1'],

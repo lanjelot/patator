@@ -11,6 +11,7 @@ Currently it supports the following modules:
 * smtp_rcpt     : Enumerate valid users using the SMTP RCPT TO command
 * finger_lookup : Enumerate valid users using Finger
 * http_fuzz     : Brute-force HTTP/HTTPS
+* ajp_fuzz      : Brute-force AJP
 * pop_login     : Brute-force POP
 * pop_passd     : Brute-force poppassd (not POP3)
 * imap_login    : Brute-force IMAP

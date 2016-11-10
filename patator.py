@@ -3604,7 +3604,12 @@ class AJP_Connection(TCP_Connection):
     sock.close()
 
 class Response_AJP(Response_HTTP):
-  pass
+  def __init__(self, code, response, status_msg='', timing=0, trace=None, content_length=-1, target={}):
+    Response_HTTP.__init__(self, code, response, timing, trace, content_length, target)
+    self.status_msg = status_msg
+
+  def __str__(self):
+   return self.status_msg or self.mesg
 
 def prepare_ajp_forward_request(target_host, req_uri, method):
   fr = AjpForwardRequest(AjpForwardRequest.SERVER_TO_CONTAINER)
@@ -3696,7 +3701,7 @@ class AJP_fuzz(TCP_Cache):
     if persistent == '0':
       self.reset()
 
-    return self.Response(http_code, http_status_msg, timing, data, content_length, target)
+    return self.Response(http_code, data, http_status_msg, timing, data, content_length, target)
 
 # }}}
 

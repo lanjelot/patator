@@ -879,6 +879,7 @@ from collections import defaultdict
 import multiprocessing
 import signal
 import ctypes
+import glob
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 try:
   # python3+
@@ -932,6 +933,9 @@ from multiprocessing.managers import SyncManager
 # imports }}}
 
 # utils {{{
+def expand_path(s):
+    return os.path.expandvars(os.path.expanduser(s))
+
 def strfutctime():
   return strftime("%Y-%m-%d %H:%M:%S", gmtime())
 
@@ -1418,7 +1422,7 @@ Please read the README inside for more examples and usage information.
 
         else:
           if v.startswith('@'):
-            p = os.path.expanduser(v[1:])
+            p = expand_path(v[1:])
             v = open(p).read()
           kargs.append((k, v))
 
@@ -1644,17 +1648,16 @@ Please read the README inside for more examples and usage information.
         size = 0
         files = []
 
-        for fname in v.split(','):
-          fpath = os.path.expanduser(fname)
+        for name in v.split(','):
+          for fpath in sorted(glob.iglob(expand_path(name))):
+            if not os.path.isfile(fpath):
+              return abort("No such file '%s'" % fpath)
 
-          if not os.path.isfile(fpath):
-            return abort("No such file '%s'" % fpath)
+            with open(fpath) as f:
+              for _ in f:
+                size += 1
 
-          with open(fpath) as f:
-            for _ in f:
-              size += 1
-
-          files.append(FileIter(fpath))
+            files.append(FileIter(fpath))
 
         iterable = chain(*files)
 

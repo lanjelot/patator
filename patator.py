@@ -1848,7 +1848,10 @@ Please read the README inside for more examples and usage information.
             enable_alarm(self.timeout)
             resp = module.execute(**payload)
 
+            disable_alarm()
           except:
+            disable_alarm()
+
             mesg = '%s %s' % sys.exc_info()[:2]
             logger.debug('caught: %s' % mesg)
 
@@ -1861,9 +1864,6 @@ Please read the README inside for more examples and usage information.
 
             sleep(try_count * .1)
             continue
-
-          finally:
-            disable_alarm()
 
         else:
           actions = {'fail': None}

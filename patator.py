@@ -126,7 +126,9 @@ INSTALL
 --------------------------------------------------------------------------------------------------
 paramiko         | SSH            | http://www.lag.net/paramiko/                       | 1.7.7.1 |
 --------------------------------------------------------------------------------------------------
-pycurl           | HTTP           | http://pycurl.sourceforge.net/                     |  7.19.0 |
+pycurl           | HTTP           | http://pycurl.sourceforge.net/                     |  7.19.3 |
+--------------------------------------------------------------------------------------------------
+libcurl          | HTTP           | https://curl.haxx.se/                              |  7.21.0 |
 --------------------------------------------------------------------------------------------------
 ajpy             | AJP            | https://github.com/hypn0s/AJPy/                    |   0.0.1 |
 --------------------------------------------------------------------------------------------------
@@ -3364,8 +3366,11 @@ class Pgsql_login:
 # HTTP {{{
 try:
   import pycurl
+  if not hasattr(pycurl, 'PRIMARY_PORT'):
+    notfound.append('libcurl')
 except ImportError:
   notfound.append('pycurl')
+
 
 class Response_HTTP(Response_Base):
 
@@ -4640,7 +4645,8 @@ modules = [
 
 dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
-  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.0'],
+  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.3'],
+  'libcurl': [('http_fuzz',), 'https://curl.haxx.se/', '7.21.0'],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
   'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],

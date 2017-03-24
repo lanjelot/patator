@@ -3447,6 +3447,7 @@ class HTTP_fuzz(TCP_Cache):
     ('before_egrep', 'extract data from the before_urls response to place in the main request'),
     ('after_urls', 'comma-separated URLs to query after the main request'),
     ('max_mem', 'store no more than N bytes of request+response data in memory [-1 (unlimited)]'),
+    ('delay', 'delay to wait before each request [None (don\'t wait)]'),
     )
   available_options += TCP_Cache.available_options
 
@@ -3465,7 +3466,7 @@ class HTTP_fuzz(TCP_Cache):
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
     header='', method='GET', auto_urlencode='1', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
-    before_urls='', before_header='', before_egrep='', after_urls='', max_mem='-1'):
+    before_urls='', before_header='', before_egrep='', after_urls='', max_mem='-1', delay=None):
 
     if url:
       scheme, host, path, params, query, fragment = urlparse(url)
@@ -3521,8 +3522,8 @@ class HTTP_fuzz(TCP_Cache):
       # produce requests with more than one Cookie: header
       # and the server will process only one of them (eg. Apache only reads the last one)
 
-    def perform_fp(fp, method, url, header='', body=''):
-      #logger.debug('perform: %s' % url)
+    def perform_fp(fp, method, url, header='', body='', delay=None):
+      #logger.debug('perform: %s, delay: %s' % (url, delay))
       fp.setopt(pycurl.URL, url)
 
       if method == 'GET':
@@ -3541,11 +3542,13 @@ class HTTP_fuzz(TCP_Cache):
       headers = [h.strip('\r') for h in header.split('\n') if h]
       fp.setopt(pycurl.HTTPHEADER, headers)
 
+      if delay:
+        sleep(float(delay))
       fp.perform()
 
     if before_urls:
       for before_url in before_urls.split(','):
-        perform_fp(fp, 'GET', before_url, before_header)
+        perform_fp(fp, 'GET', before_url, before_header, delay=delay)
 
       if before_egrep:
         for be in before_egrep.split('|'):
@@ -3565,7 +3568,7 @@ class HTTP_fuzz(TCP_Cache):
       host = '%s:%s' % (host, port)
 
     url = urlunparse((scheme, host, path, params, query, fragment))
-    perform_fp(fp, method, url, header, body)
+    perform_fp(fp, method, url, header, body, delay=delay)
 
     target = {}
     target['ip'] = fp.getinfo(pycurl.PRIMARY_IP)
@@ -3581,7 +3584,7 @@ class HTTP_fuzz(TCP_Cache):
 
     if after_urls:
       for after_url in after_urls.split(','):
-        perform_fp(fp, 'GET', after_url)
+        perform_fp(fp, 'GET', after_url, delay=delay)
 
     http_code = fp.getinfo(pycurl.HTTP_CODE)
     content_length = fp.getinfo(pycurl.CONTENT_LENGTH_DOWNLOAD)

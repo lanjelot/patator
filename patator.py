@@ -789,9 +789,11 @@ def process_logs(queue, indicatorsfmt, argv, log_dir):
         f.write('<results>\n')
 
     else: # remove "</results>...</root>"
-      with open(results_xml, 'r+') as f:
-        f.seek(f.read().find('</results>'))
-        f.truncate(f.tell())
+      with open(results_xml, 'r+b') as f:
+        offset = f.read().find('</results>')
+        if offset != -1:
+          f.seek(offset)
+          f.truncate(f.tell())
 
     handler_log = logging.FileHandler(runtime_log)
     handler_csv = logging.FileHandler(results_csv)

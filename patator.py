@@ -3440,7 +3440,9 @@ class HTTP_fuzz(TCP_Cache):
     ('follow', 'follow any Location redirect [0|1]'),
     ('max_follow', 'redirection limit [5]'),
     ('accept_cookie', 'save received cookies to issue them in future requests [0|1]'),
-    ('http_proxy', 'HTTP proxy to use (host:port)'),
+    ('proxy', 'Proxy to use (host:port)'),
+    ('proxy_type', 'Proxy type [http|socks4|socks4a|socks5] (default: http)'),
+    ('resolve', 'DNS resolution if known (HOST:IP)'),
     ('ssl_cert', 'client SSL certificate file (cert+key in PEM format)'),
     ('timeout_tcp', 'seconds to wait for a TCP handshake [10]'),
     ('timeout', 'seconds to wait for a HTTP response [20]'),
@@ -3454,6 +3456,14 @@ class HTTP_fuzz(TCP_Cache):
 
   Response = Response_HTTP
 
+  proxytype_mapping = {
+    "http": pycurl.PROXYTYPE_HTTP,
+    "socks4": pycurl.PROXYTYPE_SOCKS4,
+    "socks4a": pycurl.PROXYTYPE_SOCKS4A,
+    "socks5": pycurl.PROXYTYPE_SOCKS5,
+    "socks5_with_hostname": pycurl.PROXYTYPE_SOCKS5_HOSTNAME,
+  }
+
   def connect(self, host, port, scheme):
     fp = pycurl.Curl()
     fp.setopt(pycurl.SSL_VERIFYPEER, 0)
@@ -3466,7 +3476,7 @@ class HTTP_fuzz(TCP_Cache):
 
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
     header='', method='GET', auto_urlencode='1', user_pass='', auth_type='basic',
-    follow='0', max_follow='5', accept_cookie='0', http_proxy='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
+    follow='0', max_follow='5', accept_cookie='0', proxy='', proxy_type='http', resolve='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
     before_urls='', before_header='', before_egrep='', after_urls='', max_mem='-1'):
 
     if url:
@@ -3475,13 +3485,29 @@ class HTTP_fuzz(TCP_Cache):
         host, port = host.split(':')
       del url
 
+    if resolve:
+        resolve_host, resolve_ip = resolve.split(":")
+        if port:
+            resolve_port = port
+        else:
+            resolve_port = 80
+
+        resolve = "%s:%s:%s" % (resolve_host, resolve_port, resolve_ip)
+
+    if proxy_type in HTTP_fuzz.proxytype_mapping:
+        proxy_type = HTTP_fuzz.proxytype_mapping[proxy_type]
+    else:
+        raise ValueError("invalid proxy type.")
+
     fp, _ = self.bind(host, port, scheme)
 
     fp.setopt(pycurl.FOLLOWLOCATION, int(follow))
     fp.setopt(pycurl.MAXREDIRS, int(max_follow))
     fp.setopt(pycurl.CONNECTTIMEOUT, int(timeout_tcp))
     fp.setopt(pycurl.TIMEOUT, int(timeout))
-    fp.setopt(pycurl.PROXY, http_proxy)
+    fp.setopt(pycurl.PROXY, proxy)
+    fp.setopt(pycurl.PROXYTYPE, proxy_type)
+    fp.setopt(pycurl.RESOLVE, [resolve])
 
     def noop(buf): pass
     fp.setopt(pycurl.WRITEFUNCTION, noop)

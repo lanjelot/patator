@@ -1049,13 +1049,13 @@ class RangeIter:
 
   def __init__(self, typ, rng, random=None):
     if typ not in ['hex', 'int', 'float', 'letters', 'lower', 'lowercase', 'upper', 'uppercase']:
-      raise ValueError("Incorrect range type '%s'" % typ)
+      raise ValueError('Incorrect range type %r' % typ)
 
     if typ in ('hex', 'int', 'float'):
 
       m = re.match('(-?[^-]+)-(-?[^-]+)$', rng) # 5-50 or -5-50 or 5--50 or -5--50
       if not m:
-        raise ValueError("Unsupported range '%s'" % rng)
+        raise ValueError('Unsupported range %r' % rng)
 
       mn = m.group(1)
       mx = m.group(2)
@@ -1504,7 +1504,7 @@ Please read the README inside for more examples and usage information.
         name, opts = action, None
 
       if name not in self.available_actions:
-        raise ValueError('Unsupported action: %s' % name)
+        raise ValueError('Unsupported action %r' % name)
 
       if name not in ns_actions:
         ns_actions[name] = []
@@ -1698,7 +1698,7 @@ Please read the README inside for more examples and usage information.
         iterable, size = chain(it), int(size)
 
       else:
-        return abort("Incorrect keyword '%s'" % t)
+        return abort('Incorrect keyword %r' % t)
 
       total_size *= size
       iterables.append(iterable)
@@ -2335,7 +2335,7 @@ class SSH_login(TCP_Cache):
               fp.auth_password(user, password, fallback=True)
 
             else:
-              raise ValueError("Incorrect auth_type '%s'" % auth_type)
+              raise ValueError('Incorrect auth_type %r' % auth_type)
 
       logger.debug('No error')
       code, mesg = '0', banner
@@ -2390,7 +2390,7 @@ class Telnet_login(TCP_Cache):
 
     if self.prompt_count == 0:
       _, _, raw = fp.expect([prompt_re], timeout=timeout)
-      logger.debug('raw banner: %s' % repr(raw))
+      logger.debug('raw banner: %r' % raw)
       trace += raw
       self.prompt_count += 1
 
@@ -2403,7 +2403,7 @@ class Telnet_login(TCP_Cache):
           trace += cmd
 
           _, _, raw = fp.expect([prompt_re], timeout=timeout)
-          logger.debug('raw %d: %s' % (self.prompt_count, repr(raw)))
+          logger.debug('raw %d: %r' % (self.prompt_count, raw))
           trace += raw
           self.prompt_count += 1
 
@@ -2604,7 +2604,7 @@ class Finger_lookup:
 
     s.close()
 
-    logger.debug('recv: %s' % repr(data))
+    logger.debug('recv: %r' % data)
 
     data = data.strip()
     mesg = repr(data)
@@ -3070,7 +3070,7 @@ class LineReceiver:
     code, _ = self.parse(resp)
 
     if not code.isdigit():
-      raise Exception('Unexpected response: %s' % resp)
+      raise Exception('Unexpected response: %r' % resp)
 
     if code[0] not in ('1', '2', '3'):
       raise LineReceiver_Error(resp)
@@ -3309,7 +3309,7 @@ class Oracle_login:
     elif service_name:
       dsn = cx_Oracle.makedsn(host=host, port=port, service_name=service_name)
     else:
-      raise ValueError("Options sid and service_name cannot be both empty")
+      raise ValueError('Options sid and service_name cannot be both empty')
 
     try:
       with Timing() as timing:
@@ -3440,9 +3440,9 @@ class HTTP_fuzz(TCP_Cache):
     ('follow', 'follow any Location redirect [0|1]'),
     ('max_follow', 'redirection limit [5]'),
     ('accept_cookie', 'save received cookies to issue them in future requests [0|1]'),
-    ('proxy', 'Proxy to use (host:port)'),
-    ('proxy_type', 'Proxy type [http|socks4|socks4a|socks5] (default: http)'),
-    ('resolve', 'DNS resolution if known (HOST:IP)'),
+    ('proxy', 'proxy to use (host:port)'),
+    ('proxy_type', 'proxy type [http|socks4|socks4a|socks5] (default: http)'),
+    ('resolve', 'hostname to IP address resolution to use (hostname:IP)'),
     ('ssl_cert', 'client SSL certificate file (cert+key in PEM format)'),
     ('timeout_tcp', 'seconds to wait for a TCP handshake [10]'),
     ('timeout', 'seconds to wait for a HTTP response [20]'),
@@ -3457,11 +3457,11 @@ class HTTP_fuzz(TCP_Cache):
   Response = Response_HTTP
 
   proxytype_mapping = {
-    "http": pycurl.PROXYTYPE_HTTP,
-    "socks4": pycurl.PROXYTYPE_SOCKS4,
-    "socks4a": pycurl.PROXYTYPE_SOCKS4A,
-    "socks5": pycurl.PROXYTYPE_SOCKS5,
-    "socks5_with_hostname": pycurl.PROXYTYPE_SOCKS5_HOSTNAME,
+    'http': pycurl.PROXYTYPE_HTTP,
+    'socks4': pycurl.PROXYTYPE_SOCKS4,
+    'socks4a': pycurl.PROXYTYPE_SOCKS4A,
+    'socks5': pycurl.PROXYTYPE_SOCKS5,
+    'socks5_with_hostname': pycurl.PROXYTYPE_SOCKS5_HOSTNAME,
   }
 
   def connect(self, host, port, scheme):
@@ -3486,18 +3486,18 @@ class HTTP_fuzz(TCP_Cache):
       del url
 
     if resolve:
-        resolve_host, resolve_ip = resolve.split(":")
-        if port:
-            resolve_port = port
-        else:
-            resolve_port = 80
+      resolve_host, resolve_ip = resolve.split(':', 1)
+      if port:
+        resolve_port = port
+      else:
+        resolve_port = 80
 
-        resolve = "%s:%s:%s" % (resolve_host, resolve_port, resolve_ip)
+      resolve = '%s:%s:%s' % (resolve_host, resolve_port, resolve_ip)
 
     if proxy_type in HTTP_fuzz.proxytype_mapping:
-        proxy_type = HTTP_fuzz.proxytype_mapping[proxy_type]
+      proxy_type = HTTP_fuzz.proxytype_mapping[proxy_type]
     else:
-        raise ValueError("invalid proxy type.")
+      raise ValueError('Invalid proxy_type %r' % proxy_type)
 
     fp, _ = self.bind(host, port, scheme)
 
@@ -3538,7 +3538,7 @@ class HTTP_fuzz(TCP_Cache):
       elif auth_type == 'ntlm':
         fp.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_NTLM)
       else:
-        raise ValueError("Incorrect auth_type '%s'" % auth_type)
+        raise ValueError('Incorrect auth_type %r' % auth_type)
 
     if ssl_cert:
       fp.setopt(pycurl.SSLCERT, ssl_cert)
@@ -3795,7 +3795,7 @@ class VNC:
     self.fp = socket.create_connection((host, port), timeout=timeout)
     resp = self.fp.recv(99) # banner
 
-    logger.debug('banner: %s' % repr(resp))
+    logger.debug('banner: %r' % resp)
     self.version = resp[:11].decode('ascii')
 
     if len(resp) > 12:
@@ -3822,7 +3822,7 @@ class VNC:
     sleep(0.5)
 
     resp = self.fp.recv(99)
-    logger.debug('Security types supported: %s' % repr(resp))
+    logger.debug('Security types supported: %r' % resp)
 
     if major == '4' or (major == '3' and int(minor) >= 7):
       code = ord(resp[0:1])
@@ -3842,20 +3842,20 @@ class VNC:
     if len(resp) != 16:
       raise VNC_Error('Unexpected challenge size (No authentication required? Unsupported authentication type?)')
 
-    logger.debug('challenge: %s' % repr(resp))
+    logger.debug('challenge: %r' % resp)
     pw = password.ljust(8, '\x00')[:8] # make sure it is 8 chars long, zero padded
 
     key = self.gen_key(pw)
-    logger.debug('key: %s' % repr(key))
+    logger.debug('key: %r' % key)
 
     des = DES.new(key, DES.MODE_ECB)
     enc = des.encrypt(resp)
 
-    logger.debug('enc: %s' % repr(enc))
+    logger.debug('enc: %r' % enc)
     self.fp.sendall(enc)
 
     resp = self.fp.recv(99)
-    logger.debug('resp: %s' % repr(resp))
+    logger.debug('resp: %r' % resp)
 
     code = ord(resp[3:4])
     mesg = resp[8:].decode('ascii', 'ignore')
@@ -3867,7 +3867,7 @@ class VNC:
       return code, mesg or 'OK'
 
     else:
-      raise VNC_Error('Unknown response: %s (code: %s)' % (repr(resp), code))
+      raise VNC_Error('Unknown response: %r (code: %s)' % (resp, code))
 
 
   def gen_key(self, key):
@@ -4316,7 +4316,7 @@ class SNMP_login:
         return self.Response('1', 'SNMPv3 requires passphrases to be at least 8 characters long')
 
     else:
-      raise ValueError("Incorrect SNMP version '%s'" % version)
+      raise ValueError('Incorrect SNMP version %r' % version)
 
     with Timing() as timing:
       errorIndication, errorStatus, errorIndex, varBinds = cmdgen.CommandGenerator().getCmd(
@@ -4446,7 +4446,7 @@ class IKE_enum:
       code = p.returncode
 
     trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
-    logger.debug('trace: %s' % repr(trace))
+    logger.debug('trace: %r' % trace)
 
     has_sa = 'SA=(' in out
     if has_sa:

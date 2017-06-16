@@ -1421,7 +1421,8 @@ Please read the README inside for more examples and usage information.
         else:
           if v.startswith('@'):
             p = expand_path(v[1:])
-            v = open(p).read()
+            with open(p) as f:
+              v = f.read()
           kargs.append((k, v))
 
     iter_vals = [v for k, v in sorted(wlists.items())]
@@ -3373,7 +3374,6 @@ try:
 except ImportError:
   notfound.append('pycurl')
 
-
 class Response_HTTP(Response_Base):
 
   indicatorsfmt = [('code', -4), ('size:clen', -13), ('time', 6)]
@@ -3410,6 +3410,54 @@ class Response_HTTP(Response_Base):
     ('clen', 'match Content-Length header (N or N-M or N- or -N)'),
     )
 
+from BaseHTTPServer import BaseHTTPRequestHandler
+class HTTPRequestParser(BaseHTTPRequestHandler):
+  def __init__(self, fd):
+    self.rfile = fd
+    self.error = None
+    self.body = None
+    self.raw_requestline = self.rfile.readline()
+    self.parse_request()
+
+    if self.command == 'POST':
+      self.body = self.rfile.read(-1).rstrip('\r\n')
+      if 'Content-Length' in self.headers:
+        del self.headers['Content-Length']
+
+  def send_error(self, code, message):
+    self.error = message
+
+class Controller_HTTP(Controller):
+
+  def expand_key(self, arg):
+    key, val = arg.split('=', 1)
+    if key == 'raw_request':
+
+      with open(val) as fd:
+        r = HTTPRequestParser(fd)
+
+      if r.error:
+        raise ValueError('Failed to parse file %r as a raw HTTP request' % val, r.error)
+
+      opts = {}
+
+      if r.path.startswith('http'):
+        opts['url'] = r.path
+      else:
+        _, _, opts['path'], opts['params'], opts['query'], opts['fragment'] =  urlparse(r.path)
+        opts['host'] = r.headers['Host']
+
+      opts['header'] = str(r.headers)
+      opts['method'] = r.command
+      opts['body'] = r.body
+
+      for key, val in opts.iteritems():
+        if val:
+          yield (key, val)
+
+    else:
+      yield (key, val)
+
 class HTTP_fuzz(TCP_Cache):
   '''Brute-force HTTP'''
 
@@ -3428,12 +3476,13 @@ class HTTP_fuzz(TCP_Cache):
     ('url', 'target url (scheme://host[:port]/path?query)'),
     #('host', 'target host'),
     #('port', 'target port'),
-    #('scheme', 'scheme [http | https]'),
     #('path', 'web path [/]'),
     #('query', 'query string'),
     ('body', 'body data'),
     ('header', 'use custom headers'),
-    ('method', 'method to use [GET | POST | HEAD | ...]'),
+    ('method', 'method to use [GET|POST|HEAD|...]'),
+    ('raw_request', 'load request from file'),
+    ('scheme', 'scheme [http|https]'),
     ('auto_urlencode', 'automatically perform URL-encoding [1|0]'),
     ('user_pass', 'username and password for HTTP authentication (user:pass)'),
     ('auth_type', 'type of HTTP authentication [basic | digest | ntlm]'),
@@ -3441,7 +3490,7 @@ class HTTP_fuzz(TCP_Cache):
     ('max_follow', 'redirection limit [5]'),
     ('accept_cookie', 'save received cookies to issue them in future requests [0|1]'),
     ('proxy', 'proxy to use (host:port)'),
-    ('proxy_type', 'proxy type [http|socks4|socks4a|socks5] (default: http)'),
+    ('proxy_type', 'proxy type [http|socks4|socks4a|socks5]'),
     ('resolve', 'hostname to IP address resolution to use (hostname:IP)'),
     ('ssl_cert', 'client SSL certificate file (cert+key in PEM format)'),
     ('timeout_tcp', 'seconds to wait for a TCP handshake [10]'),
@@ -3481,9 +3530,11 @@ class HTTP_fuzz(TCP_Cache):
 
     if url:
       scheme, host, path, params, query, fragment = urlparse(url)
+      del url
+
+    if host:
       if ':' in host:
         host, port = host.split(':')
-      del url
 
     if resolve:
       resolve_host, resolve_ip = resolve.split(':', 1)
@@ -4640,7 +4691,7 @@ modules = [
   ('smtp_vrfy', (Controller, SMTP_vrfy)),
   ('smtp_rcpt', (Controller, SMTP_rcpt)),
   ('finger_lookup', (Controller_Finger, Finger_lookup)),
-  ('http_fuzz', (Controller, HTTP_fuzz)),
+  ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
   ('ajp_fuzz', (Controller, AJP_fuzz)),
   ('pop_login', (Controller, POP_login)),
   ('pop_passd', (Controller, POP_passd)),

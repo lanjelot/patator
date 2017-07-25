@@ -3644,7 +3644,14 @@ class HTTP_fuzz(TCP_Cache):
       host = '%s:%s' % (host, port)
 
     url = urlunparse((scheme, host, path, params, query, fragment))
-    perform_fp(fp, method, url, header, body)
+    try:
+      perform_fp(fp, method, url, header, body)
+    except pycurl.error as e:
+      if e[0]!=28:
+        raise
+      match=re.compile('^Operation timed out after \d+ milliseconds with (\d+) bytes received$').match(e[1])
+      if not match or match.group(1)=='0':
+        raise
 
     target = {}
     target['ip'] = fp.getinfo(pycurl.PRIMARY_IP)
@@ -3670,6 +3677,35 @@ class HTTP_fuzz(TCP_Cache):
       self.reset()
 
     return self.Response(http_code, response.getvalue(), response_time, trace.getvalue(), content_length, target)
+
+# }}}
+
+# RDP_gateway {{{
+try:
+  import uuid
+except ImportError:
+  notfound.append('uuid')
+
+class RDP_gateway(HTTP_fuzz):
+  '''Brute-force RDP Gateway'''
+
+  # Make sure to set reasonably small timeout. If authentication is successful Gateway server does not set Content-length header nor closes connection and we have to wait until a connection is killed.
+  usage_hints = (
+      """%prog rdp_gateway url='https://example.com/remoteDesktopGateway/' user_pass=COMBO00:COMBO01 0=logins -x ignore:code=401 timeout=1""",
+    )
+
+  def execute(self, *args, **kwargs):
+
+    if 'method' not in kwargs:
+      kwargs['method']='RDG_OUT_DATA'
+
+    rdg_connection_id="RDG-Connection-Id: {" + str(uuid.uuid4()) + '}'
+    if 'header' not in kwargs:
+      kwargs['header'] = rdg_connection_id
+    else:
+      kwargs['header'] = rdg_connection_id + "\n" + kwargs['header']
+
+    return HTTP_fuzz.execute(self, *args, **kwargs)
 
 # }}}
 
@@ -4691,6 +4727,7 @@ modules = [
   ('smtp_vrfy', (Controller, SMTP_vrfy)),
   ('smtp_rcpt', (Controller, SMTP_rcpt)),
   ('finger_lookup', (Controller_Finger, Finger_lookup)),
+  ('rdp_gateway', (Controller_HTTP, RDP_gateway)),
   ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
   ('ajp_fuzz', (Controller, AJP_fuzz)),
   ('pop_login', (Controller, POP_login)),
@@ -4724,8 +4761,9 @@ modules = [
 
 dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
-  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.3'],
-  'libcurl': [('http_fuzz',), 'https://curl.haxx.se/', '7.21.0'],
+  'pycurl': [('http_fuzz', 'rdp_gateway',), 'http://pycurl.sourceforge.net/', '7.19.3'],
+  'libcurl': [('http_fuzz', 'rdp_gateway',), 'https://curl.haxx.se/', '7.21.0'],
+  'uuid': [('rdp_gateway',), '', ''],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
   'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],

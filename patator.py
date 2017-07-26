@@ -3681,10 +3681,7 @@ class HTTP_fuzz(TCP_Cache):
 # }}}
 
 # RDP_gateway {{{
-try:
-  import uuid
-except ImportError:
-  notfound.append('uuid')
+import uuid
 
 class RDP_gateway(HTTP_fuzz):
   '''Brute-force RDP Gateway'''
@@ -4763,7 +4760,6 @@ dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
   'pycurl': [('http_fuzz', 'rdp_gateway',), 'http://pycurl.sourceforge.net/', '7.19.3'],
   'libcurl': [('http_fuzz', 'rdp_gateway',), 'https://curl.haxx.se/', '7.21.0'],
-  'uuid': [('rdp_gateway',), '', ''],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
   'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],

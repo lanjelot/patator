@@ -31,42 +31,43 @@ INTRODUCTION
 Patator is a multi-purpose brute-forcer, with a modular design and a flexible usage.
 
 Currently it supports the following modules:
-  + ftp_login     : Brute-force FTP
-  + ssh_login     : Brute-force SSH
-  + telnet_login  : Brute-force Telnet
-  + smtp_login    : Brute-force SMTP
-  + smtp_vrfy     : Enumerate valid users using SMTP VRFY
-  + smtp_rcpt     : Enumerate valid users using SMTP RCPT TO
-  + finger_lookup : Enumerate valid users using Finger
-  + http_fuzz     : Brute-force HTTP
-  + ajp_fuzz      : Brute-force AJP
-  + pop_login     : Brute-force POP3
-  + pop_passd     : Brute-force poppassd (http://netwinsite.com/poppassd/)
-  + imap_login    : Brute-force IMAP4
-  + ldap_login    : Brute-force LDAP
-  + smb_login     : Brute-force SMB
-  + smb_lookupsid : Brute-force SMB SID-lookup
-  + rlogin_login  : Brute-force rlogin
-  + vmauthd_login : Brute-force VMware Authentication Daemon
-  + mssql_login   : Brute-force MSSQL
-  + oracle_login  : Brute-force Oracle
-  + mysql_login   : Brute-force MySQL
-  + mysql_query   : Brute-force MySQL queries
-  * rdp_login     : Brute-force RDP (NLA)
-  + pgsql_login   : Brute-force PostgreSQL
-  + vnc_login     : Brute-force VNC
+  + ftp_login      : Brute-force FTP
+  + ssh_login      : Brute-force SSH
+  + telnet_login   : Brute-force Telnet
+  + smtp_login     : Brute-force SMTP
+  + smtp_vrfy      : Enumerate valid users using SMTP VRFY
+  + smtp_rcpt      : Enumerate valid users using SMTP RCPT TO
+  + finger_lookup  : Enumerate valid users using Finger
+  + http_fuzz      : Brute-force HTTP
+  + ajp_fuzz       : Brute-force AJP
+  + pop_login      : Brute-force POP3
+  + pop_passd      : Brute-force poppassd (http://netwinsite.com/poppassd/)
+  + imap_login     : Brute-force IMAP4
+  + ldap_login     : Brute-force LDAP
+  + smb_login      : Brute-force SMB
+  + smb_lookupsid  : Brute-force SMB SID-lookup
+  + rlogin_login   : Brute-force rlogin
+  + vmauthd_login  : Brute-force VMware Authentication Daemon
+  + mssql_login    : Brute-force MSSQL
+  + oracle_login   : Brute-force Oracle
+  + mysql_login    : Brute-force MySQL
+  + mysql_query    : Brute-force MySQL queries
+  * rdp_login      : Brute-force RDP (NLA)
+  + pgsql_login    : Brute-force PostgreSQL
+  + vnc_login      : Brute-force VNC
 
-  + dns_forward   : Forward DNS lookup
-  + dns_reverse   : Reverse DNS lookup
-  + snmp_login    : Brute-force SNMP v1/2/3
-  + ike_enum      : Enumerate IKE transforms
+  + dns_forward    : Forward DNS lookup
+  + dns_reverse    : Reverse DNS lookup
+  + snmp_login     : Brute-force SNMP v1/2/3
+  + ike_enum       : Enumerate IKE transforms
 
-  + unzip_pass    : Brute-force the password of encrypted ZIP files
-  + keystore_pass : Brute-force the password of Java keystore files
-  + umbraco_crack : Crack Umbraco HMAC-SHA1 password hashes
+  + unzip_pass     : Brute-force the password of encrypted ZIP files
+  + keystore_pass  : Brute-force the password of Java keystore files
+  + sqlcipher_pass : Brute-force the password of SQLCipher-encrypted databases
+  + umbraco_crack  : Crack Umbraco HMAC-SHA1 password hashes
 
-  + tcp_fuzz      : Fuzz TCP services
-  + dummy_test    : Testing module
+  + tcp_fuzz       : Fuzz TCP services
+  + dummy_test     : Testing module
 
 Future modules to be implemented:
   - rdp_login w/no NLA
@@ -159,6 +160,8 @@ ike-scan         | IKE            | http://www.nta-monitor.com/tools-resources/ 
 unzip            | ZIP passwords  | http://www.info-zip.org/                           |     6.0 |
 --------------------------------------------------------------------------------------------------
 Java             | keystore files | http://www.oracle.com/technetwork/java/javase/     |       6 |
+--------------------------------------------------------------------------------------------------
+pysqlcipher      | SQLCipher      | https://github.com/leapcode/pysqlcipher/           |  2.6.10 |
 --------------------------------------------------------------------------------------------------
 python           |                | http://www.python.org/                             |     2.7 |
 --------------------------------------------------------------------------------------------------
@@ -4590,6 +4593,43 @@ class Keystore_pass:
 
 # }}}
 
+# SQLCipher {{{
+try:
+  from pysqlcipher import dbapi2 as sqlcipher
+except ImportError:
+  notfound.append('pysqlcipher')
+
+class SQLCipher_pass:
+  '''Brute-force the password of SQLCipher-encrypted databases'''
+
+  usage_hints = [
+    """%prog database=path/to/db.sqlite password=FILE0 0=passwords.txt -x ignore:fgrep='file is encrypted'""",
+    ]
+
+  available_options = (
+    ('database', 'database files to test'),
+    ('password', 'passwords to test'),
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, database, password):
+    with sqlcipher.connect(database) as db:
+      c = db.cursor()
+      c.execute('PRAGMA key=%r' % password)
+
+    try:
+      c.execute('PRAGMA integrity_check')
+      code, mesg = '0', 'OK'
+
+    except sqlcipher.DatabaseError as e:
+      code, mesg = '1', str(e)
+
+    return self.Response(code, mesg)
+
+# }}}
+
 # Umbraco {{{
 import hmac
 class Umbraco_crack:
@@ -4716,6 +4756,7 @@ modules = [
 
   ('unzip_pass', (Controller, Unzip_pass)),
   ('keystore_pass', (Controller, Keystore_pass)),
+  ('sqlcipher_pass', (Controller, SQLCipher_pass)),
   ('umbraco_crack', (Controller, Umbraco_crack)),
 
   ('tcp_fuzz', (Controller, TCP_fuzz)),
@@ -4740,6 +4781,7 @@ dependencies = {
   'ike-scan': [('ike_enum',), 'http://www.nta-monitor.com/tools-resources/security-tools/ike-scan', '1.9'],
   'unzip': [('unzip_pass',), 'http://www.info-zip.org/', '6.0'],
   'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/', '6'],
+  'pysqlcipher': [('sqlcipher_pass',), 'https://github.com/leapcode/pysqlcipher/', '2.6.10'],
   'ftp-tls': [('ftp_login',), 'TLS support unavailable before python 2.7'],
   }
 # }}}

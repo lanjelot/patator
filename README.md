@@ -295,6 +295,7 @@ pip install impacket
 pip install paramiko
 pip install IPy
 pip install dnspython
+pip install pysnmp
 
 cd c:\
 git clone https://github.com/lanjelot/patator

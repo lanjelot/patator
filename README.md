@@ -3,40 +3,43 @@ Patator was written out of frustration from using Hydra, Medusa, Ncrack, Metaspl
 Currently it supports the following modules:
 
 ```
-* ftp_login     : Brute-force FTP
-* ssh_login     : Brute-force SSH
-* telnet_login  : Brute-force Telnet
-* smtp_login    : Brute-force SMTP
-* smtp_vrfy     : Enumerate valid users using the SMTP VRFY command
-* smtp_rcpt     : Enumerate valid users using the SMTP RCPT TO command
-* finger_lookup : Enumerate valid users using Finger
-* http_fuzz     : Brute-force HTTP/HTTPS
-* pop_login     : Brute-force POP
-* pop_passd     : Brute-force poppassd (not POP3)
-* imap_login    : Brute-force IMAP
-* ldap_login    : Brute-force LDAP
-* smb_login     : Brute-force SMB
-* smb_lookupsid : Brute-force SMB SID-lookup
-* rlogin_login  : Brute-force rlogin
-* vmauthd_login : Brute-force VMware Authentication Daemon
-* mssql_login   : Brute-force MSSQL
-* oracle_login  : Brute-force Oracle
-* mysql_login   : Brute-force MySQL
-* mysql_query   : Brute-force MySQL queries
-* pgsql_login   : Brute-force PostgreSQL
-* vnc_login     : Brute-force VNC
-* dns_forward   : Brute-force DNS
-* dns_reverse   : Brute-force DNS (reverse lookup subnets)
-* ike_enum      : Enumerate IKE transforms
-* snmp_login    : Brute-force SNMPv1/2 and SNMPv3
-* unzip_pass    : Brute-force the password of encrypted ZIP files
-* keystore_pass : Brute-force the password of Java keystore files
-* umbraco_crack : Crack Umbraco HMAC-SHA1 password hashes
+* ftp_login      : Brute-force FTP
+* ssh_login      : Brute-force SSH
+* telnet_login   : Brute-force Telnet
+* smtp_login     : Brute-force SMTP
+* smtp_vrfy      : Enumerate valid users using the SMTP VRFY command
+* smtp_rcpt      : Enumerate valid users using the SMTP RCPT TO command
+* finger_lookup  : Enumerate valid users using Finger
+* http_fuzz      : Brute-force HTTP/HTTPS
+* ajp_fuzz       : Brute-force AJP
+* pop_login      : Brute-force POP
+* pop_passd      : Brute-force poppassd (not POP3)
+* imap_login     : Brute-force IMAP
+* ldap_login     : Brute-force LDAP
+* smb_login      : Brute-force SMB
+* smb_lookupsid  : Brute-force SMB SID-lookup
+* rlogin_login   : Brute-force rlogin
+* vmauthd_login  : Brute-force VMware Authentication Daemon
+* mssql_login    : Brute-force MSSQL
+* oracle_login   : Brute-force Oracle
+* mysql_login    : Brute-force MySQL
+* mysql_query    : Brute-force MySQL queries
+* rdp_login      : Brute-force RDP (NLA)
+* pgsql_login    : Brute-force PostgreSQL
+* vnc_login      : Brute-force VNC
+* dns_forward    : Brute-force DNS
+* dns_reverse    : Brute-force DNS (reverse lookup subnets)
+* ike_enum       : Enumerate IKE transforms
+* snmp_login     : Brute-force SNMPv1/2 and SNMPv3
+* unzip_pass     : Brute-force the password of encrypted ZIP files
+* keystore_pass  : Brute-force the password of Java keystore files
+* sqlcipher_pass : Brute-force the password of SQLCipher-encrypted databases
+* umbraco_crack  : Crack Umbraco HMAC-SHA1 password hashes
 ```
 
-The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
+The name "Patator" comes from https://www.youtube.com/watch?v=kU2yPJJdpag
 
-Patator is NOT script-kiddie friendly, please read the README inside patator.py before reporting.
+Patator is NOT script-kiddie friendly, please read the README inside `patator.py` before reporting.
 
 @lanjelot
 
@@ -58,7 +61,7 @@ $ ftp_login host=10.0.0.1 user=FILE0 0=logins.txt password=asdf -x ignore:mesg='
 ...
 ```
 
-Tested against vsftpd-3.0.2-9 on CentOS 7.0-1406
+Tested against `vsftpd-3.0.2-9` on `CentOS 7.0-1406`
 
 * SSH : Time-based user enumeration
 
@@ -140,7 +143,7 @@ Tested against phpMyAdmin 4.2.7.1.
 ```
 $ snmp_login host=10.0.0.1 version=3 user=FILE0 0=logins.txt -x ignore:mesg=unknownUserName
 17:51:06 patator    INFO - Starting Patator v0.5
-17:51:06 patator    INFO - 
+17:51:06 patator    INFO -
 17:51:06 patator    INFO - code  size | candidate                          |   num | mesg
 17:51:06 patator    INFO - ----------------------------------------------------------------------
 17:51:11 patator    INFO - 0-0   11   | robert                             |    55 | wrongDigest
@@ -154,7 +157,7 @@ $ snmp_login host=10.0.0.1 version=3 user=FILE0 0=logins.txt -x ignore:mesg=unkn
 ```
 $ snmp_login host=10.0.0.1 version=3 user=robert auth_key=FILE0 0=passwords_8+.txt -x ignore:mesg=wrongDigest
 17:52:15 patator    INFO - Starting Patator v0.5
-17:52:15 patator    INFO - 
+17:52:15 patator    INFO -
 17:52:15 patator    INFO - code  size | candidate                          |   num | mesg
 17:52:15 patator    INFO - ----------------------------------------------------------------------
 17:52:16 patator    INFO - 0-0   69   | password123                        |    16 | Linux thug 2.6.36-gentoo #5 SMP Fri Aug 12 14:49:51 CEST 2011 i686
@@ -166,7 +169,7 @@ $ snmp_login host=10.0.0.1 version=3 user=robert auth_key=FILE0 0=passwords_8+.t
 ```
 $ dns_forward name=FILE0.hsc.fr 0=names.txt -x ignore:code=3
 03:18:46 patator    INFO - Starting Patator v0.5 (http://code.google.com/p/patator/) at 2012-06-29 03:18 PMT
-03:18:46 patator    INFO - 
+03:18:46 patator    INFO -
 03:18:46 patator    INFO - code  size | candidate                          |   num | mesg
 03:18:46 patator    INFO - ----------------------------------------------------------------------
 03:18:46 patator    INFO - 0     41   | www                                |     4 | NOERROR [www.hsc.fr. IN A 217.174.211.25]
@@ -220,7 +223,7 @@ Also notice that test.hsc.fr. is the start of a new zone because we got NOERROR 
 ```
 $ dns_reverse host=NET0 0=216.239.32.0-216.239.47.255,8.8.8.0/24 -x ignore:code=3 -x ignore:fgrep!=google.com -x ignore:fgrep=216-239-
 03:24:22 patator    INFO - Starting Patator v0.5 (http://code.google.com/p/patator/) at 2012-06-29 03:24 PMT
-03:24:22 patator    INFO - 
+03:24:22 patator    INFO -
 03:24:22 patator    INFO - code  size | candidate                          |   num | mesg
 03:24:22 patator    INFO - ----------------------------------------------------------------------
 03:24:22 patator    INFO - 0     46   | 216.239.32.10                      |    11 | NOERROR [216.239.32.10 IN PTR ns1.google.com.]
@@ -266,9 +269,9 @@ Networks -----------------------------------------
 * ZIP : Crack a password-protected ZIP file (older pkzip encryption used not to be supported in JtR)
 
 ```
-$ unzip_pass zipfile=challenge1.zip password=FILE0 0=rockyou.dic -x ignore:code!=0 
+$ unzip_pass zipfile=challenge1.zip password=FILE0 0=rockyou.dic -x ignore:code!=0
 10:54:29 patator    INFO - Starting Patator v0.5 (http://code.google.com/p/patator/) at 2012-06-29 10:54:29 PMT
-10:54:29 patator    INFO - 
+10:54:29 patator    INFO -
 10:54:29 patator    INFO - code  size | candidate                          |   num | mesg
 10:54:29 patator    INFO - ----------------------------------------------------------------------
 10:54:30 patator    INFO - 0     82   | love                               |   387 | 0 [82] No errors detected in compressed data of challenge1.zip.
@@ -280,11 +283,11 @@ $ unzip_pass zipfile=challenge1.zip password=FILE0 0=rockyou.dic -x ignore:code!
 ## PyInstaller
 ### Bundling on Windows 5.2.3790 x86
 
-Install `python-2.7.9.msi` from [Python](https://www.python.org/downloads/windows/).  
-Install `pywin32-219.win32-py2.7.exe` from [PyWin32](http://sourceforge.net/projects/pywin32/files/pywin32/).  
-Install `vcredist_x86.exe` from [Microsoft](http://www.microsoft.com/en-us/download/confirmation.aspx?id=29).  
-Install `Git-1.9.5.exe` from [Git](http://git-scm.com/download/win) (and select "Use Git from Windows Command Prompt" during install).  
-Add `c:\Python27;c:\Python27\Scripts` to your `PATH`.  
+Install `python-2.7.9.msi` from [Python](https://www.python.org/downloads/windows/).
+Install `pywin32-219.win32-py2.7.exe` from [PyWin32](http://sourceforge.net/projects/pywin32/files/pywin32/).
+Install `vcredist_x86.exe` from [Microsoft](http://www.microsoft.com/en-us/download/confirmation.aspx?id=29).
+Install `Git-1.9.5.exe` from [Git](http://git-scm.com/download/win) (and select "Use Git from Windows Command Prompt" during install).
+Add `c:\Python27;c:\Python27\Scripts` to your `PATH`.
 
 ```
 pip install pycrypto pyopenssl
@@ -292,6 +295,7 @@ pip install impacket
 pip install paramiko
 pip install IPy
 pip install dnspython
+pip install pysnmp
 
 cd c:\
 git clone https://github.com/lanjelot/patator
@@ -303,3 +307,5 @@ patator\dist\patator.exe -h
 ```
 
 The resulting stand-alone `patator.exe` executable was confirmed to run successfully on Windows 2003 (5.2.3790), Windows 7 (6.1.7600), Windows 2008 R2 SP1 (6.1.7601) and Windows 2012 R2 (6.3.9600), and is likely to work fine on other Windows versions.
+
+Refer to [#50](https://github.com/lanjelot/patator/issues/50) for more info.

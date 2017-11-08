@@ -127,7 +127,7 @@ INSTALL
 --------------------------------------------------------------------------------------------------
 paramiko         | SSH            | http://www.lag.net/paramiko/                       | 1.7.7.1 |
 --------------------------------------------------------------------------------------------------
-pycurl           | HTTP           | http://pycurl.sourceforge.net/                     |  7.19.3 |
+pycurl           | HTTP           | http://pycurl.sourceforge.net/                     |  7.43.0 |
 --------------------------------------------------------------------------------------------------
 libcurl          | HTTP           | https://curl.haxx.se/                              |  7.21.0 |
 --------------------------------------------------------------------------------------------------
@@ -4765,7 +4765,7 @@ modules = [
 
 dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
-  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.3'],
+  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.43.0'],
   'libcurl': [('http_fuzz',), 'https://curl.haxx.se/', '7.21.0'],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
@@ -4787,7 +4787,7 @@ dependencies = {
 # }}}
 
 # main {{{
-if __name__ == '__main__':
+def main():
   multiprocessing.freeze_support()
 
   def show_usage():

@@ -280,7 +280,62 @@ $ unzip_pass zipfile=challenge1.zip password=FILE0 0=rockyou.dic -x ignore:code!
 10:54:31 patator    INFO - To resume execution, pass --resume 166,164,165,166,155,158,148,158,155,154
 ```
 
-## PyInstaller
+## Install patator
+### On Kali
+
+* install Kali deb packages dependencies:
+
+```bash
+apt install \
+    git \
+    curl \
+    python-venv \
+    ike-scan \
+    unzip \
+    libxfreerdp-client1.1 \
+    python-dev \ # used to compile pycrypto
+    gcc \ # used to compile pycrypto
+    libsqlcipher-dev \ # used to compile pysqlcipher
+    libsqlite3-dev \ # used to compile pysqlcipher
+    libcurl4-openssl-dev \ # required by pycurl
+    libssl-dev \ # required by pycurl
+    openjdk-9-jre-headless \ # required to use keytool
+    ldap-utils # required to use ldapsearch
+```
+
+* create a virtual env using python 3:
+
+```bash
+python3 -m venv patatorvenv3
+# activate venv
+source patatorvenv3/bin/activate
+```
+
+* install patator
+
+  * from [pypi](https://pypi.python.org/pypi/patator)
+    (not possible at the moment, require a first release on python package index)
+
+  ```bash
+  # pycurl compilation env setting
+  export PYCURL_SSL_LIBRARY=openssl
+  pip install patator
+  ```
+
+  * from source code
+
+  ```bash
+  # get the code
+  git clone https://github.com/lanjelot/patator
+  # install dependencies
+  cd patator/
+  # pycurl compilation env setting
+  pip install -r requirements.txt
+  # install in develop mode (useful when developing)
+  python setup.py develop
+  ```
+
+
 ### Bundling on Windows 5.2.3790 x86
 
 Install `python-2.7.9.msi` from [Python](https://www.python.org/downloads/windows/).

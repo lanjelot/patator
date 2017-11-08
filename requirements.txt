@@ -1,0 +1,20 @@
+ajpy==0.0.1
+cx_Oracle
+dnspython==1.15.0
+impacket==0.9.12
+IPy==0.75
+# multiprocessing is not working on python3.5
+multiprocessing
+# mysql-python doesn't appear very maintains anymore
+# needs some patch to install with python3.5
+# also may require install mysql on the machine?
+# find a nice way to do
+# mysql-python
+paramiko==1.7.7.1
+psycopg2
+pycrypto
+pycurl
+pyopenssl
+pysnmp==4.2.1
+# pysqlcipher is not working on python3.5
+pysqlcipher

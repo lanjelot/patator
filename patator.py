@@ -4833,6 +4833,8 @@ Available modules:
   powder = ctrl(module, [name] + sys.argv[1:])
   powder.fire()
 
+if __name__ == '__main__':
+  main()
 # }}}
 
 # vim: ts=2 sw=2 sts=2 et fdm=marker bg=dark

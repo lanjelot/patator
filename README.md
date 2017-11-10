@@ -281,7 +281,14 @@ $ unzip_pass zipfile=challenge1.zip password=FILE0 0=rockyou.dic -x ignore:code!
 ```
 
 ## Install patator
-### On Kali
+### using deb package with apt tools
+
+```bash
+apt install patator
+```
+
+
+### from source or pypi in a virtual environment
 
 * install Kali deb packages dependencies:
 

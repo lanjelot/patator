@@ -773,7 +773,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir):
         while i < len(argv):
           arg = argv[i]
           if arg[0] == '-':
-            if arg in ('-d', '--debug'):
+            if arg in ('-d', '--debug', '--allow-ignore-failures'):
               f.write('  <option type="global" name=%s/>\n' % xmlquoteattr(arg))
             else:
               if not arg.startswith('--') and len(arg) > 2:

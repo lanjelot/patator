@@ -127,7 +127,7 @@ INSTALL
 --------------------------------------------------------------------------------------------------
 paramiko         | SSH            | http://www.lag.net/paramiko/                       | 1.7.7.1 |
 --------------------------------------------------------------------------------------------------
-pycurl           | HTTP           | http://pycurl.sourceforge.net/                     |  7.19.3 |
+pycurl           | HTTP           | http://pycurl.sourceforge.net/                     |  7.43.0 |
 --------------------------------------------------------------------------------------------------
 libcurl          | HTTP           | https://curl.haxx.se/                              |  7.21.0 |
 --------------------------------------------------------------------------------------------------
@@ -139,7 +139,7 @@ impacket         | SMB            | https://github.com/CoreSecurity/impacket    
 --------------------------------------------------------------------------------------------------
 cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   5.1.1 |
 --------------------------------------------------------------------------------------------------
-mysql-python     | MySQL          | http://sourceforge.net/projects/mysql-python/      |   1.2.3 |
+mysqlclient      | MySQL          | https://github.com/PyMySQL/mysqlclient-python      |  1.3.12 |
 --------------------------------------------------------------------------------------------------
 xfreerdp         | RDP (NLA)      | https://github.com/FreeRDP/FreeRDP/                |   1.2.0 |
 --------------------------------------------------------------------------------------------------
@@ -3149,7 +3149,7 @@ class VMauthd_login(TCP_Cache):
 try:
   import _mysql
 except ImportError:
-  notfound.append('mysql-python')
+  notfound.append('mysqlclient')
 
 class MySQL_login:
   '''Brute-force MySQL'''
@@ -3177,8 +3177,9 @@ class MySQL_login:
 
       resp = '0', fp.get_server_info()
 
-    except _mysql.Error as resp:
-      logger.debug('MysqlError: %s' % resp)
+    except _mysql.Error as e:
+      logger.debug('MysqlError: %s' % e)
+      resp = e.args
 
     code, mesg = resp
     return self.Response(code, mesg, timing)
@@ -3372,7 +3373,18 @@ class Pgsql_login:
 # HTTP {{{
 try:
   import pycurl
-  if not hasattr(pycurl, 'PRIMARY_PORT'):
+
+  if hasattr(pycurl, 'PRIMARY_PORT'):
+    proxytype_mapping = {
+      'http': pycurl.PROXYTYPE_HTTP,
+      'socks4': pycurl.PROXYTYPE_SOCKS4,
+      'socks4a': pycurl.PROXYTYPE_SOCKS4A,
+      'socks5': pycurl.PROXYTYPE_SOCKS5,
+      'socks5_with_hostname': pycurl.PROXYTYPE_SOCKS5_HOSTNAME,
+    }
+  else:
+    # PRIMARY_PORT available since libcurl-7.21.0 and all PROXY_* since libcurl-7.18
+    # PRIMARY_PORT and all PROXY_* available since pycurl-7.19.5.1
     notfound.append('libcurl')
 except ImportError:
   notfound.append('pycurl')
@@ -3508,14 +3520,6 @@ class HTTP_fuzz(TCP_Cache):
 
   Response = Response_HTTP
 
-  proxytype_mapping = {
-    'http': pycurl.PROXYTYPE_HTTP,
-    'socks4': pycurl.PROXYTYPE_SOCKS4,
-    'socks4a': pycurl.PROXYTYPE_SOCKS4A,
-    'socks5': pycurl.PROXYTYPE_SOCKS5,
-    'socks5_with_hostname': pycurl.PROXYTYPE_SOCKS5_HOSTNAME,
-  }
-
   def connect(self, host, port, scheme):
     fp = pycurl.Curl()
     fp.setopt(pycurl.SSL_VERIFYPEER, 0)
@@ -3548,8 +3552,8 @@ class HTTP_fuzz(TCP_Cache):
 
       resolve = '%s:%s:%s' % (resolve_host, resolve_port, resolve_ip)
 
-    if proxy_type in HTTP_fuzz.proxytype_mapping:
-      proxy_type = HTTP_fuzz.proxytype_mapping[proxy_type]
+    if proxy_type in proxytype_mapping:
+      proxy_type = proxytype_mapping[proxy_type]
     else:
       raise ValueError('Invalid proxy_type %r' % proxy_type)
 
@@ -4765,13 +4769,13 @@ modules = [
 
 dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
-  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.19.3'],
+  'pycurl': [('http_fuzz',), 'http://pycurl.sourceforge.net/', '7.43.0'],
   'libcurl': [('http_fuzz',), 'https://curl.haxx.se/', '7.21.0'],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
   'impacket': [('smb_login','smb_lookupsid','mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '5.1.1'],
-  'mysql-python': [('mysql_login',), 'http://sourceforge.net/projects/mysql-python/', '1.2.3'],
+  'mysqlclient': [('mysql_login',), 'https://github.com/PyMySQL/mysqlclient-python', '1.3.12'],
   'xfreerdp': [('rdp_login',), 'https://github.com/FreeRDP/FreeRDP.git', '1.2.0-beta1'],
   'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.4.5'],
   'pycrypto': [('vnc_login',), 'http://www.dlitz.net/software/pycrypto/', '2.3'],

@@ -16,7 +16,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
 __twitter__ = 'http://twitter.com/lanjelot'
-__version__ = '0.7-beta'
+__version__ = '0.7'
 __license__ = 'GPLv2'
 __banner__  = 'Patator v%s (%s)' % (__version__, __git__)
 
@@ -585,6 +585,15 @@ unzip_pass zipfile=file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
 
 CHANGELOG
 ---------
+
+* v0.7 2017/12/14
+  - added Python3 support
+  - added Windows support
+  - new --timeout and --allow-ignore-failures options
+  - switched to multiprocesses instead of threads (for --timeout to work on Windows)
+  - new modules: ike_enum, rdp_login, ajp_fuzz, sqlcipher_pass
+  - more info added to XML output
+  - fixed many bugs
 
 * v0.6 2014/08/25
   - added CSV and XML output formats
@@ -3632,7 +3641,7 @@ class HTTP_fuzz(TCP_Cache):
       if t in (pycurl.INFOTYPE_HEADER_OUT, pycurl.INFOTYPE_DATA_OUT):
         trace.write(s)
 
-      elif t == pycurl.INFOTYPE_TEXT and b'upload completely sent off' in s:
+      elif t == pycurl.INFOTYPE_TEXT and 'upload completely sent off' in s:
         trace.write('\n\n')
 
       elif t in (pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):

@@ -1,3 +1,5 @@
+# Patator
+
 Patator was written out of frustration from using Hydra, Medusa, Ncrack, Metasploit modules and Nmap NSE scripts for password guessing attacks. I opted for a different approach in order to not create yet another brute-forcing tool and avoid repeating the same shortcomings. Patator is a multi-threaded tool written in Python, that strives to be more reliable and flexible than his fellow predecessors.
 
 Currently it supports the following modules:
@@ -37,11 +39,15 @@ Currently it supports the following modules:
 * umbraco_crack  : Crack Umbraco HMAC-SHA1 password hashes
 ```
 
-The name "Patator" comes from https://www.youtube.com/watch?v=kU2yPJJdpag
+The name "Patator" comes from [this](https://www.youtube.com/watch?v=kU2yPJJdpag).
 
-Patator is NOT script-kiddie friendly, please read the README inside `patator.py` before reporting.
+Patator is NOT script-kiddie friendly, please read the full README inside [patator.py](patator.py) before reporting.
 
-@lanjelot
+And please donate if you like this project.
+
+[![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=SB36VJH4EM5WG&lc=AU&item_name=lanjelot&item_number=patator&currency_code=AUD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
+
+Many thanks! [@lanjelot](https://twitter.com/lanjelot)
 
 ## Usage Examples
 

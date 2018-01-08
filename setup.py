@@ -18,7 +18,7 @@ setup(
     long_description=long_description,
     url="https://github.com/lanjelot/patator",
     author="Sebastien Macke",
-    author_email="pastor@hsc.fr",
+    author_email="patator@hsc.fr",
     license="GPLv2",
 
     classifiers=[

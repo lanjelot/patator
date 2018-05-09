@@ -3629,9 +3629,6 @@ class HTTP_fuzz(TCP_Cache):
     fp.setopt(pycurl.PROXYTYPE, proxy_type)
     fp.setopt(pycurl.RESOLVE, [resolve])
 
-    def noop(buf): pass
-    fp.setopt(pycurl.WRITEFUNCTION, noop)
-
     def debug_func(t, s):
       if max_mem > 0 and trace.tell() > max_mem:
         return 0
@@ -3644,12 +3641,13 @@ class HTTP_fuzz(TCP_Cache):
       elif t == pycurl.INFOTYPE_TEXT and 'upload completely sent off' in s:
         trace.write('\n\n')
 
-      elif t in (pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):
+      elif t == pycurl.INFOTYPE_HEADER_IN:
         trace.write(s)
-        response.write(s)
 
     max_mem = int(max_mem)
-    response, trace = StringIO(), StringIO()
+    response, trace, tmpbuf = StringIO(), StringIO(), StringIO()
+
+    fp.setopt(pycurl.WRITEDATA, tmpbuf)
 
     fp.setopt(pycurl.DEBUGFUNCTION, debug_func)
     fp.setopt(pycurl.VERBOSE, 1)
@@ -3691,10 +3689,17 @@ class HTTP_fuzz(TCP_Cache):
       else:
         fp.setopt(pycurl.CUSTOMREQUEST, method)
 
+      match = re.search(r'Accept-Encoding:(.+)', header, re.IGNORECASE)
+      if match != None:
+        fp.setopt(pycurl.ACCEPT_ENCODING, match.groups()[0].rstrip())
       headers = [h.strip('\r') for h in header.split('\n') if h]
       fp.setopt(pycurl.HTTPHEADER, headers)
 
       fp.perform()
+      response.write(tmpbuf.getvalue())
+      trace.write(tmpbuf.getvalue()[tmpbuf.getvalue().find('\r\n\r\n') + 4:])
+      tmpbuf.truncate(0)
+      tmpbuf.seek(0)
 
     if before_urls:
       for before_url in before_urls.split(','):

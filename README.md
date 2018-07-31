@@ -1,46 +1,53 @@
+# Patator
+
 Patator was written out of frustration from using Hydra, Medusa, Ncrack, Metasploit modules and Nmap NSE scripts for password guessing attacks. I opted for a different approach in order to not create yet another brute-forcing tool and avoid repeating the same shortcomings. Patator is a multi-threaded tool written in Python, that strives to be more reliable and flexible than his fellow predecessors.
 
 Currently it supports the following modules:
 
 ```
-* ftp_login     : Brute-force FTP
-* ssh_login     : Brute-force SSH
-* telnet_login  : Brute-force Telnet
-* smtp_login    : Brute-force SMTP
-* smtp_vrfy     : Enumerate valid users using the SMTP VRFY command
-* smtp_rcpt     : Enumerate valid users using the SMTP RCPT TO command
-* finger_lookup : Enumerate valid users using Finger
-* http_fuzz     : Brute-force HTTP/HTTPS
-* ajp_fuzz      : Brute-force AJP
-* pop_login     : Brute-force POP
-* pop_passd     : Brute-force poppassd (not POP3)
-* imap_login    : Brute-force IMAP
-* ldap_login    : Brute-force LDAP
-* smb_login     : Brute-force SMB
-* smb_lookupsid : Brute-force SMB SID-lookup
-* rlogin_login  : Brute-force rlogin
-* vmauthd_login : Brute-force VMware Authentication Daemon
-* mssql_login   : Brute-force MSSQL
-* oracle_login  : Brute-force Oracle
-* mysql_login   : Brute-force MySQL
-* mysql_query   : Brute-force MySQL queries
-* rdp_login     : Brute-force RDP (NLA)
-* pgsql_login   : Brute-force PostgreSQL
-* vnc_login     : Brute-force VNC
-* dns_forward   : Brute-force DNS
-* dns_reverse   : Brute-force DNS (reverse lookup subnets)
-* ike_enum      : Enumerate IKE transforms
-* snmp_login    : Brute-force SNMPv1/2 and SNMPv3
-* unzip_pass    : Brute-force the password of encrypted ZIP files
-* keystore_pass : Brute-force the password of Java keystore files
-* umbraco_crack : Crack Umbraco HMAC-SHA1 password hashes
+* ftp_login      : Brute-force FTP
+* ssh_login      : Brute-force SSH
+* telnet_login   : Brute-force Telnet
+* smtp_login     : Brute-force SMTP
+* smtp_vrfy      : Enumerate valid users using the SMTP VRFY command
+* smtp_rcpt      : Enumerate valid users using the SMTP RCPT TO command
+* finger_lookup  : Enumerate valid users using Finger
+* http_fuzz      : Brute-force HTTP/HTTPS
+* ajp_fuzz       : Brute-force AJP
+* pop_login      : Brute-force POP
+* pop_passd      : Brute-force poppassd (not POP3)
+* imap_login     : Brute-force IMAP
+* ldap_login     : Brute-force LDAP
+* smb_login      : Brute-force SMB
+* smb_lookupsid  : Brute-force SMB SID-lookup
+* rlogin_login   : Brute-force rlogin
+* vmauthd_login  : Brute-force VMware Authentication Daemon
+* mssql_login    : Brute-force MSSQL
+* oracle_login   : Brute-force Oracle
+* mysql_login    : Brute-force MySQL
+* mysql_query    : Brute-force MySQL queries
+* rdp_login      : Brute-force RDP (NLA)
+* pgsql_login    : Brute-force PostgreSQL
+* vnc_login      : Brute-force VNC
+* dns_forward    : Brute-force DNS
+* dns_reverse    : Brute-force DNS (reverse lookup subnets)
+* ike_enum       : Enumerate IKE transforms
+* snmp_login     : Brute-force SNMPv1/2 and SNMPv3
+* unzip_pass     : Brute-force the password of encrypted ZIP files
+* keystore_pass  : Brute-force the password of Java keystore files
+* sqlcipher_pass : Brute-force the password of SQLCipher-encrypted databases
+* umbraco_crack  : Crack Umbraco HMAC-SHA1 password hashes
 ```
 
-The name "Patator" comes from https://www.youtube.com/watch?v=kU2yPJJdpag
+The name "Patator" comes from [this](https://www.youtube.com/watch?v=kU2yPJJdpag).
 
-Patator is NOT script-kiddie friendly, please read the README inside `patator.py` before reporting.
+Patator is NOT script-kiddie friendly, please read the full README inside [patator.py](patator.py) before reporting.
 
-@lanjelot
+And please donate if you like this project.
+
+[![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=SB36VJH4EM5WG&lc=AU&item_name=lanjelot&item_number=patator&currency_code=AUD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
+
+Many thanks! [@lanjelot](https://twitter.com/lanjelot)
 
 ## Usage Examples
 
@@ -294,6 +301,7 @@ pip install impacket
 pip install paramiko
 pip install IPy
 pip install dnspython
+pip install pysnmp
 
 cd c:\
 git clone https://github.com/lanjelot/patator
@@ -305,3 +313,5 @@ patator\dist\patator.exe -h
 ```
 
 The resulting stand-alone `patator.exe` executable was confirmed to run successfully on Windows 2003 (5.2.3790), Windows 7 (6.1.7600), Windows 2008 R2 SP1 (6.1.7601) and Windows 2012 R2 (6.3.9600), and is likely to work fine on other Windows versions.
+
+Refer to [#50](https://github.com/lanjelot/patator/issues/50) for more info.

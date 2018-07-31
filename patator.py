@@ -3592,6 +3592,30 @@ class HTTP_fuzz(TCP_Cache):
 
     return TCP_Connection(fp)
 
+  @staticmethod
+  def perform_fp(fp, method, url, header='', body=''):
+    #logger.debug('perform: %s' % url)
+    fp.setopt(pycurl.URL, url)
+
+    if method == 'GET':
+      fp.setopt(pycurl.HTTPGET, 1)
+
+    elif method == 'POST':
+      fp.setopt(pycurl.POST, 1)
+      fp.setopt(pycurl.POSTFIELDS, body)
+
+    elif method == 'HEAD':
+      fp.setopt(pycurl.NOBODY, 1)
+
+    else:
+      fp.setopt(pycurl.CUSTOMREQUEST, method)
+
+    headers = [h.strip('\r') for h in header.split('\n') if h]
+    fp.setopt(pycurl.HTTPHEADER, headers)
+
+    fp.perform()
+
+
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
     header='', method='GET', auto_urlencode='1', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', proxy='', proxy_type='http', resolve='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
@@ -3674,31 +3698,9 @@ class HTTP_fuzz(TCP_Cache):
       # produce requests with more than one Cookie: header
       # and the server will process only one of them (eg. Apache only reads the last one)
 
-    def perform_fp(fp, method, url, header='', body=''):
-      #logger.debug('perform: %s' % url)
-      fp.setopt(pycurl.URL, url)
-
-      if method == 'GET':
-        fp.setopt(pycurl.HTTPGET, 1)
-
-      elif method == 'POST':
-        fp.setopt(pycurl.POST, 1)
-        fp.setopt(pycurl.POSTFIELDS, body)
-
-      elif method == 'HEAD':
-        fp.setopt(pycurl.NOBODY, 1)
-
-      else:
-        fp.setopt(pycurl.CUSTOMREQUEST, method)
-
-      headers = [h.strip('\r') for h in header.split('\n') if h]
-      fp.setopt(pycurl.HTTPHEADER, headers)
-
-      fp.perform()
-
     if before_urls:
       for before_url in before_urls.split(','):
-        perform_fp(fp, 'GET', before_url, before_header)
+        self.perform_fp(fp, 'GET', before_url, before_header)
 
       if before_egrep:
         for be in before_egrep.split('|'):
@@ -3718,7 +3720,7 @@ class HTTP_fuzz(TCP_Cache):
       host = '%s:%s' % (host, port)
 
     url = urlunparse((scheme, host, path, params, query, fragment))
-    perform_fp(fp, method, url, header, body)
+    self.perform_fp(fp, method, url, header, body)
 
     target = {}
     target['ip'] = fp.getinfo(pycurl.PRIMARY_IP)
@@ -3734,7 +3736,7 @@ class HTTP_fuzz(TCP_Cache):
 
     if after_urls:
       for after_url in after_urls.split(','):
-        perform_fp(fp, 'GET', after_url)
+        self.perform_fp(fp, 'GET', after_url)
 
     http_code = fp.getinfo(pycurl.HTTP_CODE)
     content_length = fp.getinfo(pycurl.CONTENT_LENGTH_DOWNLOAD)
@@ -3744,6 +3746,46 @@ class HTTP_fuzz(TCP_Cache):
       self.reset()
 
     return self.Response(http_code, response.getvalue(), response_time, trace.getvalue(), content_length, target)
+
+# }}}
+
+# RDP_gateway {{{
+import uuid
+
+class RDP_gateway(HTTP_fuzz):
+  '''Brute-force RDP Gateway'''
+
+  # Make sure to set reasonably small timeout. If authentication is successful Gateway server does not set Content-length header nor closes connection and we have to wait until a connection is killed.
+  usage_hints = (
+      """%prog rdp_gateway url='https://example.com/remoteDesktopGateway/' user_pass=COMBO00:COMBO01 0=logins -x ignore:code=401 timeout=1""",
+    )
+
+  def execute(self, *args, **kwargs):
+
+    if 'method' not in kwargs:
+      kwargs['method']='RDG_OUT_DATA'
+
+    rdg_connection_id="RDG-Connection-Id: {" + str(uuid.uuid4()) + '}'
+    if 'header' not in kwargs:
+      kwargs['header'] = rdg_connection_id
+    else:
+      kwargs['header'] = rdg_connection_id + "\n" + kwargs['header']
+
+    return HTTP_fuzz.execute(self, *args, **kwargs)
+
+  @staticmethod
+  def perform_fp(*args):
+    """Overwrite HTTP_fuzz.perform_fp with exception handling"""
+    """This is to get response data from HTTP requests which are terminated due to a timeout"""
+#    print("Overwritten!!!")
+    try:
+      HTTP_fuzz.perform_fp(*args)
+    except pycurl.error as e:
+      if e[0]==28:
+        match=re.compile('^Operation timed out after \d+ milliseconds with (\d+) bytes received$').match(e[1])
+        if match and int(match.group(1))>0:
+          return
+      raise
 
 # }}}
 
@@ -4806,6 +4848,7 @@ modules = [
   ('smtp_vrfy', (Controller, SMTP_vrfy)),
   ('smtp_rcpt', (Controller, SMTP_rcpt)),
   ('finger_lookup', (Controller_Finger, Finger_lookup)),
+  ('rdp_gateway', (Controller_HTTP, RDP_gateway)),
   ('http_fuzz', (Controller_HTTP, HTTP_fuzz)),
   ('ajp_fuzz', (Controller, AJP_fuzz)),
   ('pop_login', (Controller, POP_login)),
@@ -4840,8 +4883,8 @@ modules = [
 
 dependencies = {
   'paramiko': [('ssh_login',), 'http://www.paramiko.org/', '1.7.7.1'],
-  'pycurl': [('http_fuzz',), 'http://pycurl.io/', '7.43.0'],
-  'libcurl': [('http_fuzz',), 'https://curl.haxx.se/', '7.21.0'],
+  'pycurl': [('http_fuzz', 'rdp_gateway',), 'http://pycurl.io/', '7.43.0'],
+  'libcurl': [('http_fuzz', 'rdp_gateway',), 'https://curl.haxx.se/', '7.21.0'],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
   'impacket': [('smb_login', 'smb_lookupsid', 'mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],

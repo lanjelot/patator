@@ -3523,6 +3523,30 @@ class HTTP_fuzz(TCP_Cache):
 
     return TCP_Connection(fp)
 
+  @staticmethod
+  def perform_fp(fp, method, url, header='', body=''):
+    #logger.debug('perform: %s' % url)
+    fp.setopt(pycurl.URL, url)
+
+    if method == 'GET':
+      fp.setopt(pycurl.HTTPGET, 1)
+
+    elif method == 'POST':
+      fp.setopt(pycurl.POST, 1)
+      fp.setopt(pycurl.POSTFIELDS, body)
+
+    elif method == 'HEAD':
+      fp.setopt(pycurl.NOBODY, 1)
+
+    else:
+      fp.setopt(pycurl.CUSTOMREQUEST, method)
+
+    headers = [h.strip('\r') for h in header.split('\n') if h]
+    fp.setopt(pycurl.HTTPHEADER, headers)
+
+    fp.perform()
+
+
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
     header='', method='GET', auto_urlencode='1', user_pass='', auth_type='basic',
     follow='0', max_follow='5', accept_cookie='0', proxy='', proxy_type='http', resolve='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
@@ -3600,31 +3624,9 @@ class HTTP_fuzz(TCP_Cache):
       # produce requests with more than one Cookie: header
       # and the server will process only one of them (eg. Apache only reads the last one)
 
-    def perform_fp(fp, method, url, header='', body=''):
-      #logger.debug('perform: %s' % url)
-      fp.setopt(pycurl.URL, url)
-
-      if method == 'GET':
-        fp.setopt(pycurl.HTTPGET, 1)
-
-      elif method == 'POST':
-        fp.setopt(pycurl.POST, 1)
-        fp.setopt(pycurl.POSTFIELDS, body)
-
-      elif method == 'HEAD':
-        fp.setopt(pycurl.NOBODY, 1)
-
-      else:
-        fp.setopt(pycurl.CUSTOMREQUEST, method)
-
-      headers = [h.strip('\r') for h in header.split('\n') if h]
-      fp.setopt(pycurl.HTTPHEADER, headers)
-
-      fp.perform()
-
     if before_urls:
       for before_url in before_urls.split(','):
-        perform_fp(fp, 'GET', before_url, before_header)
+        self.perform_fp(fp, 'GET', before_url, before_header)
 
       if before_egrep:
         for be in before_egrep.split('|'):
@@ -3644,14 +3646,7 @@ class HTTP_fuzz(TCP_Cache):
       host = '%s:%s' % (host, port)
 
     url = urlunparse((scheme, host, path, params, query, fragment))
-    try:
-      perform_fp(fp, method, url, header, body)
-    except pycurl.error as e:
-      if e[0]!=28:
-        raise
-      match=re.compile('^Operation timed out after \d+ milliseconds with (\d+) bytes received$').match(e[1])
-      if not match or match.group(1)=='0':
-        raise
+    self.perform_fp(fp, method, url, header, body)
 
     target = {}
     target['ip'] = fp.getinfo(pycurl.PRIMARY_IP)
@@ -3667,7 +3662,7 @@ class HTTP_fuzz(TCP_Cache):
 
     if after_urls:
       for after_url in after_urls.split(','):
-        perform_fp(fp, 'GET', after_url)
+        self.perform_fp(fp, 'GET', after_url)
 
     http_code = fp.getinfo(pycurl.HTTP_CODE)
     content_length = fp.getinfo(pycurl.CONTENT_LENGTH_DOWNLOAD)
@@ -3703,6 +3698,20 @@ class RDP_gateway(HTTP_fuzz):
       kwargs['header'] = rdg_connection_id + "\n" + kwargs['header']
 
     return HTTP_fuzz.execute(self, *args, **kwargs)
+
+  @staticmethod
+  def perform_fp(*args):
+    """Overwrite HTTP_fuzz.perform_fp with exception handling"""
+    """This is to get response data from HTTP requests which are terminated due to a timeout"""
+#    print("Overwritten!!!")
+    try:
+      HTTP_fuzz.perform_fp(*args)
+    except pycurl.error as e:
+      if e[0]==28:
+        match=re.compile('^Operation timed out after \d+ milliseconds with (\d+) bytes received$').match(e[1])
+        if match and int(match.group(1))>0:
+          return
+      raise
 
 # }}}
 

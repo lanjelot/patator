@@ -4767,7 +4767,7 @@ modules = [
 
 dependencies = {
   'paramiko': [('ssh_login',), 'http://www.lag.net/paramiko/', '1.7.7.1'],
-  'pycurl': [('http_fuzz', 'rdp_gateway',), 'http://pycurl.sourceforge.net/', '7.19.3'],
+  'pycurl': [('http_fuzz', 'rdp_gateway',), 'http://pycurl.io/', '7.43.0'],
   'libcurl': [('http_fuzz', 'rdp_gateway',), 'https://curl.haxx.se/', '7.21.0'],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],

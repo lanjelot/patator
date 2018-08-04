@@ -5,7 +5,7 @@ ajpy
 pyopenssl
 cx_Oracle
 mysqlclient
-psycopg2
+psycopg2-binary
 pycrypto
 dnspython
 IPy

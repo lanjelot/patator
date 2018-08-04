@@ -39,6 +39,7 @@ Currently it supports the following modules:
   + smtp_rcpt      : Enumerate valid users using SMTP RCPT TO
   + finger_lookup  : Enumerate valid users using Finger
   + http_fuzz      : Brute-force HTTP
+  + rdp_gateway    : Brute-force RDP Gateway
   + ajp_fuzz       : Brute-force AJP
   + pop_login      : Brute-force POP3
   + pop_passd      : Brute-force poppassd (http://netwinsite.com/poppassd/)
@@ -3755,7 +3756,7 @@ class RDP_gateway(HTTP_fuzz):
   '''Brute-force RDP Gateway'''
 
   usage_hints = (
-      '''%prog rdp_gateway url='https://example.com/remoteDesktopGateway/' user_pass=COMBO00:COMBO01 0=combos.txt -x ignore:code=401''',
+      '''%prog url='https://example.com/remoteDesktopGateway/' user_pass=COMBO00:COMBO01 0=combos.txt -x ignore:code=401''',
     )
 
   @staticmethod

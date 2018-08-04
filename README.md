@@ -13,6 +13,7 @@ Currently it supports the following modules:
 * smtp_rcpt      : Enumerate valid users using the SMTP RCPT TO command
 * finger_lookup  : Enumerate valid users using Finger
 * http_fuzz      : Brute-force HTTP/HTTPS
+* rdp_gateway    : Brute-force RDP Gateway
 * ajp_fuzz       : Brute-force AJP
 * pop_login      : Brute-force POP
 * pop_passd      : Brute-force poppassd (not POP3)
@@ -43,7 +44,7 @@ The name "Patator" comes from [this](https://www.youtube.com/watch?v=kU2yPJJdpag
 
 Patator is NOT script-kiddie friendly, please read the full README inside [patator.py](patator.py) before reporting.
 
-And please donate if you like this project.
+Please donate if you like this project! :)
 
 [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=SB36VJH4EM5WG&lc=AU&item_name=lanjelot&item_number=patator&currency_code=AUD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
 

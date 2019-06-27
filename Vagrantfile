@@ -16,6 +16,7 @@ apt-get install -y ldap-utils # ldapsearch
 apt-get install -y libmysqlclient-dev # mysqlclient-python
 apt-get install -y ike-scan unzip default-jdk
 apt-get install -y libsqlite3-dev libsqlcipher-dev # pysqlcipher
+apt-get install -y libpq-dev # psycopg2
 
 # xfreerdp
 apt-get install -y git-core cmake xsltproc libssl-dev libx11-dev libxext-dev libxinerama-dev libxcursor-dev libxdamage-dev libxv-dev libxkbfile-dev libasound2-dev libcups2-dev libxml2 libxml2-dev libxrandr-dev libxi-dev libgstreamer-plugins-base1.0-dev

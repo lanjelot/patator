@@ -1053,6 +1053,15 @@ def md5hex(plain):
 def sha1hex(plain):
   return hashlib.sha1(plain).hexdigest()
 
+def html_unescape(s):
+  if PY3:
+    import html
+    return html.unescape(s)
+  else:
+    from HTMLParser import HTMLParser
+    h = HTMLParser()
+    return h.unescape(h)
+
 # I rewrote itertools.product to avoid memory over-consumption when using large wordlists
 def product(xs, *rest):
   if len(rest) == 0:
@@ -1456,6 +1465,7 @@ Please read the README inside for more examples and usage information.
     wlists = {}
     kargs = []
     for arg in args: # ('host=NET0', '0=10.0.0.0/24', 'user=COMBO10', 'password=COMBO11', '1=combos.txt', 'name=google.MOD2', '2=TLD')
+      logger.debug('arg: %r' % arg)
       for k, v in self.expand_key(arg):
         logger.debug('k: %s, v: %s' % (k, v))
 
@@ -3707,6 +3717,10 @@ class HTTP_fuzz(TCP_Cache):
           mark, regex = be.split(':', 1)
           val = re.search(regex, response.getvalue(), re.M).group(1)
 
+          if auto_urlencode == '1':
+            val = html_unescape(val)
+            val = quote(val)
+
           header = header.replace(mark, val)
           query = query.replace(mark, val)
           body = body.replace(mark, val)
@@ -4039,7 +4053,7 @@ class VNC_login:
   '''Brute-force VNC'''
 
   usage_hints = (
-    '''%prog host=10.0.0.1 password=FILE0 0=passwords.txt -t 1 -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0''',
+    '''%prog host=10.0.0.1 password=FILE0 0=passwords.txt -t 1 -x 'retry:fgrep!=Authentication failure' --max-retries -1 -x quit:code=0''',
     )
 
   available_options = (

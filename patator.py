@@ -1060,7 +1060,7 @@ def html_unescape(s):
   else:
     from HTMLParser import HTMLParser
     h = HTMLParser()
-    return h.unescape(h)
+    return h.unescape(s)
 
 # I rewrote itertools.product to avoid memory over-consumption when using large wordlists
 def product(xs, *rest):

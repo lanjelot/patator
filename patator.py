@@ -4787,13 +4787,17 @@ class TCP_fuzz:
     ('host', 'target host'),
     ('port', 'target port'),
     ('timeout', 'seconds to wait for a response [10]'),
+    ('ssl', 'use SSL/TLS [0|1]'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, port, data='', timeout='2'):
+  def execute(self, host, port, data='', timeout='2',ssl='0'):
     fp = socket.create_connection((host, port), int(timeout))
+    if ssl!='0':
+      from ssl import wrap_socket
+      fp = wrap_socket(fp)
     fp.send(data.decode('hex'))
     with Timing() as timing:
       resp = fp.recv(1024)

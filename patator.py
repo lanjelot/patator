@@ -4780,7 +4780,7 @@ class TCP_fuzz:
   '''Fuzz TCP services'''
 
   usage_hints = (
-    '''%prog host=10.0.0.1 data=RANGE0 0=hex:0x00-0xffffff''',
+    '''%prog host=10.0.0.1 port=10000 data=RANGE0 0=hex:0x00-0xffffff''',
     )
 
   available_options = (

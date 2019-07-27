@@ -1395,6 +1395,7 @@ Please read the README inside for more examples and usage information.
     log_grp = OptionGroup(parser, 'Logging')
     log_grp.add_option('-l', dest='log_dir', metavar='DIR', help="save output and response data into DIR ")
     log_grp.add_option('-L', dest='auto_log', metavar='SFX', help="automatically save into DIR/yyyy-mm-dd/hh:mm:ss_SFX (DIR defaults to '/tmp/patator')")
+    log_grp.add_option('--printcmd', dest='printcmd', action='store_true', default=False, help='print cmdline in stdout output')
 
     dbg_grp = OptionGroup(parser, 'Debugging')
     dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='enable debug messages')
@@ -1434,6 +1435,9 @@ Please read the README inside for more examples and usage information.
     self.num_threads = opts.num_threads
     self.start, self.stop = opts.start, opts.stop
     self.allow_ignore_failures = opts.allow_ignore_failures
+
+    self.printcmdline = opts.printcmd
+    self.cmdline = ' '.join(argv)
 
     self.resume = [int(i) for i in opts.resume.split(',')] if opts.resume else None
 
@@ -1603,6 +1607,9 @@ Please read the README inside for more examples and usage information.
 
   def fire(self):
     logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
+
+    if self.printcmdline:
+      logger.info('cmd : %s' % self.cmdline)
 
     try:
       self.start_threads()

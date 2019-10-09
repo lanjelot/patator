@@ -3575,6 +3575,7 @@ class HTTP_fuzz(TCP_Cache):
     ('user_pass', 'username and password for HTTP authentication (user:pass)'),
     ('auth_type', 'type of HTTP authentication [basic | digest | ntlm]'),
     ('follow', 'follow any Location redirect [0|1]'),
+    ('pathasis', 'handle sequences of /../ or /./ [0|1]'),
     ('max_follow', 'redirection limit [5]'),
     ('accept_cookie', 'save received cookies to issue them in future requests [0|1]'),
     ('proxy', 'proxy to use (host:port)'),
@@ -3628,7 +3629,7 @@ class HTTP_fuzz(TCP_Cache):
 
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
     header='', method='GET', auto_urlencode='1', user_pass='', auth_type='basic',
-    follow='0', max_follow='5', accept_cookie='0', proxy='', proxy_type='http', resolve='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
+    follow='0', pathasis='0', max_follow='5', accept_cookie='0', proxy='', proxy_type='http', resolve='', ssl_cert='', timeout_tcp='10', timeout='20', persistent='1',
     before_urls='', before_header='', before_egrep='', after_urls='', max_mem='-1'):
 
     if url:
@@ -3656,6 +3657,7 @@ class HTTP_fuzz(TCP_Cache):
     fp, _ = self.bind(host, port, scheme)
 
     fp.setopt(pycurl.FOLLOWLOCATION, int(follow))
+    fp.setopt(pycurl.PATH_AS_IS, int(pathasis))
     fp.setopt(pycurl.MAXREDIRS, int(max_follow))
     fp.setopt(pycurl.CONNECTTIMEOUT, int(timeout_tcp))
     fp.setopt(pycurl.TIMEOUT, int(timeout))

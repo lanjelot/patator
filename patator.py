@@ -899,6 +899,7 @@ import signal
 import ctypes
 import glob
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
+from ssl import wrap_socket
 try:
   # python3+
   from queue import Empty, Full
@@ -3112,8 +3113,6 @@ class Rlogin_login(TCP_Cache):
 # }}}
 
 # VMauthd {{{
-from ssl import wrap_socket
-
 class LineReceiver_Error(Exception):
   pass
 
@@ -4793,10 +4792,9 @@ class TCP_fuzz:
 
   Response = Response_Base
 
-  def execute(self, host, port, data='', timeout='2',ssl='0'):
+  def execute(self, host, port, data='', timeout='2', ssl='0'):
     fp = socket.create_connection((host, port), int(timeout))
-    if ssl!='0':
-      from ssl import wrap_socket
+    if ssl != '0':
       fp = wrap_socket(fp)
     fp.send(data.decode('hex'))
     with Timing() as timing:

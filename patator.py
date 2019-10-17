@@ -765,8 +765,8 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
 
   names = [name for name, _ in indicatorsfmt] + ['candidate', 'num', 'mesg']
 
-  if runtime_file:
-    runtime_log = os.path.join(log_dir if log_dir else './', runtime_file)
+  if runtime_file or log_dir:
+    runtime_log = os.path.join(log_dir or '', runtime_file or 'RUNTIME.log')
 
     with open(runtime_log, 'a') as f:
       f.write('$ %s\n' % ' '.join(argv))

@@ -3731,6 +3731,8 @@ class HTTP_fuzz(TCP_Cache):
           query = query.replace(mark, val)
           body = body.replace(mark, val)
 
+      response = StringIO()
+
     if auto_urlencode == '1':
       path = quote(path)
       query = urlencode(parse_qsl(query, True))

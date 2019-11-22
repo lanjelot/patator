@@ -113,6 +113,7 @@ FEATURES
       + use the NET keyword to iterate over every hosts of a network subnet
       + use the RANGE keyword to iterate over hexadecimal, decimal or alphabetical ranges
       + use the PROG keyword to iterate over the output of an external program
+      + use the CHAIN keyword to iterate over a file simultaneously with other keywords (burp pitchfork)
 
     - Iteration over the joined wordlists can be done in any order
 
@@ -1296,6 +1297,9 @@ class Controller:
   def find_file_keys(self, value):
     return map(int, re.findall(r'FILE(\d)', value))
 
+  def find_chain_keys(self, value):
+    return map(int, re.findall(r'CHAIN(\d)', value))
+
   def find_net_keys(self, value):
     return map(int, re.findall(r'NET(\d)', value))
 
@@ -1427,6 +1431,7 @@ Please read the README inside for more examples and usage information.
     self.payload = {}
     self.iter_keys = {}
     self.enc_keys = []
+    self.chain_keys = {}
 
     self.module = module
 
@@ -1538,10 +1543,17 @@ Please read the README inside for more examples and usage information.
                   self.iter_keys[i][2].append(k)
 
                 else:
-                  self.payload[k] = v
+                  for i in self.find_chain_keys(v):
+                    if i not in self.chain_keys:
+                      self.chain_keys[i] = ('CHAIN', iter_vals[i], [])
+                    self.chain_keys[i][2].append(k)
+
+                  else:
+                    self.payload[k] = v
 
     logger.debug('iter_keys: %s' % self.iter_keys) # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['name'])
     logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hex), ('header', 'B64', b64encode), ...
+    logger.debug('chain_keys: %s' % self.chain_keys)
     logger.debug('payload: %s' % self.payload)
 
     self.available_actions = [k for k, _ in self.builtin_actions + self.module.available_actions]
@@ -1765,6 +1777,22 @@ Please read the README inside for more examples and usage information.
       total_size *= size
       iterables.append(iterable)
 
+    for _, (t, v, _) in self.chain_keys.items():
+
+      if t in ('CHAIN',):
+        files = []
+
+        for name in v.split(','):
+          for fpath in sorted(glob.iglob(expand_path(name))):
+            if not os.path.isfile(fpath):
+              return abort("No such file '%s'" % fpath)
+
+            files.append(FileIter(fpath))
+
+        iterable = chain(*files)
+
+      iterables.append(iterable)
+
     if not iterables:
       iterables.append(chain(['']))
 
@@ -1875,6 +1903,11 @@ Please read the README inside for more examples and usage information.
         elif t == 'PROG':
           for k in keys:
             payload[k] = payload[k].replace('PROG%d' %i, prod[i])
+
+      for i, (t, _, keys) in self.chain_keys.items():
+        if t == 'CHAIN':
+          for k in keys:
+            payload[k] = payload[k].replace('CHAIN%d' % i, prod[i])
 
       for k, m, e in self.enc_keys:
         payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(m.group(1)), payload[k])

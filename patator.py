@@ -664,8 +664,11 @@ class Logger:
   def result(self, *args):
     self.send('result', *args)
 
-  def save(self, *args):
-    self.send('save', *args)
+  def save_response(self, *args):
+    self.send('save_response', *args)
+
+  def save_hit(self, *args):
+    self.send('save_hit', *args)
 
   def setLevel(self, level):
     self.send('setLevel', level)
@@ -745,7 +748,7 @@ class MsgFilter(logging.Filter):
     else:
       return 1
 
-def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xml_file):
+def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xml_file, hits_file):
 
   ignore_ctrlc()
 
@@ -836,6 +839,10 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
 
     logger.addHandler(handler_xml)
 
+  if hits_file:
+    if os.path.exists(hits_file):
+      os.rename(hits_file, hits_file + '.' + strftime("%Y%m%d%H%M%S", localtime()))
+
   while True:
 
     pname, action, args = queue.get()
@@ -864,7 +871,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
       else:
         logger.info(None, extra=dict(results))
 
-    elif action == 'save':
+    elif action == 'save_response':
 
       resp, num = args
 
@@ -872,6 +879,11 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
         filename = '%d_%s' % (num, '-'.join(map(str, resp.indicators())))
         with open('%s.txt' % os.path.join(log_dir, filename), 'w') as f:
           f.write(resp.dump())
+
+    elif action == 'save_hit':
+      if hits_file:
+        with open(hits_file, 'a') as f:
+          f.write('%s\n' % ':'.join(args))
 
     elif action == 'setLevel':
       logger.setLevel(args[0])
@@ -923,7 +935,7 @@ except ImportError:
 PY3 = sys.version_info >= (3,)
 if PY3: # http://python3porting.com/problems.html
   def b(x):
-    return x.encode('ISO-8859-1')
+    return x.encode('UTF-8') # 'ISO-8859-1')
   def B(x):
     return x.decode()
 else:
@@ -1140,13 +1152,13 @@ class RangeIter:
         step = 1
 
     elif typ == 'letters':
-      charset = [c for c in string.letters]
+      charset = [c for c in string.ascii_letters]
 
     elif typ in ('lower', 'lowercase'):
-      charset = [c for c in string.lowercase]
+      charset = [c for c in string.ascii_lowercase]
 
     elif typ in ('upper', 'uppercase'):
-      charset = [c for c in string.uppercase]
+      charset = [c for c in string.ascii_uppercase]
 
     def zrange(start, stop, step, fmt):
       x = start
@@ -1405,6 +1417,7 @@ Please read the README inside for more examples and usage information.
     log_grp.add_option('-R', dest='runtime_file', metavar='FILE', help="save output to FILE")
     log_grp.add_option('--csv', dest='csv_file', metavar='FILE', help="save CSV results to FILE")
     log_grp.add_option('--xml', dest='xml_file', metavar='FILE', help="save XML results to FILE")
+    log_grp.add_option('--hits', dest='hits_file', metavar='FILE', help="save found candidates to FILE")
 
     dbg_grp = OptionGroup(parser, 'Debugging')
     dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='enable debug messages')
@@ -1460,7 +1473,7 @@ Please read the README inside for more examples and usage information.
 
     log_queue = multiprocessing.Queue()
 
-    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log), opts.runtime_file, opts.csv_file, opts.xml_file))
+    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log), opts.runtime_file, opts.csv_file, opts.xml_file, opts.hits_file))
     logsvc.daemon = True
     logsvc.start()
 
@@ -1881,7 +1894,7 @@ Please read the README inside for more examples and usage information.
             payload[k] = payload[k].replace('PROG%d' %i, prod[i])
 
       for k, m, e in self.enc_keys:
-        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(m.group(1)), payload[k])
+        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(b(m.group(1))), payload[k])
 
       logger.debug('product: %s' % prod)
       pp_prod = ':'.join(prod)
@@ -2003,7 +2016,8 @@ Please read the README inside for more examples and usage information.
         elif 'ignore' not in actions:
           p.hits_count += 1
 
-          logger.save(resp, offset)
+          logger.save_response(resp, offset)
+          logger.save_hit(current)
 
           self.push_final(resp)
 

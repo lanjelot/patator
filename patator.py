@@ -745,7 +745,7 @@ class MsgFilter(logging.Filter):
     else:
       return 1
 
-def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
+def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xml_file):
 
   ignore_ctrlc()
 
@@ -776,13 +776,21 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
 
     logger.addHandler(handler_log)
 
-  if log_dir:
-    results_csv = os.path.join(log_dir, 'RESULTS.csv')
-    results_xml = os.path.join(log_dir, 'RESULTS.xml')
+  if csv_file or log_dir:
+    results_csv = os.path.join(log_dir or '', csv_file or 'RESULTS.csv')
 
     if not os.path.exists(results_csv):
       with open(results_csv, 'w') as f:
         f.write('time,level,%s\n' % ','.join(names))
+
+    handler_csv = logging.FileHandler(results_csv)
+    handler_csv.addFilter(MsgFilter())
+    handler_csv.setFormatter(CSVFormatter(indicatorsfmt))
+
+    logger.addHandler(handler_csv)
+
+  if xml_file or log_dir:
+    results_xml = os.path.join(log_dir or '', xml_file or 'RESULTS.xml')
 
     if not os.path.exists(results_xml):
       with open(results_xml, 'w') as f:
@@ -822,16 +830,10 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
           f.seek(offset)
           f.truncate(f.tell())
 
-    handler_csv = logging.FileHandler(results_csv)
     handler_xml = logging.FileHandler(results_xml)
-
-    handler_csv.addFilter(MsgFilter())
     handler_xml.addFilter(MsgFilter())
-
-    handler_csv.setFormatter(CSVFormatter(indicatorsfmt))
     handler_xml.setFormatter(XMLFormatter(indicatorsfmt))
 
-    logger.addHandler(handler_csv)
     logger.addHandler(handler_xml)
 
   while True:
@@ -1401,6 +1403,8 @@ Please read the README inside for more examples and usage information.
     log_grp.add_option('-l', dest='log_dir', metavar='DIR', help="save output and response data into DIR ")
     log_grp.add_option('-L', dest='auto_log', metavar='SFX', help="automatically save into DIR/yyyy-mm-dd/hh:mm:ss_SFX (DIR defaults to '/tmp/patator')")
     log_grp.add_option('-R', dest='runtime_file', metavar='FILE', help="save output to FILE")
+    log_grp.add_option('--csv', dest='csv_file', metavar='FILE', help="save CSV results to FILE")
+    log_grp.add_option('--xml', dest='xml_file', metavar='FILE', help="save XML results to FILE")
 
     dbg_grp = OptionGroup(parser, 'Debugging')
     dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='enable debug messages')
@@ -1456,7 +1460,7 @@ Please read the README inside for more examples and usage information.
 
     log_queue = multiprocessing.Queue()
 
-    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log), opts.runtime_file))
+    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log), opts.runtime_file, opts.csv_file, opts.xml_file))
     logsvc.daemon = True
     logsvc.start()
 

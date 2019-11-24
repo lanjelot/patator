@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (C) 2012 Sebastien MACKE
 #
@@ -2079,7 +2079,7 @@ Please read the README inside for more examples and usage information.
         etc_time = etc_seconds.strftime('%H:%M:%S')
 
       logger.info('Progress: {0:>3}% ({1}/{2}) | Speed: {3:.0f} r/s | ETC: {4} ({5} remaining) {6}'.format(
-        total_count * 100/total_size,
+        total_count * 100 // total_size,
         total_count,
         total_size,
         speed_avg,
@@ -2885,10 +2885,6 @@ class SMB_lookupsid(TCP_Cache):
 # POP {{{
 from poplib import POP3, POP3_SSL, error_proto as pop_error
 
-class POP_Connection(TCP_Connection):
-  def close(self):
-    self.fp.quit()
-
 class POP_login(TCP_Cache):
   '''Brute-force POP3'''
 
@@ -2916,7 +2912,7 @@ class POP_login(TCP_Cache):
       if not port: port = 995
       fp = POP3_SSL(host, int(port)) # timeout=int(timeout)) # no timeout option in python2
 
-    return POP_Connection(fp, fp.welcome)
+    return TCP_Connection(fp, fp.welcome)
 
   def execute(self, host, port='', ssl='0', user=None, password=None, timeout='10', persistent='1'):
 
@@ -2937,12 +2933,12 @@ class POP_login(TCP_Cache):
 
     except pop_error as e:
       logger.debug('pop_error: %s' % e)
-      resp = str(e)
+      resp = e.args[0]
 
     if persistent == '0':
       self.reset()
 
-    code, mesg = resp.split(' ', 1)
+    code, mesg = B(resp).split(' ', 1)
     return self.Response(code, mesg, timing)
 
 class POP_passd:
@@ -3674,6 +3670,9 @@ class HTTP_fuzz(TCP_Cache):
 
     def debug_func(t, s):
       if max_mem > 0 and trace.tell() > max_mem:
+        return 0
+
+      if t not in (pycurl.INFOTYPE_HEADER_OUT, pycurl.INFOTYPE_DATA_OUT, pycurl.INFOTYPE_TEXT, pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):
         return 0
 
       s = B(s)

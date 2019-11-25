@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (C) 2012 Sebastien MACKE
 #
@@ -113,7 +113,7 @@ FEATURES
       + use the NET keyword to iterate over every hosts of a network subnet
       + use the RANGE keyword to iterate over hexadecimal, decimal or alphabetical ranges
       + use the PROG keyword to iterate over the output of an external program
-      + use the CHAIN keyword to iterate over a file simultaneously with other keywords (burp pitchfork)
+      + use the CYCLE keyword to iterate over a file simultaneously with other keywords (burp pitchfork)
 
     - Iteration over the joined wordlists can be done in any order
 
@@ -665,8 +665,11 @@ class Logger:
   def result(self, *args):
     self.send('result', *args)
 
-  def save(self, *args):
-    self.send('save', *args)
+  def save_response(self, *args):
+    self.send('save_response', *args)
+
+  def save_hit(self, *args):
+    self.send('save_hit', *args)
 
   def setLevel(self, level):
     self.send('setLevel', level)
@@ -746,7 +749,7 @@ class MsgFilter(logging.Filter):
     else:
       return 1
 
-def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
+def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xml_file, hits_file):
 
   ignore_ctrlc()
 
@@ -777,13 +780,21 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
 
     logger.addHandler(handler_log)
 
-  if log_dir:
-    results_csv = os.path.join(log_dir, 'RESULTS.csv')
-    results_xml = os.path.join(log_dir, 'RESULTS.xml')
+  if csv_file or log_dir:
+    results_csv = os.path.join(log_dir or '', csv_file or 'RESULTS.csv')
 
     if not os.path.exists(results_csv):
       with open(results_csv, 'w') as f:
         f.write('time,level,%s\n' % ','.join(names))
+
+    handler_csv = logging.FileHandler(results_csv)
+    handler_csv.addFilter(MsgFilter())
+    handler_csv.setFormatter(CSVFormatter(indicatorsfmt))
+
+    logger.addHandler(handler_csv)
+
+  if xml_file or log_dir:
+    results_xml = os.path.join(log_dir or '', xml_file or 'RESULTS.xml')
 
     if not os.path.exists(results_xml):
       with open(results_xml, 'w') as f:
@@ -823,17 +834,15 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
           f.seek(offset)
           f.truncate(f.tell())
 
-    handler_csv = logging.FileHandler(results_csv)
     handler_xml = logging.FileHandler(results_xml)
-
-    handler_csv.addFilter(MsgFilter())
     handler_xml.addFilter(MsgFilter())
-
-    handler_csv.setFormatter(CSVFormatter(indicatorsfmt))
     handler_xml.setFormatter(XMLFormatter(indicatorsfmt))
 
-    logger.addHandler(handler_csv)
     logger.addHandler(handler_xml)
+
+  if hits_file:
+    if os.path.exists(hits_file):
+      os.rename(hits_file, hits_file + '.' + strftime("%Y%m%d%H%M%S", localtime()))
 
   while True:
 
@@ -863,7 +872,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
       else:
         logger.info(None, extra=dict(results))
 
-    elif action == 'save':
+    elif action == 'save_response':
 
       resp, num = args
 
@@ -871,6 +880,11 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file):
         filename = '%d_%s' % (num, '-'.join(map(str, resp.indicators())))
         with open('%s.txt' % os.path.join(log_dir, filename), 'w') as f:
           f.write(resp.dump())
+
+    elif action == 'save_hit':
+      if hits_file:
+        with open(hits_file, 'a') as f:
+          f.write('%s\n' % ':'.join(args))
 
     elif action == 'setLevel':
       logger.setLevel(args[0])
@@ -888,7 +902,7 @@ from time import localtime, gmtime, strftime, sleep, time
 from platform import system
 from functools import reduce
 from select import select
-from itertools import islice
+from itertools import islice, cycle
 import string
 import random
 from decimal import Decimal
@@ -922,7 +936,7 @@ except ImportError:
 PY3 = sys.version_info >= (3,)
 if PY3: # http://python3porting.com/problems.html
   def b(x):
-    return x.encode('ISO-8859-1')
+    return x.encode('UTF-8') # 'ISO-8859-1')
   def B(x):
     return x.decode()
 else:
@@ -1139,13 +1153,13 @@ class RangeIter:
         step = 1
 
     elif typ == 'letters':
-      charset = [c for c in string.letters]
+      charset = [c for c in string.ascii_letters]
 
     elif typ in ('lower', 'lowercase'):
-      charset = [c for c in string.lowercase]
+      charset = [c for c in string.ascii_lowercase]
 
     elif typ in ('upper', 'uppercase'):
-      charset = [c for c in string.uppercase]
+      charset = [c for c in string.ascii_uppercase]
 
     def zrange(start, stop, step, fmt):
       x = start
@@ -1297,8 +1311,8 @@ class Controller:
   def find_file_keys(self, value):
     return map(int, re.findall(r'FILE(\d)', value))
 
-  def find_chain_keys(self, value):
-    return map(int, re.findall(r'CHAIN(\d)', value))
+  def find_cycle_keys(self, value):
+    return map(int, re.findall(r'CYCLE(\d)', value))
 
   def find_net_keys(self, value):
     return map(int, re.findall(r'NET(\d)', value))
@@ -1405,6 +1419,9 @@ Please read the README inside for more examples and usage information.
     log_grp.add_option('-l', dest='log_dir', metavar='DIR', help="save output and response data into DIR ")
     log_grp.add_option('-L', dest='auto_log', metavar='SFX', help="automatically save into DIR/yyyy-mm-dd/hh:mm:ss_SFX (DIR defaults to '/tmp/patator')")
     log_grp.add_option('-R', dest='runtime_file', metavar='FILE', help="save output to FILE")
+    log_grp.add_option('--csv', dest='csv_file', metavar='FILE', help="save CSV results to FILE")
+    log_grp.add_option('--xml', dest='xml_file', metavar='FILE', help="save XML results to FILE")
+    log_grp.add_option('--hits', dest='hits_file', metavar='FILE', help="save found candidates to FILE")
 
     dbg_grp = OptionGroup(parser, 'Debugging')
     dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='enable debug messages')
@@ -1431,7 +1448,7 @@ Please read the README inside for more examples and usage information.
     self.payload = {}
     self.iter_keys = {}
     self.enc_keys = []
-    self.chain_keys = {}
+    self.cycle_keys = {}
 
     self.module = module
 
@@ -1461,7 +1478,7 @@ Please read the README inside for more examples and usage information.
 
     log_queue = multiprocessing.Queue()
 
-    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log), opts.runtime_file))
+    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log), opts.runtime_file, opts.csv_file, opts.xml_file, opts.hits_file))
     logsvc.daemon = True
     logsvc.start()
 
@@ -1543,17 +1560,17 @@ Please read the README inside for more examples and usage information.
                   self.iter_keys[i][2].append(k)
 
                 else:
-                  for i in self.find_chain_keys(v):
-                    if i not in self.chain_keys:
-                      self.chain_keys[i] = ('CHAIN', iter_vals[i], [])
-                    self.chain_keys[i][2].append(k)
+                  for i in self.find_cycle_keys(v):
+                    if i not in self.cycle_keys:
+                      self.cycle_keys[i] = ('CYCLE', iter_vals[i], [])
+                    self.cycle_keys[i][2].append(k)
 
                   else:
                     self.payload[k] = v
 
     logger.debug('iter_keys: %s' % self.iter_keys) # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['name'])
+    logger.debug('cycle_keys: %s' % self.cycle_keys)
     logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hex), ('header', 'B64', b64encode), ...
-    logger.debug('chain_keys: %s' % self.chain_keys)
     logger.debug('payload: %s' % self.payload)
 
     self.available_actions = [k for k, _ in self.builtin_actions + self.module.available_actions]
@@ -1708,6 +1725,7 @@ Please read the README inside for more examples and usage information.
     logger = Logger(log_queue)
 
     iterables = []
+    cycleables = []
     total_size = 1
 
     def abort(msg):
@@ -1777,9 +1795,9 @@ Please read the README inside for more examples and usage information.
       total_size *= size
       iterables.append(iterable)
 
-    for _, (t, v, _) in self.chain_keys.items():
+    for _, (t, v, _) in self.cycle_keys.items():
 
-      if t in ('CHAIN',):
+      if t == 'CYCLE':
         files = []
 
         for name in v.split(','):
@@ -1789,9 +1807,9 @@ Please read the README inside for more examples and usage information.
 
             files.append(FileIter(fpath))
 
-        iterable = chain(*files)
+        cycleable = chain(*files)
 
-      iterables.append(iterable)
+      cycleables.append(cycleable)
 
     if not iterables:
       iterables.append(chain(['']))
@@ -1810,10 +1828,15 @@ Please read the README inside for more examples and usage information.
     logger.headers()
 
     count = 0
+
+    cycleables = [cycle(_()) for _ in cycleables]
     for pp in islice(product(*iterables), self.start, self.stop):
 
       if self.ns.quit_now:
         break
+
+      for i, index in enumerate(self.cycle_keys.keys(), start=0):
+        pp.insert(index, next(cycleables[i]))
 
       cid = count % self.num_threads
       prod = [str(p).rstrip('\r\n') for p in pp]
@@ -1904,13 +1927,13 @@ Please read the README inside for more examples and usage information.
           for k in keys:
             payload[k] = payload[k].replace('PROG%d' %i, prod[i])
 
-      for i, (t, _, keys) in self.chain_keys.items():
-        if t == 'CHAIN':
+      for i, (t, _, keys) in self.cycle_keys.items():
+        if t == 'CYCLE':
           for k in keys:
-            payload[k] = payload[k].replace('CHAIN%d' % i, prod[i])
+            payload[k] = payload[k].replace('CYCLE%d' % i, prod[i])
 
       for k, m, e in self.enc_keys:
-        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(m.group(1)), payload[k])
+        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(b(m.group(1))), payload[k])
 
       logger.debug('product: %s' % prod)
       pp_prod = ':'.join(prod)
@@ -2032,7 +2055,8 @@ Please read the README inside for more examples and usage information.
         elif 'ignore' not in actions:
           p.hits_count += 1
 
-          logger.save(resp, offset)
+          logger.save_response(resp, offset)
+          logger.save_hit(current)
 
           self.push_final(resp)
 
@@ -2112,7 +2136,7 @@ Please read the README inside for more examples and usage information.
         etc_time = etc_seconds.strftime('%H:%M:%S')
 
       logger.info('Progress: {0:>3}% ({1}/{2}) | Speed: {3:.0f} r/s | ETC: {4} ({5} remaining) {6}'.format(
-        total_count * 100/total_size,
+        total_count * 100 // total_size,
         total_count,
         total_size,
         speed_avg,
@@ -2918,10 +2942,6 @@ class SMB_lookupsid(TCP_Cache):
 # POP {{{
 from poplib import POP3, POP3_SSL, error_proto as pop_error
 
-class POP_Connection(TCP_Connection):
-  def close(self):
-    self.fp.quit()
-
 class POP_login(TCP_Cache):
   '''Brute-force POP3'''
 
@@ -2949,7 +2969,7 @@ class POP_login(TCP_Cache):
       if not port: port = 995
       fp = POP3_SSL(host, int(port)) # timeout=int(timeout)) # no timeout option in python2
 
-    return POP_Connection(fp, fp.welcome)
+    return TCP_Connection(fp, fp.welcome)
 
   def execute(self, host, port='', ssl='0', user=None, password=None, timeout='10', persistent='1'):
 
@@ -2970,12 +2990,12 @@ class POP_login(TCP_Cache):
 
     except pop_error as e:
       logger.debug('pop_error: %s' % e)
-      resp = str(e)
+      resp = e.args[0]
 
     if persistent == '0':
       self.reset()
 
-    code, mesg = resp.split(' ', 1)
+    code, mesg = B(resp).split(' ', 1)
     return self.Response(code, mesg, timing)
 
 class POP_passd:
@@ -3707,6 +3727,9 @@ class HTTP_fuzz(TCP_Cache):
 
     def debug_func(t, s):
       if max_mem > 0 and trace.tell() > max_mem:
+        return 0
+
+      if t not in (pycurl.INFOTYPE_HEADER_OUT, pycurl.INFOTYPE_DATA_OUT, pycurl.INFOTYPE_TEXT, pycurl.INFOTYPE_HEADER_IN, pycurl.INFOTYPE_DATA_IN):
         return 0
 
       s = B(s)

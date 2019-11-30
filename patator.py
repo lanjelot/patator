@@ -935,9 +935,9 @@ except ImportError:
 PY3 = sys.version_info >= (3,)
 if PY3: # http://python3porting.com/problems.html
   def b(x):
-    return x.encode('UTF-8') # 'ISO-8859-1')
+    return x.encode('ISO-8859-1', errors='ignore')
   def B(x):
-    return x.decode()
+    return x.decode(errors='ignore')
 else:
   def b(x):
     return x
@@ -3826,12 +3826,15 @@ class AJP_Connection(TCP_Connection):
     sock.close()
 
 class Response_AJP(Response_HTTP):
-  def __init__(self, code, response, status_msg='', timing=0, trace=None, content_length=-1, target={}):
+  def __init__(self, code, response, timing=0, trace=None, content_length=-1, target={}):
     Response_HTTP.__init__(self, code, response, timing, trace, content_length, target)
-    self.status_msg = status_msg
 
   def __str__(self):
-    return self.status_msg or self.mesg
+    lines = self.mesg.splitlines()
+    if lines:
+      return lines[0].rstrip('\r')
+    else:
+      return self.mesg
 
 def prepare_ajp_forward_request(target_host, req_uri, method):
   fr = AjpForwardRequest(AjpForwardRequest.SERVER_TO_CONTAINER)
@@ -3878,7 +3881,7 @@ class AJP_fuzz(TCP_Cache):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.connect((host, int(port)))
-    stream = sock.makefile("rb", bufsize=0)
+    stream = sock.makefile('rb', None if PY3 else 0)
 
     return AJP_Connection((sock, stream))
 
@@ -3893,7 +3896,7 @@ class AJP_fuzz(TCP_Cache):
     req_uri = urlunparse(('', '', path, params, query, fragment))
 
     fr = prepare_ajp_forward_request(host, req_uri, AjpForwardRequest.REQUEST_METHODS.get('GET'))
-    fr.request_headers['SC_REQ_AUTHORIZATION'] = "Basic " + b64encode(user_pass)
+    fr.request_headers['SC_REQ_AUTHORIZATION'] = "Basic " + B(b64encode(b(user_pass)))
 
     headers = [h.strip('\r') for h in header.split('\n') if h]
     for h in headers:
@@ -3907,13 +3910,13 @@ class AJP_fuzz(TCP_Cache):
 
     snd_hdrs_res = responses[0]
     http_code = snd_hdrs_res.http_status_code
-    http_status_msg = snd_hdrs_res.http_status_msg
+    http_status_msg = B(snd_hdrs_res.http_status_msg)
     content_length = int(snd_hdrs_res.response_headers.get('Content-Length', 0))
 
     data_res = responses[1:-1]
     data = ''
     for dr in data_res:
-      data += dr.data
+      data += B(dr.data)
 
     target = {}
     target['ip'] = host
@@ -3922,7 +3925,7 @@ class AJP_fuzz(TCP_Cache):
     if persistent == '0':
       self.reset()
 
-    return self.Response(http_code, data, http_status_msg, timing, data, content_length, target)
+    return self.Response(http_code, http_status_msg + '\n' + data, timing, data, content_length, target)
 
 # }}}
 

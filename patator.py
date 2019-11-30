@@ -3524,8 +3524,12 @@ class HTTPRequestParser(BaseHTTPRequestHandler):
     self.rfile = fd
     self.error = None
     self.body = None
-    self.raw_requestline = self.rfile.readline()
+
+    command, path, version = B(self.rfile.readline()).split()
+    self.raw_requestline = b('%s %s %s' % (command, path, 'HTTP/1.1' if version.startswith('HTTP/2') else version))
+
     self.parse_request()
+    self.request_version = version
 
     if self.command == 'POST':
       self.body = B(self.rfile.read(-1)).rstrip('\r\n')

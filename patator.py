@@ -4822,13 +4822,13 @@ class TCP_fuzz:
     fp = socket.create_connection((host, port), int(timeout))
     if ssl != '0':
       fp = wrap_socket(fp)
-    fp.send(data.decode('hex'))
+    fp.send(bytes(data,'utf-8'))
     with Timing() as timing:
       resp = fp.recv(1024)
     fp.close()
 
     code = 0
-    mesg = resp.encode('hex')
+    mesg = resp.decode('utf-8', errors='replace')
 
     return self.Response(code, mesg, timing)
 

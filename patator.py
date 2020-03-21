@@ -2522,10 +2522,12 @@ class SMTP_Base(TCP_Cache):
   def connect(self, host, port, ssl, helo, starttls, timeout):
 
     if ssl == '0':
-      if not port: port = 25
+      if not port:
+        port = 25
       fp = SMTP(timeout=int(timeout))
     else:
-      if not port: port = 465
+      if not port:
+        port = 465
       fp = SMTP_SSL(timeout=int(timeout))
 
     resp = fp.connect(host, int(port))
@@ -3235,7 +3237,7 @@ class VMauthd_login(TCP_Cache):
 
 # MySQL {{{
 try:
-  import _mysql
+  from MySQLdb import _mysql
 except ImportError:
   notfound.append('mysqlclient')
 

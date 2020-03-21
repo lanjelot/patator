@@ -1,7 +1,7 @@
 paramiko
 pycurl
 ajpy
-#impacket # no python3 compatibility
+impacket
 pyopenssl
 cx_Oracle
 mysqlclient

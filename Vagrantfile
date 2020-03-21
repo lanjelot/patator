@@ -13,7 +13,7 @@ apt-get install -y tmux git wget build-essential vim
 # requirements.txt deps
 apt-get install -y libcurl4-openssl-dev python3-dev libssl-dev # pycurl
 apt-get install -y ldap-utils # ldapsearch
-apt-get install -y libmysqlclient-dev # mysqlclient-python
+apt-get install -y libmariadbclient-dev # mysqlclient-python
 apt-get install -y ike-scan unzip default-jdk
 apt-get install -y libsqlite3-dev libsqlcipher-dev # pysqlcipher
 apt-get install -y libpq-dev # psycopg2
@@ -33,7 +33,7 @@ pip install patator
 SCRIPT
 
 Vagrant.configure(2) do |config|
-  config.vm.box = "ubuntu/xenial64"
+  config.vm.box = "ubuntu/bionic64"
   config.vm.box_check_update = false
  
   # prevent TTY error messages

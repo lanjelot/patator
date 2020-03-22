@@ -18,8 +18,9 @@ apt-get install -y ike-scan unzip default-jdk
 apt-get install -y libsqlite3-dev libsqlcipher-dev # pysqlcipher
 apt-get install -y libpq-dev # psycopg2
 
-# xfreerdp
-apt-get install -y git-core cmake xsltproc libssl-dev libx11-dev libxext-dev libxinerama-dev libxcursor-dev libxdamage-dev libxv-dev libxkbfile-dev libasound2-dev libcups2-dev libxml2 libxml2-dev libxrandr-dev libxi-dev libgstreamer-plugins-base1.0-dev
+# xfreerdp (see https://github.com/FreeRDP/FreeRDP/wiki/Compilation)
+apt-get install ninja-build build-essential git-core debhelper cdbs dpkg-dev autotools-dev cmake pkg-config xmlto libssl-dev docbook-xsl xsltproc libxkbfile-dev libx11-dev libwayland-dev libxrandr-dev libxi-dev libxrender-dev libxext-dev libxinerama-dev libxfixes-dev libxcursor-dev libxv-dev libxdamage-dev libxtst-dev libcups2-dev libpcsclite-dev libasound2-dev libpulse-dev libjpeg-dev libgsm1-dev libusb-1.0-0-dev libudev-dev libdbus-glib-1-dev uuid-dev libxml2-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libfaad-dev libfaac-dev
+apt-get install libavutil-dev libavcodec-dev libavresample-dev
 git clone https://github.com/FreeRDP/FreeRDP/ /tmp/FreeRDP && (cd /tmp/FreeRDP && cmake -DCMAKE_BUILD_TYPE=Debug -DWITH_SSE2=ON . && make && sudo make install)
 
 SCRIPT

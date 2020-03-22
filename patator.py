@@ -11,14 +11,17 @@
 # FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
 # details (http://www.gnu.org/licenses/gpl.txt).
 
+import sys
+
 __author__  = 'Sebastien Macke'
 __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
-__twitter__ = 'http://twitter.com/lanjelot'
-__version__ = '0.7'
+__twitter__ = 'https://twitter.com/lanjelot'
+__version__ = '0.8'
 __license__ = 'GPLv2'
-__banner__  = 'Patator v%s (%s)' % (__version__, __git__)
+__pyver__   = '%d.%d.%d' % sys.version_info[0:3]
+__banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
 
 # README {{{
 
@@ -126,37 +129,37 @@ INSTALL
 
                  |  Required for  |                        URL                         | Version |
 --------------------------------------------------------------------------------------------------
-paramiko         | SSH            | http://www.lag.net/paramiko/                       | 1.7.7.1 |
+paramiko         | SSH            | http://www.lag.net/paramiko/                       |   2.7.1 |
 --------------------------------------------------------------------------------------------------
 pycurl           | HTTP           | http://pycurl.sourceforge.net/                     |  7.43.0 |
 --------------------------------------------------------------------------------------------------
-libcurl          | HTTP           | https://curl.haxx.se/                              |  7.21.0 |
+libcurl          | HTTP           | https://curl.haxx.se/                              |  7.58.0 |
 --------------------------------------------------------------------------------------------------
-ajpy             | AJP            | https://github.com/hypn0s/AJPy/                    |   0.0.1 |
+ajpy             | AJP            | https://github.com/hypn0s/AJPy/                    |   0.0.4 |
 --------------------------------------------------------------------------------------------------
-openldap         | LDAP           | http://www.openldap.org/                           |  2.4.24 |
+openldap         | LDAP           | http://www.openldap.org/                           |  2.4.45 |
 --------------------------------------------------------------------------------------------------
-impacket         | SMB, MSSQL     | https://github.com/CoreSecurity/impacket           |  0.9.12 |
+impacket         | SMB, MSSQL     | https://github.com/CoreSecurity/impacket           |  0.9.20 |
 --------------------------------------------------------------------------------------------------
-pyOpenSSL        | impacket       | https://pyopenssl.org/                             |  17.5.0 |
+pyOpenSSL        | impacket       | https://pyopenssl.org/                             |  19.1.0 |
 --------------------------------------------------------------------------------------------------
-cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   5.1.1 |
+cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   7.3.0 |
 --------------------------------------------------------------------------------------------------
-mysqlclient      | MySQL          | https://github.com/PyMySQL/mysqlclient-python      |  1.3.12 |
+mysqlclient      | MySQL          | https://github.com/PyMySQL/mysqlclient-python      |   1.4.6 |
 --------------------------------------------------------------------------------------------------
 xfreerdp         | RDP (NLA)      | https://github.com/FreeRDP/FreeRDP/                |   1.2.0 |
 --------------------------------------------------------------------------------------------------
-psycopg          | PostgreSQL     | http://initd.org/psycopg/                          |   2.4.5 |
+psycopg          | PostgreSQL     | http://initd.org/psycopg/                          |   2.8.4 |
 --------------------------------------------------------------------------------------------------
 pycrypto         | VNC, impacket  | http://www.dlitz.net/software/pycrypto/            |   2.6.1 |
 --------------------------------------------------------------------------------------------------
-dnspython        | DNS            | http://www.dnspython.org/                          |  1.10.0 |
+dnspython        | DNS            | http://www.dnspython.org/                          |  1.16.0 |
 --------------------------------------------------------------------------------------------------
-IPy              | NET keyword    | https://github.com/haypo/python-ipy                |    0.75 |
+IPy              | NET keyword    | https://github.com/haypo/python-ipy                |     1.0 |
 --------------------------------------------------------------------------------------------------
-pysnmp           | SNMP           | http://pysnmp.sourceforge.net/                     |   4.2.1 |
+pysnmp           | SNMP           | http://pysnmp.sourceforge.net/                     |  4.4.12 |
 --------------------------------------------------------------------------------------------------
-pyasn1           | SNMP, impacket | http://sourceforge.net/projects/pyasn1/            |   0.1.2 |
+pyasn1           | SNMP, impacket | http://sourceforge.net/projects/pyasn1/            |   0.4.8 |
 --------------------------------------------------------------------------------------------------
 ike-scan         | IKE            | http://www.nta-monitor.com/tools-resources/        |     1.9 |
 --------------------------------------------------------------------------------------------------
@@ -166,7 +169,7 @@ Java             | keystore files | http://www.oracle.com/technetwork/java/javas
 --------------------------------------------------------------------------------------------------
 pysqlcipher      | SQLCipher      | https://github.com/leapcode/pysqlcipher/           |  2.6.10 |
 --------------------------------------------------------------------------------------------------
-python           |                | http://www.python.org/                             |     2.7 |
+python           |                | http://www.python.org/                             |     3.6 |
 --------------------------------------------------------------------------------------------------
 
 * Shortcuts (optional)
@@ -586,6 +589,12 @@ unzip_pass zipfile=file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
 
 CHANGELOG
 ---------
+
+* v0.8 2020/03/22
+  - new switches (-R, --csv, --xml, --hits)
+  - new pathasis option for http_fuzz
+  - new rdp_gateway module
+  - fixed various issues reported on Github
 
 * v0.7 2017/12/14
   - added Python3 support
@@ -1962,6 +1971,9 @@ Please read the README inside for more examples and usage information.
         if 'fail' in actions:
           break
 
+        if 'quit' in actions:
+          return shutdown()
+
         if 'retry' in actions:
           continue
 
@@ -2000,6 +2012,9 @@ Please read the README inside for more examples and usage information.
         p.current = current
         p.seconds[p.done_count % len(p.seconds)] = seconds
 
+        if 'quit' in actions:
+          self.ns.quit_now = True
+
         if 'fail' in actions:
           if not self.allow_ignore_failures or 'ignore' not in actions:
             logger.result('fail', resp, current, offset)
@@ -2022,9 +2037,6 @@ Please read the README inside for more examples and usage information.
           self.push_final(resp)
 
         p.done_count += 1
-
-        if 'quit' in actions:
-          self.ns.quit_now = True
 
 
   def monitor_interaction(self):
@@ -3106,6 +3118,7 @@ class Rlogin_login(TCP_Cache):
     fp, _ = self.bind(host, port, timeout=int(timeout))
 
     trace = b''
+    prompt_re = b(prompt_re)
     timeout = int(timeout)
 
     with Timing() as timing:
@@ -4915,27 +4928,27 @@ modules = [
   ]
 
 dependencies = {
-  'paramiko': [('ssh_login',), 'http://www.paramiko.org/', '1.7.7.1'],
+  'paramiko': [('ssh_login',), 'http://www.paramiko.org/', '2.7.1'],
   'pycurl': [('http_fuzz', 'rdp_gateway'), 'http://pycurl.io/', '7.43.0'],
-  'libcurl': [('http_fuzz', 'rdp_gateway'), 'https://curl.haxx.se/', '7.21.0'],
-  'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.1'],
-  'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.24'],
-  'impacket': [('smb_login', 'smb_lookupsid', 'mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.12'],
-  'pyopenssl': [('mssql_login',), 'https://pyopenssl.org/', '17.5.0'],
-  'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '5.1.1'],
-  'mysqlclient': [('mysql_login',), 'https://github.com/PyMySQL/mysqlclient-python', '1.3.12'],
+  'libcurl': [('http_fuzz', 'rdp_gateway'), 'https://curl.haxx.se/', '7.58.0'],
+  'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.4'],
+  'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.45'],
+  'impacket': [('smb_login', 'smb_lookupsid', 'mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.20'],
+  'pyopenssl': [('mssql_login',), 'https://pyopenssl.org/', '19.1.0'],
+  'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '7.3.0'],
+  'mysqlclient': [('mysql_login',), 'https://github.com/PyMySQL/mysqlclient-python', '1.4.6'],
   'xfreerdp': [('rdp_login',), 'https://github.com/FreeRDP/FreeRDP.git', '1.2.0-beta1'],
-  'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.4.5'],
+  'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.8.4'],
   'pycrypto': [('smb_login', 'smb_lookupsid', 'mssql_login', 'vnc_login',), 'http://www.dlitz.net/software/pycrypto/', '2.6.1'],
-  'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/', '1.10.0'],
-  'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy', '0.75'],
-  'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/', '4.2.1'],
-  'pyasn1': [('smb_login', 'smb_lookupsid', 'mssql_login', 'snmp_login'), 'http://sourceforge.net/projects/pyasn1/', '0.1.2'],
+  'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/', '1.16.0'],
+  'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy', '1.0'],
+  'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/', '4.4.12'],
+  'pyasn1': [('smb_login', 'smb_lookupsid', 'mssql_login', 'snmp_login'), 'http://sourceforge.net/projects/pyasn1/', '0.4.8'],
   'ike-scan': [('ike_enum',), 'http://www.nta-monitor.com/tools-resources/security-tools/ike-scan', '1.9'],
   'unzip': [('unzip_pass',), 'http://www.info-zip.org/', '6.0'],
   'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/', '6'],
   'pysqlcipher': [('sqlcipher_pass',), 'https://github.com/leapcode/pysqlcipher/', '2.6.10'],
-  'python': [('ftp_login',), 'Patator requires Python 2.7 or above. Some features may be unavailable otherwise, such as TLS support for FTP.'],
+  'python': [('ftp_login',), 'Patator requires Python 3.6 or above and may still work on Python 2.'],
   }
 # }}}
 

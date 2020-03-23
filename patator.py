@@ -927,6 +927,7 @@ import ctypes
 import glob
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from ssl import wrap_socket
+from binascii import hexlify, unhexlify
 try:
   # python3+
   from queue import Empty, Full
@@ -1305,8 +1306,8 @@ class Controller:
     )
 
   available_encodings = {
-    'hex': (lambda s: s.encode('hex'), 'encode in hexadecimal'),
-    'unhex': (lambda s: s.decode('hex'), 'decode from hexadecimal'),
+    'hex': (lambda s: B(hexlify(s)), 'encode in hexadecimal'),
+    'unhex': (lambda s: B(unhexlify(s)), 'decode from hexadecimal'),
     'b64': (b64encode, 'encode in base64'),
     'md5': (md5hex, 'hash in md5'),
     'sha1': (sha1hex, 'hash in sha1'),
@@ -4844,13 +4845,13 @@ class TCP_fuzz:
     fp = socket.create_connection((host, port), int(timeout))
     if ssl != '0':
       fp = wrap_socket(fp)
-    fp.send(data.decode('hex'))
+    fp.send(unhexlify(data))
     with Timing() as timing:
       resp = fp.recv(1024)
     fp.close()
 
     code = 0
-    mesg = resp.encode('hex')
+    mesg = B(hexlify(resp))
 
     return self.Response(code, mesg, timing)
 

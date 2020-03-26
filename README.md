@@ -40,7 +40,7 @@ Currently it supports the following modules:
 * umbraco_crack  : Crack Umbraco HMAC-SHA1 password hashes
 ```
 
-The name "Patator" comes from [this](https://www.youtube.com/watch?v=kU2yPJJdpag).
+The name "Patator" comes from [this](https://www.youtube.com/watch?v=9sF9fTALhVA).
 
 Patator is NOT script-kiddie friendly, please read the full README inside [patator.py](patator.py) before reporting.
 

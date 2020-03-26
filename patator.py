@@ -18,7 +18,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
 __twitter__ = 'https://twitter.com/lanjelot'
-__version__ = '0.8'
+__version__ = '0.8-dev'
 __license__ = 'GPLv2'
 __pyver__   = '%d.%d.%d' % sys.version_info[0:3]
 __banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
@@ -76,7 +76,7 @@ Currently it supports the following modules:
 Future modules to be implemented:
   - rdp_login w/no NLA
 
-The name "Patator" comes from http://www.youtube.com/watch?v=xoBkBvnTTjo
+The name "Patator" comes from https://www.youtube.com/watch?v=9sF9fTALhVA
 
 * Why ?
 
@@ -226,6 +226,20 @@ $ ./module host=FILE2 user=FILE1 password=FILE0 2=hosts.txt 1=logins.txt 0=passw
 10.0.0.1 admin 123456
 ...
 
+By default Patator iterates over the cartesian product of all payload sets. Use
+the --groups option to iterate over sets simultaneously instead. For example to
+distribute all payloads among identical servers:
+---------
+$ ./module name=FILE0.FILE1 resolver=FILE2 0=names.txt 1=domains.txt 2=ips.txt --groups 0,1:2
+ftp.abc.fr 8.8.8.8
+ftp.xyz.fr 8.8.4.4
+git.abc.fr 8.8.8.8
+git.xyz.fr 8.8.4.4
+www.abc.fr 8.8.8.8
+www.xyz.fr 8.8.4.4
+
+The numbers of every keyword given on the command line must be specified.
+Use ',' to iterate over the cartesian product of sets and use ':' to iterate over sets simultaneously.
 
 * Keywords
 
@@ -909,8 +923,9 @@ import sys
 from time import localtime, gmtime, strftime, sleep, time
 from platform import system
 from functools import reduce
+from operator import mul, itemgetter
 from select import select
-from itertools import islice
+from itertools import islice, cycle
 import string
 import random
 from decimal import Decimal
@@ -928,6 +943,7 @@ import glob
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from ssl import wrap_socket
 from binascii import hexlify, unhexlify
+import mmap
 try:
   # python3+
   from queue import Empty, Full
@@ -1091,22 +1107,33 @@ def html_unescape(s):
     h = HTMLParser()
     return h.unescape(s)
 
+def mapcount(filename):
+  lines = 0
+  with open(filename, 'r+') as f:
+    buf = mmap.mmap(f.fileno(), 0)
+    readline = buf.readline
+    while readline():
+      lines += 1
+  return lines
+
 # I rewrote itertools.product to avoid memory over-consumption when using large wordlists
 def product(xs, *rest):
   if len(rest) == 0:
-    for x in xs():
+    for x in xs:
       yield [x]
   else:
-    for head in xs():
+    for head in xs:
       for tail in product(*rest):
         yield [head] + tail
 
-def chain(*iterables):
-  def xs():
-    for iterable in iterables:
+class chain:
+  def __init__(self, *iterables):
+    self.iterables = iterables
+
+  def __iter__(self):
+    for iterable in self.iterables:
       for element in iterable:
         yield element
-  return xs
 
 class FileIter:
   def __init__(self, filename):
@@ -1241,7 +1268,6 @@ class RangeIter:
     return self.size
 
 class ProgIter:
-
   def __init__(self, prog):
     self.prog = prog
 
@@ -1293,6 +1319,21 @@ class MyManager(SyncManager):
     ignore_ctrlc()
     super(MyManager, cls)._run_server(registry, address, authkey, serializer, writer)
 
+def ppstr(s):
+  if isinstance(s, bytes):
+    s = B(s)
+  if not isinstance(s, str):
+    s = str(s)
+  return s.rstrip('\r\n')
+
+def flatten(l):
+  r = []
+  for x in l:
+    if isinstance(x, (list, tuple)):
+      r.extend(map(ppstr, x))
+    else:
+      r.append(ppstr(x))
+  return r
 # }}}
 
 # Controller {{{
@@ -1407,19 +1448,20 @@ Please read the README inside for more examples and usage information.
 
     exe_grp = OptionGroup(parser, 'Execution')
     exe_grp.add_option('-x', dest='actions', action='append', default=[], metavar='arg', help='actions and conditions, see Syntax below')
-    exe_grp.add_option('--start', dest='start', type='int', default=0, metavar='N', help='start from offset N in the wordlist product')
+    exe_grp.add_option('--start', dest='start', type='int', default=0, metavar='N', help='start from offset N in the product of all payload sets')
     exe_grp.add_option('--stop', dest='stop', type='int', default=None, metavar='N', help='stop at offset N')
     exe_grp.add_option('--resume', dest='resume', metavar='r1[,rN]*', help='resume previous run')
     exe_grp.add_option('-e', dest='encodings', action='append', default=[], metavar='arg', help='encode everything between two tags, see Syntax below')
     exe_grp.add_option('-C', dest='combo_delim', default=':', metavar='str', help="delimiter string in combo files (default is ':')")
     exe_grp.add_option('-X', dest='condition_delim', default=',', metavar='str', help="delimiter string in conditions (default is ',')")
-    exe_grp.add_option('--allow-ignore-failures', action='store_true', default=False, dest='allow_ignore_failures', help="failures cannot be ignored with -x (this is by design to avoid false negatives) this option overrides this behavior")
+    exe_grp.add_option('--allow-ignore-failures', action='store_true', default=False, dest='allow_ignore_failures', help="failures cannot be ignored with -x (this is by design to avoid false negatives) this option overrides this safeguard")
 
     opt_grp = OptionGroup(parser, 'Optimization')
-    opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between each test (default is 0)')
+    opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between each attempt (default is 0)')
     opt_grp.add_option('--timeout', dest='timeout', type='int', default=0, metavar='N', help='wait N seconds for a response before retrying payload (default is 0)')
     opt_grp.add_option('--max-retries', dest='max_retries', type='int', default=4, metavar='N', help='skip payload after N retries (default is 4) (-1 for unlimited)')
     opt_grp.add_option('-t', '--threads', dest='num_threads', type='int', default=10, metavar='N', help='number of threads (default is 10)')
+    opt_grp.add_option('--groups', dest='groups', default='', metavar='', help="default is to iterate over the cartesian product of all payload sets, use this option to iterate over sets simultaneously instead (aka pitchfork), see syntax inside (default is '0,1..n')")
 
     log_grp = OptionGroup(parser, 'Logging')
     log_grp.add_option('-l', dest='log_dir', metavar='DIR', help="save output and response data into DIR ")
@@ -1453,6 +1495,7 @@ Please read the README inside for more examples and usage information.
 
     self.payload = {}
     self.iter_keys = {}
+    self.iter_groups = {}
     self.enc_keys = []
 
     self.module = module
@@ -1514,7 +1557,8 @@ Please read the README inside for more examples and usage information.
           kargs.append((k, v))
 
     iter_vals = [v for k, v in sorted(wlists.items())]
-    logger.debug('kargs: %s' % kargs) # [('host', 'NET0'), ('user', 'COMBO10'), ('password', 'COMBO11'), ('domain', 'MOD2')]
+
+    logger.debug('kargs: %s' % kargs) # [('host', 'NET0'), ('user', 'COMBO10'), ('password', 'COMBO11'), ('name', 'google.MOD2')]
     logger.debug('iter_vals: %s' % iter_vals) # ['10.0.0.0/24', 'combos.txt', 'TLD']
 
     for k, v in kargs:
@@ -1567,10 +1611,26 @@ Please read the README inside for more examples and usage information.
                 else:
                   self.payload[k] = v
 
-    logger.debug('iter_keys: %s' % self.iter_keys) # { 0: ('NET', '10.0.0.0/24', ['host']), 1: ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')]), 2: ('MOD', 'TLD', ['name'])
-    logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hex), ('header', 'B64', b64encode), ...
-    logger.debug('payload: %s' % self.payload)
+    if self.iter_keys:
+      if not opts.groups:
+        # default is to iterate over the cartesian product of all payload sets
+        opts.groups = ','.join(map(str, self.iter_keys))
 
+      for i, g in enumerate(opts.groups.split(':')):
+        ks = list(map(int, g.split(',')))
+        for k in ks:
+          if k not in self.iter_keys:
+            raise ValueError('Unknown keyword number %r' % k)
+
+        self.iter_groups[i] = sorted(ks)
+
+    logger.debug('iter_groups: %s' % self.iter_groups) # {0: [0, 1], 1: [2]}
+    logger.debug('iter_keys: %s' % self.iter_keys) # [(0, ('NET', '10.0.0.0/24', ['host'])), (1, ('COMBO', 'combos.txt', [(0, 'user'), (1, 'password')])), (2, ('MOD', 'TLD', ['name']))]
+    logger.debug('enc_keys: %s' % self.enc_keys) # [('password', 'ENC', hex), ('header', 'B64', b64encode), ...
+    logger.debug('payload: %s' % self.payload) # {'host': 'NET0', 'user': 'COMBO10', 'password': 'COMBO11', 'name': 'google.MOD2'}
+
+    self.iter_groups = sorted(self.iter_groups.items())
+    self.iter_keys = sorted(self.iter_keys.items())
     self.available_actions = [k for k, _ in self.builtin_actions + self.module.available_actions]
     self.module_actions = [k for k, _ in self.module.available_actions]
 
@@ -1722,57 +1782,43 @@ Please read the README inside for more examples and usage information.
     global logger
     logger = Logger(log_queue)
 
-    iterables = []
-    total_size = 1
-
     def abort(msg):
       logger.warn(msg)
       self.ns.quit_now = True
 
-    for _, (t, v, _) in self.iter_keys.items():
+    psets = {}
+    for k, (t, v, _) in self.iter_keys:
+
+      pset= []
+      size = 0
 
       if t in ('FILE', 'COMBO'):
-        size = 0
-        files = []
-
         for name in v.split(','):
           for fpath in sorted(glob.iglob(expand_path(name))):
             if not os.path.isfile(fpath):
               return abort("No such file '%s'" % fpath)
 
-            with open(fpath) as f:
-              for _ in f:
-                size += 1
-
-            files.append(FileIter(fpath))
-
-        iterable = chain(*files)
+            pset.append(FileIter(fpath))
+            size += mapcount(fpath)
 
       elif t == 'NET':
-        subnets = [IP(n, make_net=True) for n in v.split(',')]
-        size = sum(len(s) for s in subnets)
-        iterable = chain(*subnets)
+        pset = [IP(n, make_net=True) for n in v.split(',')]
+        size = sum(len(subnet) for subnet in pset)
 
       elif t == 'MOD':
         elements, size = self.module.available_keys[v]()
-        iterable = chain(elements)
+        pset = [elements]
 
       elif t == 'RANGE':
-        size = 0
-        ranges = []
-
         for r in v.split(','):
           typ, opt = r.split(':', 1)
 
           try:
-            it = RangeIter(typ, opt)
-            size += len(it)
+            ri = RangeIter(typ, opt)
+            size += len(ri)
+            pset.append(ri)
           except ValueError as e:
             return abort("Invalid range '%s' of type '%s', %s" % (opt, typ, e))
-
-          ranges.append(it)
-
-        iterable = chain(*ranges)
 
       elif t == 'PROG':
         m = re.match(r'(.+),(\d+)$', v)
@@ -1783,19 +1829,48 @@ Please read the README inside for more examples and usage information.
 
         logger.debug('prog: %s, size: %s' % (prog, size))
 
-        it = ProgIter(prog)
-        iterable, size = chain(it), int(size)
+        pset = [ProgIter(prog)]
+        size = int(size)
 
       else:
         return abort('Incorrect keyword %r' % t)
 
-      total_size *= size
-      iterables.append(iterable)
+      psets[k] = chain(*pset), size
 
-    if not iterables:
-      iterables.append(chain(['']))
+    logger.debug('payload sets: %r' % psets)
 
-    if self.stop:
+    zipit = []
+    if not psets:
+      total_size = 1
+      zipit.append([''])
+
+    else:
+      group_sizes = {}
+      for i, ks in self.iter_groups:
+        group_sizes[i] = reduce(mul, (size for _, size in [psets[k] for k in ks]))
+
+      logger.debug('group_sizes: %s' % group_sizes)
+
+      total_size = max(group_sizes.values())
+      biggest, _ = max(group_sizes.items(), key=itemgetter(1))
+
+      for i, ks in self.iter_groups:
+        r = []
+
+        for k in ks:
+          pset, _ = psets[k]
+          r.append(pset)
+
+        it = product(*r)
+        if i != biggest:
+          it = cycle(it)
+
+        zipit.append(it)
+
+    logger.debug('zipit: %s' % zipit)
+    logger.debug('total_size: %d' % total_size)
+
+    if self.stop and total_size > self.stop:
       total_size = self.stop - self.start
     else:
       total_size -= self.start
@@ -1809,13 +1884,18 @@ Please read the README inside for more examples and usage information.
     logger.headers()
 
     count = 0
-    for pp in islice(product(*iterables), self.start, self.stop):
+    for pp in islice(zip(*zipit), self.start, self.stop):
 
       if self.ns.quit_now:
         break
 
-      cid = count % self.num_threads
-      prod = [str(p).rstrip('\r\n') for p in pp]
+      pp = flatten(pp)
+      logger.debug('pp: %s' % pp)
+
+      prod = [''] * len(pp)
+      for _, ks in self.iter_groups:
+        for k in ks:
+          prod[k] = pp.pop(0)
 
       if self.resume:
         idx = count % len(self.resume)
@@ -1831,6 +1911,7 @@ Please read the README inside for more examples and usage information.
           break
 
         try:
+          cid = count % self.num_threads
           task_queues[cid].put_nowait(prod)
           break
         except Full:
@@ -1883,7 +1964,7 @@ Please read the README inside for more examples and usage information.
 
       payload = self.payload.copy()
 
-      for i, (t, _, keys) in self.iter_keys.items():
+      for i, (t, _, keys) in self.iter_keys:
         if t == 'FILE':
           for k in keys:
             payload[k] = payload[k].replace('FILE%d' % i, prod[i])
@@ -1907,10 +1988,10 @@ Please read the README inside for more examples and usage information.
         payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(b(m.group(1))), payload[k])
 
       logger.debug('product: %s' % prod)
-      pp_prod = ':'.join(prod)
+      prod_str = ':'.join(prod)
 
       if self.check_free(payload):
-        report_queue.put(('skip', pp_prod, None, 0))
+        report_queue.put(('skip', prod_str, None, 0))
         continue
 
       try_count = 0
@@ -1959,7 +2040,7 @@ Please read the README inside for more examples and usage information.
           actions = {'fail': None}
 
         actions.update(self.lookup_actions(resp))
-        report_queue.put((actions, pp_prod, resp, time() - start_time))
+        report_queue.put((actions, prod_str, resp, time() - start_time))
 
         for name in self.module_actions:
           if name in actions:
@@ -2038,7 +2119,6 @@ Please read the README inside for more examples and usage information.
           self.push_final(resp)
 
         p.done_count += 1
-
 
   def monitor_interaction(self):
 
@@ -2127,7 +2207,6 @@ Please read the README inside for more examples and usage information.
             total_count,
             total_size/num_threads,
             p.current))
-
 # }}}
 
 # Response_Base {{{
@@ -4858,6 +4937,9 @@ class TCP_fuzz:
 # }}}
 
 # Dummy Test {{{
+def generate_tst():
+  return ['prd', 'dev'], 2
+
 class Dummy_test:
   '''Testing module'''
 
@@ -4874,6 +4956,10 @@ class Dummy_test:
     ('delay', 'fake random delay'),
     )
   available_actions = ()
+
+  available_keys = {
+    'TST': generate_tst,
+    }
 
   Response = Response_Base
 

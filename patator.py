@@ -24,7 +24,6 @@ __pyver__   = '%d.%d.%d' % sys.version_info[0:3]
 __banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
 
 # README {{{
-
 '''
 INTRODUCTION
 ------------
@@ -849,7 +848,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
         f.write('</options>\n')
         f.write('<results>\n')
 
-    else: # remove "</results>...</root>"
+    else:  # remove "</results>...</root>"
       with open(results_xml, 'r+b') as f:
         offset = f.read().find(b'</results>')
         if offset != -1:
@@ -911,7 +910,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
     elif action == 'setLevel':
       logger.setLevel(args[0])
 
-    else: # 'warn', 'info', 'debug'
+    else:  # 'warn', 'info', 'debug'
       getattr(logger, action)(args[0], extra={'pname': pname})
 
 # }}}
@@ -931,7 +930,6 @@ import random
 from decimal import Decimal
 from base64 import b64encode
 from datetime import timedelta, datetime
-from struct import unpack
 import socket
 import subprocess
 import hashlib
@@ -959,14 +957,16 @@ except ImportError:
   from sys import maxint
 
 PY3 = sys.version_info >= (3,)
-if PY3: # http://python3porting.com/problems.html
+if PY3:  # http://python3porting.com/problems.html
   def b(x):
     return x.encode('ISO-8859-1', errors='ignore')
+
   def B(x):
     return x.decode(errors='ignore')
 else:
   def b(x):
     return x
+
   def B(x):
     return x
 
@@ -1017,7 +1017,8 @@ if sys.platform.startswith('win'):
   forking.Popen = _Popen
 
 from multiprocessing.managers import SyncManager
-# imports }}}
+
+# }}}
 
 # utils {{{
 def expand_path(s):
@@ -1034,7 +1035,7 @@ def which(program):
     return os.path.exists(fpath) and os.access(fpath, os.X_OK)
 
   fpath, fname = os.path.split(program)
-  if on_windows() and fname[-4:] != '.exe' :
+  if on_windows() and fname[-4:] != '.exe':
     fname += '.exe'
 
   if fpath:
@@ -1090,7 +1091,7 @@ def create_time_dir(top_path, desc):
   return time_path
 
 def pprint_seconds(seconds, fmt):
-  return fmt % reduce(lambda x,y: divmod(x[0], y) + x[1:], [(seconds,),60,60])
+  return fmt % reduce(lambda x, y: divmod(x[0], y) + x[1:], [(seconds,), 60, 60])
 
 def md5hex(plain):
   return hashlib.md5(plain).hexdigest()
@@ -1434,7 +1435,7 @@ For example, to ignore all redirects to the home page:
     encoding   := "%s"
 
 %s''' % ('" | "'.join(k for k in self.available_encodings),
-       '\n'.join('    %-12s: %s' % (k, v) for k, (f, v) in self.available_encodings.items()))
+        '\n'.join('    %-12s: %s' % (k, v) for k, (f, v) in self.available_encodings.items()))
 
     epilog += '''
 
@@ -1789,7 +1790,7 @@ Please read the README inside for more examples and usage information.
     psets = {}
     for k, (t, v, _) in self.iter_keys:
 
-      pset= []
+      pset = []
       size = 0
 
       if t in ('FILE', 'COMBO'):
@@ -1855,8 +1856,8 @@ Please read the README inside for more examples and usage information.
       biggest, _ = max(group_sizes.items(), key=itemgetter(1))
 
       for i, ks in self.iter_groups:
-        r = []
 
+        r = []
         for k in ks:
           pset, _ = psets[k]
           r.append(pset)
@@ -1976,13 +1977,13 @@ Please read the README inside for more examples and usage information.
             payload[k] = payload[k].replace('COMBO%d%d' % (i, j), prod[i].split(self.combo_delim)[j])
         elif t == 'MOD':
           for k in keys:
-            payload[k] = payload[k].replace('MOD%d' %i, prod[i])
+            payload[k] = payload[k].replace('MOD%d' % i, prod[i])
         elif t == 'RANGE':
           for k in keys:
-            payload[k] = payload[k].replace('RANGE%d' %i, prod[i])
+            payload[k] = payload[k].replace('RANGE%d' % i, prod[i])
         elif t == 'PROG':
           for k in keys:
-            payload[k] = payload[k].replace('PROG%d' %i, prod[i])
+            payload[k] = payload[k].replace('PROG%d' % i, prod[i])
 
       for k, m, e in self.enc_keys:
         payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(b(m.group(1))), payload[k])
@@ -2134,7 +2135,8 @@ Please read the README inside for more examples and usage information.
 
     else:
       i, _, _ = select([sys.stdin], [], [], .1)
-      if not i: return
+      if not i:
+        return
       command = i[0].readline().strip()
 
     if command == 'h':
@@ -2501,7 +2503,7 @@ class SSH_login(TCP_Cache):
               fp.auth_password(user, password, fallback=False)
 
             elif auth_type == 'keyboard-interactive':
-              fp.auth_interactive(user, lambda a,b,c: [password] if len(c) == 1 else [])
+              fp.auth_interactive(user, lambda a, b, c: [password] if len(c) == 1 else [])
 
             elif auth_type == 'auto':
               fp.auth_password(user, password, fallback=True)
@@ -3018,10 +3020,12 @@ class POP_login(TCP_Cache):
 
   def connect(self, host, port, ssl, timeout):
     if ssl == '0':
-      if not port: port = 110
+      if not port:
+        port = 110
       fp = POP3(host, int(port), timeout=int(timeout))
     else:
-      if not port: port = 995
+      if not port:
+        port = 995
       fp = POP3_SSL(host, int(port)) # timeout=int(timeout)) # no timeout option in python2
 
     return TCP_Connection(fp, fp.welcome)
@@ -3128,10 +3132,12 @@ class IMAP_login:
 
   def execute(self, host, port='', ssl='0', user=None, password=None):
     if ssl == '0':
-      if not port: port = 143
+      if not port:
+        port = 143
       klass = IMAP4
     else:
-      if not port: port = 993
+      if not port:
+        port = 993
       klass = IMAP4_SSL
 
     with Timing() as timing:
@@ -3652,7 +3658,7 @@ class Controller_HTTP(Controller):
       if r.path.startswith('http'):
         opts['url'] = r.path
       else:
-        _, _, opts['path'], opts['params'], opts['query'], opts['fragment'] =  urlparse(r.path)
+        _, _, opts['path'], opts['params'], opts['query'], opts['fragment'] = urlparse(r.path)
         opts['host'] = r.headers['Host']
 
       opts['header'] = str(r.headers)
@@ -4160,7 +4166,6 @@ class VNC:
     else:
       raise VNC_Error('Unknown response: %r (code: %s)' % (resp, code))
 
-
   def gen_key(self, key):
     newkey = []
     for ki in range(len(key)):
@@ -4312,7 +4317,8 @@ def generate_srv():
         continue
       for line in open(f):
         match = re.match(r'([a-zA-Z0-9]+)\s', line)
-        if not match: continue
+        if not match:
+          continue
         for w in re.split(r'[^a-z0-9]', match.group(1).strip().lower()):
           ret.extend(['_%s.%s' % (w, i) for i in ('_tcp', '_udp')])
     return ret
@@ -4331,10 +4337,12 @@ class HostInfo:
     if self.name:
       line = ' '.join(self.name)
     if self.ip:
-      if line: line += ' / '
+      if line:
+        line += ' / '
       line += ' '.join(map(str, self.ip))
     if self.alias:
-      if line: line += ' / '
+      if line:
+        line += ' / '
       line += ' '.join(self.alias)
 
     return line
@@ -4434,10 +4442,11 @@ class Controller_DNS(Controller):
         else:
           i = 0
         d = '.'.join(name.split('.')[i:])
-        if d not in domains: domains[d] = 0
+        if d not in domains:
+          domains[d] = 0
         domains[d] += 1
 
-    for domain, count in sorted(domains.items(), key=lambda a:a[0].split('.')[-1::-1]):
+    for domain, count in sorted(domains.items(), key=lambda a: a[0].split('.')[-1::-1]):
       print('%34s %d' % (domain, count))
 
     print('Networks ' + '-'*41)
@@ -4447,7 +4456,8 @@ class Controller_DNS(Controller):
         nets[ip] = [ip]
       else:
         n = ip.make_net('255.255.255.0')
-        if n not in nets: nets[n] = []
+        if n not in nets:
+          nets[n] = []
         nets[n].append(ip)
 
     for net, ips in sorted(nets.items()):
@@ -4615,7 +4625,7 @@ class SNMP_login:
       errorIndication, errorStatus, errorIndex, varBinds = cmdgen.CommandGenerator().getCmd(
         security_model,
         cmdgen.UdpTransportTarget((host, int(port or 161)), timeout=int(timeout), retries=int(retries)),
-        (1,3,6,1,2,1,1,1,0)
+        (1, 3, 6, 1, 2, 1, 1, 1, 0)
         )
 
     code = '%d-%d' % (errorStatus, errorIndex)
@@ -4648,7 +4658,7 @@ IKE_GROUP = [('1', 'modp768'), ('2', 'modp1024'), ('5', 'modp1536'),
 
 def generate_transforms():
   lists = list(map(lambda l: [i[0] for i in l], [IKE_ENC, IKE_HASH, IKE_AUTH, IKE_GROUP]))
-  return map(lambda p: ','.join(p), product(*[chain(l) for l in lists])), reduce(lambda x,y: x*y, map(len, lists))
+  return map(lambda p: ','.join(p), product(*[chain(l) for l in lists])), reduce(lambda x, y: x*y, map(len, lists))
 
 class Controller_IKE(Controller):
 

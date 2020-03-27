@@ -1108,14 +1108,18 @@ def html_unescape(s):
     h = HTMLParser()
     return h.unescape(s)
 
-def mapcount(filename):
-  lines = 0
-  with open(filename, 'r+') as f:
-    buf = mmap.mmap(f.fileno(), 0)
-    readline = buf.readline
-    while readline():
-      lines += 1
-  return lines
+def count_lines(filename):
+  with open(filename) as f:
+    lines = 0
+    buf_size = 1024 * 1024
+    read_f = f.read
+
+    buf = read_f(buf_size)
+    while buf:
+      lines += buf.count('\n')
+      buf = read_f(buf_size)
+
+    return lines
 
 # I rewrote itertools.product to avoid memory over-consumption when using large wordlists
 def product(xs, *rest):
@@ -1800,7 +1804,7 @@ Please read the README inside for more examples and usage information.
               return abort("No such file '%s'" % fpath)
 
             pset.append(FileIter(fpath))
-            size += mapcount(fpath)
+            size += count_lines(fpath)
 
       elif t == 'NET':
         pset = [IP(n, make_net=True) for n in v.split(',')]

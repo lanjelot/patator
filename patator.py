@@ -243,7 +243,7 @@ over sets simultaneously.
 
 If the value of a module option starts with the letter @, the rest should be a
 filename. The contents of the file will be loaded into the option:
-./module raw_request=@req.txt 0=vhosts.txt 1=uagents
+./module raw_request=@req.txt 0=vhosts.txt 1=uagents.txt
 
 * Keywords
 

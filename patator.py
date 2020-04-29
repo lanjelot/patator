@@ -4062,24 +4062,18 @@ class RDP_login:
 
   def execute(self, host, port='3389', user=None, password=None):
 
-    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert-ignore', '+auth-only', '/sec:nla']
+    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert-ignore', '+auth-only', '/sec:nla', '/log-level:error']
 
     with Timing() as timing:
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
       out, err = map(B, p.communicate())
       code = p.returncode
 
-    err = err.replace('''Authentication only. Don't connect to X.
-credssp_recv() error: -1
-freerdp_set_last_error 0x20009\n''', '')
-    err = err.replace(''', check credentials.
-If credentials are valid, the NTLMSSP implementation may be to blame.
-Error: protocol security negotiation or connection failure
-Authentication only, exit status 1
-Authentication only, exit status 1''', '')
-    err = err.replace('''Authentication only. Don't connect to X.
-Authentication only, exit status 0
-Authentication only, exit status 0''', 'OK')
+    m = re.search(' (ERR.+?) ', err)
+    if m:
+      err = m.group(1)
+    elif 'Authentication only, exit status 0' in err:
+      err = 'OK'
 
     mesg = repr((out + err).strip())[1:-1]
     trace = '[out]\n%s\n[err]\n%s' % (out, err)

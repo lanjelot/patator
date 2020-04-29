@@ -52,7 +52,7 @@ Many thanks! [@lanjelot](https://twitter.com/lanjelot)
 
 ## Usage Examples
 
-* FTP : Enumerating users denied login in vsftpd/userlist
+* FTP : Enumerating users denied login in `vsftpd/userlist`
 
 ```
 $ ftp_login host=10.0.0.1 user=FILE0 0=logins.txt password=asdf -x ignore:mesg='Login incorrect.' -x ignore,reset,retry:code=500
@@ -68,7 +68,7 @@ $ ftp_login host=10.0.0.1 user=FILE0 0=logins.txt password=asdf -x ignore:mesg='
 ...
 ```
 
-Tested against `vsftpd-3.0.2-9` on `CentOS 7.0-1406`
+Tested against `vsftpd-3.0.2-9` on `CentOS 7.0-1406`.
 
 * SSH : Time-based user enumeration
 
@@ -84,7 +84,7 @@ $ ssh_login host=10.0.0.1 user=FILE0 0=logins.txt password=$(perl -e "print 'A'x
 ...
 ```
 
-Tested against openssh-server 1:6.0p1-4+deb7u2 on Debian 7.8
+Tested against `openssh-server 1:6.0p1-4+deb7u2` on `Debian 7.8`.
 
 * HTTP : Brute-force phpMyAdmin logon
 
@@ -108,7 +108,7 @@ $ grep AllowNoPassword /tmp/qsdf/72_200\:13215\:0\:0.351.txt
 ... class="icon ic_s_error" /> Login without a password is forbidden by configuration (see AllowNoPassword)</div><noscript>
 ```
 
-Tested against phpMyAdmin 4.2.7.1.
+Tested against `phpMyAdmin 4.2.7.1`.
 
 * IKE : Enumerate transforms supported by VPN peer
 
@@ -223,7 +223,7 @@ Networks -----------------------------------------
 03:18:53 patator    INFO - Hits/Done/Skip/Fail/Size: 11/1000/0/0/1000, Avg: 133 r/s, Time: 0h 0m 7s
 ```
 
-Also notice that test.hsc.fr. is the start of a new zone because we got NOERROR and no IP address.
+Also notice that `test.hsc.fr.` is the start of a new zone because we got NOERROR and no IP address.
 
 * DNS : Reverse lookup two netblocks owned by Google
 

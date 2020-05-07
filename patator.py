@@ -967,7 +967,7 @@ if PY3:  # http://python3porting.com/problems.html
     return x.encode('ISO-8859-1', errors='ignore')
 
   def B(x):
-    return x.decode(errors='ignore')
+    return x.decode('ISO-8859-1', errors='ignore')
 else:
   def b(x):
     return x
@@ -1114,14 +1114,14 @@ def html_unescape(s):
     return h.unescape(s)
 
 def count_lines(filename):
-  with open(filename) as f:
+  with open(filename, 'rb') as f:
     lines = 0
     buf_size = 1024 * 1024
     read_f = f.read
 
     buf = read_f(buf_size)
     while buf:
-      lines += buf.count('\n')
+      lines += buf.count(b'\n')
       buf = read_f(buf_size)
 
     return lines
@@ -1150,7 +1150,7 @@ class FileIter:
     self.filename = filename
 
   def __iter__(self):
-    return open(self.filename)
+    return open(self.filename, 'rb')
 
 def padhex(d):
   x = '%x' % d

@@ -47,6 +47,7 @@ Currently it supports the following modules:
   + pop_passd      : Brute-force poppassd (http://netwinsite.com/poppassd/)
   + imap_login     : Brute-force IMAP4
   + ldap_login     : Brute-force LDAP
+  + dcom_login     : Brute-force DCOM
   + smb_login      : Brute-force SMB
   + smb_lookupsid  : Brute-force SMB SID-lookup
   + rlogin_login   : Brute-force rlogin
@@ -459,6 +460,12 @@ http_fuzz url=FILE0 0=urls.txt method=OPTIONS -x ignore:egrep='^Allow: HEAD, GET
 ldap_login host=10.0.0.1 binddn='cn=FILE0,dc=example,dc=com' 0=logins.txt bindpw=FILE1 1=passwords.txt
  -x ignore:mesg='ldap_bind: Invalid credentials (49)' ssl=1 port=636
          (a)                                              (b)
+}}}
+{{{ DCOM
+
+* Brute-force authentication.
+---------
+dcom_login host=10.0.0.1 user='admin' password=FILE0 0=passwords.txt
 }}}
 {{{ SMB
 
@@ -2812,6 +2819,39 @@ class Finger_lookup:
     return resp
 # }}}
 
+# DCOM {{{
+from impacket.dcerpc.v5.dcomrt import DCOMConnection
+from impacket.dcerpc.v5.dcom import wmi
+
+class DCOM_login:
+  '''Brute-force DCOM'''
+  usage_hints = (
+    """%prog host=10.0.0.1 user='admin' password=FILE0 0=passwords.txt""",
+    )
+
+  available_options = (
+    ('host', 'target host'),
+    ('user', 'usernames to test'),
+    ('password', 'passwords to test'),
+    ('domain', 'domains to test'),
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, host, user='', password='', domain=''):
+    code = -1
+    mesg = 'OK'
+    dcom = DCOMConnection(host, user, password, domain)
+    try:
+      with Timing() as timing:
+        iInterface = dcom.CoCreateInstanceEx(wmi.CLSID_WbemLevel1Login,wmi.IID_IWbemLevel1Login)
+    except Exception as e:
+      mesg = e.error_string
+    dcom.disconnect()
+    return self.Response(code, mesg, timing)
+# }}}
+
 # LDAP {{{
 if not which('ldapsearch'):
   notfound.append('openldap')
@@ -5001,6 +5041,7 @@ modules = [
   ('pop_passd', (Controller, POP_passd)),
   ('imap_login', (Controller, IMAP_login)),
   ('ldap_login', (Controller, LDAP_login)),
+  ('dcom_login', (Controller, DCOM_login)),
   ('smb_login', (Controller, SMB_login)),
   ('smb_lookupsid', (Controller, SMB_lookupsid)),
   ('rlogin_login', (Controller, Rlogin_login)),
@@ -5033,7 +5074,7 @@ dependencies = {
   'libcurl': [('http_fuzz', 'rdp_gateway'), 'https://curl.haxx.se/', '7.58.0'],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.4'],
   'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.45'],
-  'impacket': [('smb_login', 'smb_lookupsid', 'mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.20'],
+  'impacket': [('smb_login', 'smb_lookupsid', 'dcom_login', 'mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.20'],
   'pyopenssl': [('mssql_login',), 'https://pyopenssl.org/', '19.1.0'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '7.3.0'],
   'mysqlclient': [('mysql_login',), 'https://github.com/PyMySQL/mysqlclient-python', '1.4.6'],

@@ -166,7 +166,7 @@ unzip            | ZIP passwords  | http://www.info-zip.org/                    
 --------------------------------------------------------------------------------------------------
 Java             | keystore files | http://www.oracle.com/technetwork/java/javase/     |       6 |
 --------------------------------------------------------------------------------------------------
-pysqlcipher      | SQLCipher      | https://github.com/leapcode/pysqlcipher/           |  2.6.10 |
+pysqlcipher3     | SQLCipher      | https://github.com/rigglemania/pysqlcipher3        |   1.0.3 |
 --------------------------------------------------------------------------------------------------
 python           |                | http://www.python.org/                             |     3.6 |
 --------------------------------------------------------------------------------------------------
@@ -4847,7 +4847,7 @@ class Keystore_pass:
 
 # SQLCipher {{{
 try:
-  from pysqlcipher import dbapi2 as sqlcipher
+  from pysqlcipher3 import dbapi2 as sqlcipher
 except ImportError:
   notfound.append('pysqlcipher')
 
@@ -5047,7 +5047,7 @@ dependencies = {
   'ike-scan': [('ike_enum',), 'http://www.nta-monitor.com/tools-resources/security-tools/ike-scan', '1.9'],
   'unzip': [('unzip_pass',), 'http://www.info-zip.org/', '6.0'],
   'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/', '6'],
-  'pysqlcipher': [('sqlcipher_pass',), 'https://github.com/leapcode/pysqlcipher/', '2.6.10'],
+  'pysqlcipher': [('sqlcipher_pass',), 'https://github.com/rigglemania/pysqlcipher3', '1.0.3'],
   'python': [('ftp_login',), 'Patator requires Python 3.6 or above and may still work on Python 2.'],
   }
 # }}}

@@ -12,3 +12,4 @@ IPy
 pysnmp
 pyasn1
 #pysqlcipher # no python3 compatibility
+pysqlcipher3

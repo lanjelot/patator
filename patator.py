@@ -241,8 +241,8 @@ The numbers of every keyword given on the command line must be specified.
 Use ',' to iterate over the cartesian product of sets and use ':' to iterate
 over sets simultaneously.
 
-If the value of a module option starts with the letter @, the rest should be a
-filename. The contents of the file will be loaded into the option:
+If the value of a module option starts with the @ character, the rest should be
+a filename. The contents of the file will be loaded into the option:
 ./module raw_request=@req.txt 0=vhosts.txt 1=uagents.txt
 
 * Keywords

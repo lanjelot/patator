@@ -1483,6 +1483,7 @@ Please read the README inside for more examples and usage information.
 
     dbg_grp = OptionGroup(parser, 'Debugging')
     dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='enable debug messages')
+    dbg_grp.add_option('--auto-progress', dest='auto_progress', type='int', default=0, metavar='N', help='automatically display progress every N seconds')
 
     parser.option_groups.extend([exe_grp, opt_grp, log_grp, dbg_grp])
 
@@ -1520,6 +1521,8 @@ Please read the README inside for more examples and usage information.
     self.num_threads = opts.num_threads
     self.start, self.stop = opts.start, opts.stop
     self.allow_ignore_failures = opts.allow_ignore_failures
+    self.auto_progress = opts.auto_progress
+    self.auto_progress_next = None
 
     self.resume = [int(i) for i in opts.resume.split(',')] if opts.resume else None
 
@@ -2132,21 +2135,44 @@ Please read the README inside for more examples and usage information.
 
   def monitor_interaction(self):
 
-    if on_windows():
-      import msvcrt
-      if not msvcrt.kbhit():
-        sleep(.1)
+    def read_command():
+      if on_windows():
+        import msvcrt
+        if not msvcrt.kbhit():
+          sleep(.1)
+          return None
+
+        command = msvcrt.getche()
+        if command == 'x':
+          command += raw_input()
+
+      else:
+        i, _, _ = select([sys.stdin], [], [], .1)
+        if not i:
+          return None
+        command = i[0].readline().strip()
+
+      return command
+
+    command = read_command()
+
+    if command is None:
+      if self.auto_progress == 0:
         return
 
-      command = msvcrt.getche()
-      if command == 'x':
-        command += raw_input()
-
-    else:
-      i, _, _ = select([sys.stdin], [], [], .1)
-      if not i:
+      if self.ns.paused:
+        self.auto_progress_next = None
         return
-      command = i[0].readline().strip()
+
+      if self.auto_progress_next is None:
+        self.auto_progress_next = time() + self.auto_progress
+        return
+
+      if time() < self.auto_progress_next:
+        return
+
+      self.auto_progress_next = None
+      command = ''
 
     if command == 'h':
       logger.info('''Available commands:
@@ -2176,7 +2202,7 @@ Please read the README inside for more examples and usage information.
     elif command == 'a':
       logger.info(repr(self.ns.actions))
 
-    elif command.startswith('x'):
+    elif command.startswith('x') or command.startswith('-x'):
       _, arg = command.split(' ', 1)
       try:
         self.update_actions(arg)

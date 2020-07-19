@@ -714,14 +714,11 @@ class TXTFormatter(logging.Formatter):
   def __init__(self, indicatorsfmt):
     self.resultfmt = '%(asctime)s %(name)-7s %(levelname)7s - ' + ' '.join('%%(%s)%ss' % (k, v) for k, v in indicatorsfmt) + ' | %(candidate)-34s | %(num)5s | %(mesg)s'
 
-    logging.Formatter.__init__(self, datefmt='%H:%M:%S')
+    super(TXTFormatter, self).__init__(datefmt='%H:%M:%S')
 
   def format(self, record):
     if not record.msg or record.msg == 'headers':
       fmt = self.resultfmt
-
-      if not all(True if 0x20 <= ord(c) < 0x7f else False for c in record.candidate):
-        record.candidate = repr(record.candidate)
 
     else:
       if record.levelno == logging.DEBUG:
@@ -734,18 +731,30 @@ class TXTFormatter(logging.Formatter):
     else:
       self._fmt = fmt
 
-    return logging.Formatter.format(self, record)
+    pp = {}
+    for k, v in record.__dict__.items():
+      if k in ['candidate', 'mesg']:
+        pp[k] = repr23(v)
+      else:
+        pp[k] = v
+
+    return super(TXTFormatter, self).format(logging.makeLogRecord(pp))
 
 class CSVFormatter(logging.Formatter):
   def __init__(self, indicatorsfmt):
     fmt = '%(asctime)s,%(levelname)s,'+','.join('%%(%s)s' % name for name, _ in indicatorsfmt)+',%(candidate)s,%(num)s,%(mesg)s'
 
-    logging.Formatter.__init__(self, fmt, datefmt='%H:%M:%S')
+    super(CSVFormatter, self).__init__(fmt=fmt, datefmt='%H:%M:%S')
 
   def format(self, record):
-    for k in ['candidate', 'mesg']:
-      record.__dict__[k] = '"%s"' % record.__dict__[k].replace('"', '""')
-    return logging.Formatter.format(self, record)
+    pp = {}
+    for k, v in record.__dict__.items():
+      if k in ['candidate', 'mesg']:
+        pp[k] = '"%s"' % v.replace('"', '""')
+      else:
+        pp[k] = v
+
+    return super(CSVFormatter, self).format(logging.makeLogRecord(pp))
 
 class XMLFormatter(logging.Formatter):
   def __init__(self, indicatorsfmt):
@@ -757,15 +766,17 @@ class XMLFormatter(logging.Formatter):
   <target %(target)s/>
 </result>'''
 
-    logging.Formatter.__init__(self, fmt, datefmt='%H:%M:%S')
+    super(XMLFormatter, self).__init__(fmt=fmt, datefmt='%H:%M:%S')
 
   def format(self, record):
-
+    pp = {}
     for k, v in record.__dict__.items():
       if isinstance(v, str):
-        record.__dict__[k] = xmlescape(v)
+        pp[k] = xmlescape(v)
+      else:
+        pp[k] = v
 
-    return super(XMLFormatter, self).format(record)
+    return super(XMLFormatter, self).format(logging.makeLogRecord(pp))
 
 class MsgFilter(logging.Filter):
 
@@ -779,12 +790,12 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
 
   ignore_ctrlc()
 
-  try:
-    # python3
+  if PY3:
     logging._levelToName[logging.ERROR] = 'FAIL'
-  except:
-    # python2
+    encoding = 'latin1'
+  else:
     logging._levelNames[logging.ERROR] = 'FAIL'
+    encoding = None
 
   handler_out = logging.StreamHandler()
   handler_out.setFormatter(TXTFormatter(indicatorsfmt))
@@ -801,7 +812,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
     with open(runtime_log, 'a') as f:
       f.write('$ %s\n' % ' '.join(argv))
 
-    handler_log = logging.FileHandler(runtime_log)
+    handler_log = logging.FileHandler(runtime_log, encoding=encoding)
     handler_log.setFormatter(TXTFormatter(indicatorsfmt))
 
     logger.addHandler(handler_log)
@@ -813,7 +824,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
       with open(results_csv, 'w') as f:
         f.write('time,level,%s\n' % ','.join(names))
 
-    handler_csv = logging.FileHandler(results_csv)
+    handler_csv = logging.FileHandler(results_csv, encoding=encoding)
     handler_csv.addFilter(MsgFilter())
     handler_csv.setFormatter(CSVFormatter(indicatorsfmt))
 
@@ -835,7 +846,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
         while i < len(argv):
           arg = argv[i]
           if arg[0] == '-':
-            if arg in ('-d', '--debug', '--allow-ignore-failures'):
+            if arg in ('-d', '--debug', '--allow-ignore-failures', '-y'):
               f.write('  <option type="global" name=%s/>\n' % xmlquoteattr(arg))
             else:
               if not arg.startswith('--') and len(arg) > 2:
@@ -860,7 +871,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
           f.seek(offset)
           f.truncate(f.tell())
 
-    handler_xml = logging.FileHandler(results_xml)
+    handler_xml = logging.FileHandler(results_xml, encoding=encoding)
     handler_xml.addFilter(MsgFilter())
     handler_xml.setFormatter(XMLFormatter(indicatorsfmt))
 
@@ -904,13 +915,13 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
 
       if log_dir:
         filename = '%d_%s' % (num, '-'.join(map(str, resp.indicators())))
-        with open('%s.txt' % os.path.join(log_dir, filename), 'w') as f:
+        with open('%s.txt' % os.path.join(log_dir, filename), 'wb') as f:
           f.write(resp.dump())
 
     elif action == 'save_hit':
       if hits_file:
-        with open(hits_file, 'a') as f:
-          f.write('%s\n' % ':'.join(args))
+        with open(hits_file, 'ab') as f:
+          f.write(b(args[0] +'\n'))
 
     elif action == 'setLevel':
       logger.setLevel(args[0])
@@ -946,28 +957,33 @@ import glob
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from ssl import wrap_socket
 from binascii import hexlify, unhexlify
-import mmap
-try:
-  # python3+
+
+PY3 = sys.version_info >= (3,)
+
+if PY3:
   from queue import Empty, Full
   from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl, quote_plus
   from io import StringIO
   from sys import maxsize as maxint
-except ImportError:
-  # python2.6+
+else:
   from Queue import Empty, Full
   from urllib import quote, urlencode, quote_plus
   from urlparse import urlparse, urlunparse, parse_qsl
   from cStringIO import StringIO
   from sys import maxint
 
-PY3 = sys.version_info >= (3,)
 if PY3:  # http://python3porting.com/problems.html
   def b(x):
-    return x.encode('ISO-8859-1', errors='ignore')
+    if isinstance(x, bytes):
+      return x
+    else:
+      return x.encode('ISO-8859-1', errors='ignore')
 
   def B(x):
-    return x.decode('ISO-8859-1', errors='ignore')
+    if isinstance(x, str):
+      return x
+    else:
+      return x.decode('ISO-8859-1', errors='ignore')
 else:
   def b(x):
     return x
@@ -1054,20 +1070,20 @@ def which(program):
 
   return None
 
-def build_logdir(opt_dir, opt_auto):
+def build_logdir(opt_dir, opt_auto, assume_yes):
     if opt_auto:
       return create_time_dir(opt_dir or '/tmp/patator', opt_auto)
     elif opt_dir:
-      return create_dir(opt_dir)
+      return create_dir(opt_dir, assume_yes)
     else:
       return None
 
-def create_dir(top_path):
+def create_dir(top_path, assume_yes):
   top_path = os.path.abspath(top_path)
   if os.path.isdir(top_path):
     files = os.listdir(top_path)
     if files:
-      if input("Directory '%s' is not empty, do you want to wipe it ? [Y/n]: " % top_path) != 'n':
+      if assume_yes or input("Directory '%s' is not empty, do you want to wipe it ? [Y/n]: " % top_path) != 'n':
         for root, dirs, files in os.walk(top_path):
           if dirs:
             print("Directory '%s' contains sub-directories, safely aborting..." % root)
@@ -1097,6 +1113,15 @@ def create_time_dir(top_path, desc):
 
 def pprint_seconds(seconds, fmt):
   return fmt % reduce(lambda x, y: divmod(x[0], y) + x[1:], [(seconds,), 60, 60])
+
+def repr23(s):
+  if all(True if 0x20 <= ord(c) < 0x7f else False for c in s):
+    return s
+
+  if PY3:
+    return repr(s.encode('latin1'))[1:]
+  else:
+    return repr(s)
 
 def md5hex(plain):
   return hashlib.md5(plain).hexdigest()
@@ -1344,6 +1369,7 @@ def flatten(l):
     else:
       r.append(ppstr(x))
   return r
+
 # }}}
 
 # Controller {{{
@@ -1464,7 +1490,8 @@ Please read the README inside for more examples and usage information.
     exe_grp.add_option('-e', dest='encodings', action='append', default=[], metavar='arg', help='encode everything between two tags, see Syntax below')
     exe_grp.add_option('-C', dest='combo_delim', default=':', metavar='str', help="delimiter string in combo files (default is ':')")
     exe_grp.add_option('-X', dest='condition_delim', default=',', metavar='str', help="delimiter string in conditions (default is ',')")
-    exe_grp.add_option('--allow-ignore-failures', action='store_true', default=False, dest='allow_ignore_failures', help="failures cannot be ignored with -x (this is by design to avoid false negatives) this option overrides this safeguard")
+    exe_grp.add_option('--allow-ignore-failures', dest='allow_ignore_failures', action='store_true', help="failures cannot be ignored with -x (this is by design to avoid false negatives) this option overrides this safeguard")
+    exe_grp.add_option('-y', dest='assume_yes', action='store_true', help="automatically answer yes for all questions")
 
     opt_grp = OptionGroup(parser, 'Optimization')
     opt_grp.add_option('--rate-limit', dest='rate_limit', type='float', default=0, metavar='N', help='wait N seconds between each attempt (default is 0)')
@@ -1482,7 +1509,7 @@ Please read the README inside for more examples and usage information.
     log_grp.add_option('--hits', dest='hits_file', metavar='FILE', help="save found candidates to FILE")
 
     dbg_grp = OptionGroup(parser, 'Debugging')
-    dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', default=False, help='enable debug messages')
+    dbg_grp.add_option('-d', '--debug', dest='debug', action='store_true', help='enable debug messages')
     dbg_grp.add_option('--auto-progress', dest='auto_progress', type='int', default=0, metavar='N', help='automatically display progress every N seconds')
 
     parser.option_groups.extend([exe_grp, opt_grp, log_grp, dbg_grp])
@@ -1539,7 +1566,7 @@ Please read the README inside for more examples and usage information.
 
     log_queue = multiprocessing.Queue()
 
-    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log), opts.runtime_file, opts.csv_file, opts.xml_file, opts.hits_file))
+    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log, opts.assume_yes), opts.runtime_file, opts.csv_file, opts.xml_file, opts.hits_file))
     logsvc.daemon = True
     logsvc.start()
 
@@ -2244,6 +2271,7 @@ Please read the README inside for more examples and usage information.
             total_count,
             total_size/num_threads,
             p.current))
+
 # }}}
 
 # Response_Base {{{
@@ -2312,13 +2340,13 @@ class Response_Base:
     return val == self.mesg
 
   def match_fgrep(self, val):
-    return val in str(self)
+    return val in self.mesg
 
   def match_egrep(self, val):
-    return re.search(val, str(self))
+    return re.search(val, self.mesg)
 
   def dump(self):
-    return self.trace or str(self)
+    return b(self.trace or str(self))
 
   def str_target(self):
     return ''
@@ -2353,7 +2381,7 @@ class TCP_Cache:
     )
 
   def __init__(self):
-    self.cache = {} # {'10.0.0.1:22': ('root', conn1), '10.0.0.2:22': ('admin', conn2),
+    self.cache = {} # '10.0.0.1:22': ('root', conn1), '10.0.0.2:22': ('admin', conn2),
     self.curr = None
 
   def __del__(self):
@@ -2569,8 +2597,8 @@ class Telnet_login(TCP_Cache):
   '''Brute-force Telnet'''
 
   usage_hints = (
-    """%prog host=10.0.0.1 inputs='FILE0\\nFILE1' 0=logins.txt 1=passwords.txt persistent=0"""
-    """ prompt_re='Username:|Password:' -x ignore:egrep='Login incorrect.+Username:'""",
+    """%prog host=10.0.0.1 inputs='FILE0\\nFILE1' 0=logins.txt 1=passwords.txt"""
+    """ prompt_re='login:|Password:' -x ignore:fgrep='Login incorrect'""",
     )
 
   available_options = (
@@ -2590,7 +2618,7 @@ class Telnet_login(TCP_Cache):
 
     return TCP_Connection(fp)
 
-  def execute(self, host, port='23', inputs=None, prompt_re='\w+:', timeout='20', persistent='1'):
+  def execute(self, host, port='23', inputs=None, prompt_re='\w+:', timeout='20', persistent='0'):
 
     with Timing() as timing:
       fp, _ = self.bind(host, port, timeout=timeout)
@@ -2622,10 +2650,7 @@ class Telnet_login(TCP_Cache):
     if persistent == '0':
       self.reset()
 
-    raw = B(raw)
-    trace = B(trace)
-
-    mesg = repr(raw)[1:-1] # strip enclosing single quotes
+    mesg = B(raw).strip()
     return self.Response(0, mesg, timing, trace)
 
 # }}}
@@ -2763,10 +2788,6 @@ class SMTP_login(SMTP_Base):
       logger.debug('SMTPResponseException: %s' % e)
       resp = e.args
 
-    except SMTPException as e:
-      logger.debug('SMTPException: %s' % e)
-      resp = '1', b(str(e))
-
     if persistent == '0':
       self.reset()
 
@@ -2817,25 +2838,25 @@ class Finger_lookup:
       s.send(b(user))
     s.send(b'\r\n')
 
-    data = b''
+    raw = b''
     with Timing() as timing:
       while True:
-        raw = s.recv(1024)
-        if not raw:
+        resp = s.recv(1024)
+        if not resp:
           break
-        data += raw
+        raw += resp
 
     s.close()
 
-    logger.debug('recv: %r' % data)
+    logger.debug('recv: %r' % raw)
 
-    data = B(data).strip()
-    mesg = repr(data)
+    mesg = B(raw).strip()
 
-    resp = self.Response(0, mesg, timing, data)
-    resp.lines = [l.strip('\r\n') for l in data.split('\n')]
+    resp = self.Response(0, mesg, timing, raw)
+    resp.lines = [l.strip('\r\n') for l in mesg.split('\n')]
 
     return resp
+
 # }}}
 
 # LDAP {{{
@@ -2869,14 +2890,13 @@ class LDAP_login:
   def execute(self, host, port='389', binddn='', bindpw='', basedn='', ssl='0'):
     uri = 'ldap%s://%s:%s' % ('s' if ssl != '0' else '', host, port)
     cmd = ['ldapsearch', '-H', uri, '-e', 'ppolicy', '-D', binddn, '-w', bindpw, '-b', basedn, '-s', 'one']
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={'LDAPTLS_REQCERT': 'never'})
-    out = p.stdout.read()
-    err = p.stderr.read()
 
     with Timing() as timing:
-      code = p.wait()
+      p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={'LDAPTLS_REQCERT': 'never'})
+      out, err = map(B, p.communicate())
+      code = p.returncode
 
-    mesg = repr((out + err).strip())[1:-1]
+    mesg = (out + err).strip()
     trace = '[out]\n%s\n[err]\n%s' % (out, err)
 
     return self.Response(code, mesg, timing, trace)
@@ -2888,8 +2908,9 @@ try:
   from impacket.smbconnection import SMBConnection, SessionError
   from impacket import nt_errors
   from impacket.dcerpc.v5 import transport, lsat, lsad
-  from impacket.dcerpc.v5.dtypes import MAXIMUM_ALLOWED
   from impacket.dcerpc.v5.samr import SID_NAME_USE
+  from impacket.dcerpc.v5.dtypes import MAXIMUM_ALLOWED
+  from impacket.dcerpc.v5.rpcrt import DCERPCException
 except ImportError:
   notfound.append('impacket')
 
@@ -2899,6 +2920,17 @@ class SMB_Connection(TCP_Connection):
 
 class Response_SMB(Response_Base):
   indicatorsfmt = [('code', -8), ('size', -4), ('time', 6)]
+
+def split_ntlm(password_hash):
+    if password_hash:
+      if ':' in password_hash:
+        lmhash, nthash = password_hash.split(':')
+      else:
+        lmhash, nthash = 'aad3b435b51404eeaad3b435b51404ee', password_hash
+    else:
+      lmhash, nthash = '', ''
+
+    return lmhash, nthash
 
 class SMB_login(TCP_Cache):
   '''Brute-force SMB'''
@@ -2937,12 +2969,9 @@ class SMB_login(TCP_Cache):
       else:
         with Timing() as timing:
           if password_hash:
-            if ':' in password_hash:
-              lmhash, nthash = password_hash.split(':')
-            else:
-              lmhash, nthash = 'aad3b435b51404eeaad3b435b51404ee', password_hash
-            fp.login(user, '', domain, lmhash, nthash)
+            lmhash, nthash = split_ntlm(password_hash)
 
+            fp.login(user, '', domain, lmhash, nthash)
           else:
             fp.login(user, password, domain)
 
@@ -2961,12 +2990,12 @@ class SMB_login(TCP_Cache):
     return self.Response(code, mesg, timing)
 
 class DCE_Connection(TCP_Connection):
-  def __init__(self, fp, smbt):
-    self.smbt = smbt
+  def __init__(self, fp, rpct):
+    self.rpct = rpct
     TCP_Connection.__init__(self, fp)
 
   def close(self):
-    self.smbt.get_socket().close()
+    self.rpct.get_socket().close()
 
 # impacket/examples/lookupsid.py is much faster because it queries 1000 SIDs per packet
 class SMB_lookupsid(TCP_Cache):
@@ -2978,24 +3007,32 @@ class SMB_lookupsid(TCP_Cache):
 
   available_options = (
     ('host', 'target host'),
-    ('port', 'target port [139]'),
+    ('port', 'target port [445]'),
     ('sid', 'SID to test'),
     ('rid', 'RID to test'),
     ('user', 'username to use if auth required'),
     ('password', 'password to use if auth required'),
+    ('password_hash', "LM/NT hashes to test, at least one hash must be provided ('lm:nt' or ':nt' or 'lm:')"),
+    ('domain', 'domain to test'),
     )
   available_options += TCP_Cache.available_options
 
   Response = Response_Base
 
-  def connect(self, host, port, user, password, sid):
-    smbt = transport.SMBTransport(host, int(port), r'\lsarpc', user, password)
+  def connect(self, host, port, user, password, domain, password_hash, sid):
 
-    dce = smbt.get_dce_rpc()
+    lmhash, nthash = split_ntlm(password_hash)
+
+    rpctransport = transport.DCERPCTransportFactory(r'ncacn_np:%s[\pipe\lsarpc]' % host) # remoteName
+    rpctransport.set_dport(port)
+    rpctransport.setRemoteHost(host)
+    rpctransport.set_credentials(user, password, domain, lmhash, nthash)
+
+    dce = rpctransport.get_dce_rpc()
     dce.connect()
     dce.bind(lsat.MSRPC_UUID_LSAT)
 
-    op2 = lsat.hLsarOpenPolicy2(dce, MAXIMUM_ALLOWED | lsat.POLICY_LOOKUP_NAMES)
+    op2 = lsad.hLsarOpenPolicy2(dce, MAXIMUM_ALLOWED | lsat.POLICY_LOOKUP_NAMES)
 
     if sid is None:
       res = lsad.hLsarQueryInformationPolicy2(dce, op2['PolicyHandle'], lsad.POLICY_INFORMATION_CLASS.PolicyAccountDomainInformation)
@@ -3004,11 +3041,11 @@ class SMB_lookupsid(TCP_Cache):
     self.sid = sid
     self.policy_handle = op2['PolicyHandle']
 
-    return DCE_Connection(dce, smbt)
+    return DCE_Connection(dce, rpctransport)
 
-  def execute(self, host, port='139', user='', password='', sid=None, rid=None, persistent='1'):
+  def execute(self, host, port='445', user='', password='', password_hash=None, domain='', sid=None, rid=None, persistent='1'):
 
-    fp, _ = self.bind(host, port, user, password, sid)
+    dce, _ = self.bind(host, port, user, password, domain, password_hash, sid)
 
     if rid:
       sid = '%s-%s' % (self.sid, rid)
@@ -3016,23 +3053,31 @@ class SMB_lookupsid(TCP_Cache):
       sid = self.sid
 
     try:
-      res = lsat.hLsarLookupSids(fp, self.policy_handle, [sid], lsat.LSAP_LOOKUP_LEVEL.LsapLookupWksta)
+      res = lsat.hLsarLookupSids(dce, self.policy_handle, [sid], lsat.LSAP_LOOKUP_LEVEL.LsapLookupWksta)
 
       code, names = 0, []
       for n, item in enumerate(res['TranslatedNames']['Names']):
         names.append("%s\\%s (%s)" % (res['ReferencedDomains']['Domains'][item['DomainIndex']]['Name'], item['Name'], SID_NAME_USE.enumItems(item['Use']).name[7:]))
 
-    except lsat.DCERPCSessionError:
+    except DCERPCException:
       code, names = 1, ['unknown'] # STATUS_NONE_MAPPED
 
     if persistent == '0':
       self.reset()
 
     return self.Response(code, ', '.join(names))
+
 # }}}
 
 # POP {{{
 from poplib import POP3, POP3_SSL, error_proto as pop_error
+
+class POP_Connection(TCP_Connection):
+  def close(self):
+    if PY3:
+      self.fp.close()
+    else:
+      self.fp.quit()
 
 class POP_login(TCP_Cache):
   '''Brute-force POP3'''
@@ -3063,7 +3108,7 @@ class POP_login(TCP_Cache):
         port = 995
       fp = POP3_SSL(host, int(port)) # timeout=int(timeout)) # no timeout option in python2
 
-    return TCP_Connection(fp, fp.welcome)
+    return POP_Connection(fp, fp.welcome)
 
   def execute(self, host, port='', ssl='0', user=None, password=None, timeout='10', persistent='1'):
 
@@ -3084,7 +3129,7 @@ class POP_login(TCP_Cache):
 
     except pop_error as e:
       logger.debug('pop_error: %s' % e)
-      resp = e.args[0]
+      resp = ', '.join(map(B, e.args))
 
     if persistent == '0':
       self.reset()
@@ -3178,19 +3223,17 @@ class IMAP_login:
     with Timing() as timing:
       fp = klass(host, port)
 
-    code, resp = 0, fp.welcome
+    code, resp = 0, B(fp.welcome)
 
     try:
       if user is not None and password is not None:
         with Timing() as timing:
           r = fp.login(user, password)
-        resp = ', '.join(r[1])
-
-      # doesn't it need to self.reset() to test more creds?
+        code, resp = r[0], ', '.join(map(B, r[1]))
 
     except IMAP4.error as e:
       logger.debug('imap_error: %s' % e)
-      code, resp = 1, str(e)
+      code, resp = 1, ', '.join(map(B, e.args))
 
     return self.Response(code, resp, timing)
 
@@ -3202,8 +3245,8 @@ class Rlogin_login(TCP_Cache):
 
   usage_hints = (
     """Please note that rlogin requires to bind a socket to an Internet domain privileged port.""",
-    """%prog host=10.0.0.1 user=root luser=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:""",
-    """%prog host=10.0.0.1 user=john password=FILE0 0=passwords.txt -x 'reset:egrep!=Login incorrect.+login:'""",
+    """%prog host=10.0.0.1 user=root luser=FILE0 0=logins.txt""",
+    """%prog host=10.0.0.1 user=john password=FILE0 0=passwords.txt""",
     )
 
   available_options = (
@@ -3234,7 +3277,7 @@ class Rlogin_login(TCP_Cache):
 
     return TCP_Connection(fp)
 
-  def execute(self, host, port='513', luser='root', user='', password=None, prompt_re='\w+:', timeout='10', persistent='1'):
+  def execute(self, host, port='513', luser='root', user='', password=None, prompt_re='\w+:', timeout='10', persistent='0'):
 
     fp, _ = self.bind(host, port, timeout=int(timeout))
 
@@ -3249,22 +3292,22 @@ class Rlogin_login(TCP_Cache):
       else:
         fp.write(b('%s\r' % user))
 
-      _, _, resp = fp.expect([prompt_re], timeout=timeout) # expecting the Password: prompt
-      trace += resp
+      _, m, raw = fp.expect([prompt_re], timeout=timeout) # expecting the Password: prompt
+      logger.debug('raw: %r' % raw)
+      trace += raw
 
-      if password is not None:
+      if m and password is not None:
         fp.write(b('%s\r' % password))
-        _, _, resp = fp.expect([prompt_re], timeout=timeout) # expecting the login: prompt
-        trace += resp
+        _, _, raw = fp.expect([prompt_re], timeout=timeout) # expecting the login: prompt
+        logger.debug('raw: %r' % raw)
+        trace += raw
 
     if persistent == '0':
       self.reset()
 
-    resp = B(resp)
-    trace = B(trace)
-
-    mesg = repr(resp.strip())[1:-1]
+    mesg = B(raw).strip()
     return self.Response(0, mesg, timing, trace)
+
 # }}}
 
 # VMauthd {{{
@@ -3439,9 +3482,11 @@ class MySQL_query(TCP_Cache):
       fp.query(query)
 
     rs = fp.store_result()
-    rows = rs.fetch_row(10, 0)
+    rows = rs.fetch_row(maxrows=0, how=0)
 
-    code, mesg = '0', '\n'.join(', '.join(map(str, r)) for r in filter(any, rows))
+    logger.debug('fetched %d rows: %s' % (len(rows), rows))
+
+    code, mesg = '0', '\n'.join(', '.join(map(B, r)) for r in filter(any, rows))
     return self.Response(code, mesg, timing)
 
 # }}}
@@ -3501,6 +3546,7 @@ class MSSQL_login:
     fp.disconnect()
 
     return self.Response(code, mesg, timing)
+
 # }}}
 
 # Oracle {{{
@@ -3589,7 +3635,7 @@ class Pgsql_login:
 
     except psycopg2.OperationalError as e:
       logger.debug('OperationalError: %s' % e)
-      code, mesg = '1', str(e)[:-1]
+      code, mesg = '1', str(e).strip()
 
     return self.Response(code, mesg, timing)
 
@@ -3635,9 +3681,6 @@ class Response_HTTP(Response_Base):
 
   def match_clen(self, val):
     return match_range(self.content_length, val)
-
-  def match_fgrep(self, val):
-    return val in self.mesg
 
   def match_egrep(self, val):
     return re.search(val, self.mesg, re.M)
@@ -4065,7 +4108,7 @@ class AJP_fuzz(TCP_Cache):
 
 # }}}
 
-# {{{ RDP
+# RDP {{{
 if not which('xfreerdp'):
   notfound.append('xfreerdp')
 
@@ -4101,10 +4144,11 @@ class RDP_login:
     elif 'Authentication only, exit status 0' in err:
       err = 'OK'
 
-    mesg = repr((out + err).strip())[1:-1]
+    mesg = (out + err).strip()
     trace = '[out]\n%s\n[err]\n%s' % (out, err)
 
     return self.Response(code, mesg, timing, trace)
+
 # }}}
 
 # VNC {{{
@@ -4340,16 +4384,17 @@ def generate_srv():
     import re
     files = ['/usr/share/nmap/nmap-protocols', '/usr/share/nmap/nmap-services', '/etc/protocols', '/etc/services']
     ret = []
-    for f in files:
-      if not os.path.isfile(f):
-        logger.warn("File '%s' is missing, there will be less records to test" % f)
+    for filepath in files:
+      if not os.path.isfile(filepath):
+        logger.warn("File '%s' is missing, there will be less records to test" % filepath)
         continue
-      for line in open(f):
-        match = re.match(r'([a-zA-Z0-9]+)\s', line)
-        if not match:
-          continue
-        for w in re.split(r'[^a-z0-9]', match.group(1).strip().lower()):
-          ret.extend(['_%s.%s' % (w, i) for i in ('_tcp', '_udp')])
+      with open(filepath, 'rb') as f:
+        for line in f:
+          match = re.match(r'([a-zA-Z0-9]+)\s', B(line))
+          if not match:
+            continue
+          for w in re.split(r'[^a-z0-9]', match.group(1).strip().lower()):
+            ret.extend(['_%s.%s' % (w, i) for i in ('_tcp', '_udp')])
     return ret
 
   srv = set(common + distro())
@@ -4827,7 +4872,7 @@ class Unzip_pass:
       out, err = map(B, p.communicate())
       code = p.returncode
 
-    mesg = repr(out.strip())[1:-1]
+    mesg = out.strip()
     trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
 
     return self.Response(code, mesg, timing, trace)
@@ -4864,7 +4909,7 @@ class Keystore_pass:
       out, err = map(B, p.communicate())
       code = p.returncode
 
-    mesg = repr(out.strip())[1:-1]
+    mesg = out.strip()
     trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
 
     return self.Response(code, mesg, timing, trace)
@@ -4873,7 +4918,10 @@ class Keystore_pass:
 
 # SQLCipher {{{
 try:
-  from pysqlcipher3 import dbapi2 as sqlcipher
+  if PY3:
+    from pysqlcipher3 import dbapi2 as sqlcipher
+  else:
+    from pysqlcipher import dbapi2 as sqlcipher
 except ImportError:
   notfound.append('pysqlcipher')
 
@@ -4964,12 +5012,14 @@ class TCP_fuzz:
     if ssl != '0':
       fp = wrap_socket(fp)
     fp.send(unhexlify(data))
+    #fp.send(b(data))
     with Timing() as timing:
       resp = fp.recv(1024)
     fp.close()
 
     code = 0
-    mesg = B(hexlify(resp))
+    #mesg = B(hexlify(resp))
+    mesg = B(resp)
 
     return self.Response(code, mesg, timing)
 
@@ -5076,6 +5126,7 @@ dependencies = {
   'pysqlcipher': [('sqlcipher_pass',), 'https://github.com/rigglemania/pysqlcipher3', '1.0.3'],
   'python': [('ftp_login',), 'Patator requires Python 3.6 or above and may still work on Python 2.'],
   }
+
 # }}}
 
 # main {{{

@@ -1,0 +1,55 @@
+version: "3"
+services:
+  unix:
+    build: testing/unix
+    image: patator-unix-testing
+#    ports:
+#      - "21:21"
+#      - "22:22"
+#      - "23:23"
+#      - "25:25"
+#      - "79:79"
+#      - "80:80"
+#      - "106:106"
+#      - "110:110"
+#      - "139:139"
+#      - "143:143"
+#      - "389:389"
+#      - "445:445"
+#      - "513:513"
+#      - "636:636"
+#      - "993:993"
+#      - "995:995"
+#      - "3306:3306"
+#      - "4444:4444"
+#      - "5432:5432"
+#      - "5900:5900"
+#      - "8009:8009"
+#      - "8080:8080"
+    volumes:
+      - .:/opt/patator
+
+  oracle:
+    image: oracleinanutshell/oracle-xe-11g
+    environment:
+       - ORACLE_ENABLE_XDB=true
+    ports:
+      - "1521:1521"
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Password1
+    ports:
+      - "1433:1433"
+
+  patator:
+    build: .
+    image: patator
+    depends_on:
+      - unix
+      - oracle
+      - mssql
+    volumes:
+      - .:/opt/patator

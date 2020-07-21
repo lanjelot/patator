@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if ! type docker-compose 2>/dev/null; then
+  echo 'docker-compose is required'
+  exit 1
+fi
+
 case "$1" in
   python2|python3)
     PYTHON=$1

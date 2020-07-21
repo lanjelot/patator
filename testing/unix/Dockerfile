@@ -112,7 +112,6 @@ socat tcp-l:4444,fork,reuseaddr exec:\"echo -e 'W\xe1\xc0me'\" &\n\
 cp -v /root/enc.zip /root/keystore.jks /root/enc.db /root/umbraco_users.pw /opt/patator/\n\
 su - vncuser -c 'vncserver -rfbport 5900'\n\
 service smbd start\n\
-touch /opt/patator/.all-started\n\
 tail -f /dev/null\n" > /usr/local/sbin/start-all-services.sh
 
 CMD ["bash", "/usr/local/sbin/start-all-services.sh"]

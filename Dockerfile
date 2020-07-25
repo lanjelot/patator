@@ -23,13 +23,13 @@ RUN wget https://download.oracle.com/otn_software/linux/instantclient/instantcli
  && rm -f instantclient-basiclite-linuxx64.zip \
  && unzip instantclient-sdk-linuxx64.zip \
  && rm -f instantclient-sdk-linuxx64.zip \
- && cd /opt/oracle/instantclient* \
+ && cd /opt/oracle/instantclient_* \
  && rm -f *jdbc* *occi* *mysql* *README *jar uidrvci genezi adrci \
- && echo /opt/oracle/instantclient* > /etc/ld.so.conf.d/oracle-instantclient.conf \
+ && echo /opt/oracle/instantclient_* > /etc/ld.so.conf.d/oracle-instantclient.conf \
  && ldconfig
 
 RUN git clone --branch 5.3 https://github.com/oracle/python-cx_Oracle \
- && cd python-cx_Oracle && export ORACLE_HOME=/opt/oracle/instantclient_19_6 && python2 setup.py build && python2 setup.py install
+ && cd python-cx_Oracle && export ORACLE_HOME=$(echo /opt/oracle/instantclient_*) && python2 setup.py build && python2 setup.py install
 
 # xfreerdp (see https://github.com/FreeRDP/FreeRDP/wiki/Compilation)
 RUN apt-get update && apt-get install -y ninja-build build-essential git-core debhelper cdbs dpkg-dev autotools-dev cmake pkg-config xmlto libssl-dev docbook-xsl xsltproc libxkbfile-dev libx11-dev libwayland-dev libxrandr-dev libxi-dev libxrender-dev libxext-dev libxinerama-dev libxfixes-dev libxcursor-dev libxv-dev libxdamage-dev libxtst-dev libcups2-dev libpcsclite-dev libasound2-dev libpulse-dev libjpeg-dev libgsm1-dev libusb-1.0-0-dev libudev-dev libdbus-glib-1-dev uuid-dev libxml2-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libfaad-dev libfaac-dev \

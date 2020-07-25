@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if ! type docker-compose 2>/dev/null; then
+if ! type docker-compose &>/dev/null; then
   echo 'docker-compose is required'
   exit 1
 fi
@@ -22,6 +22,8 @@ esac
 UNIX='unix'
 ORACLE='oracle'
 MSSQL='mssql'
+WIN10='' # vagrant add senglin/win-7-enterprise
+VPN=''   #
 
 LOGS='-l ./asdf -y --hits ./hits.txt'
 
@@ -29,7 +31,7 @@ run()
 {
   echo
   echo "$ $@"
-  docker-compose run --rm --entrypoint "$PYTHON patator.py" patator "$@"
+  docker-compose run --no-deps --rm --entrypoint "$PYTHON patator.py" patator "$@"
 }
 
 echo
@@ -61,6 +63,16 @@ run ldap_login host=$UNIX binddn='cn=admin,dc=example,dc=com' bindpw=PasswordRAN
 
 run smb_login host=$UNIX
 run smb_login host=$UNIX user=userRANGE0 password=PasswordRANGE0 0=int:0-9
+
+if [[ ! -z $WIN10 ]]; then
+  run smb_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
+  run smb_lookupsid host=$WIN10 user=vagrant password=vagrant rid=RANGE0 0=int:500-2000 -x ignore:code=1
+  run dcom_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
+
+  xhost +si:localuser:root
+    run rdp_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
+  xhost -si:localuser:root
+fi
 
 run pop_login host=$UNIX
 run pop_login host=$UNIX user=userRANGE0 password=PasswordRANGE0 0=int:0-9
@@ -96,6 +108,15 @@ run vnc_login host=$UNIX port=5900 password=PassworRANGE0 0=lower:a-f
 
 run dns_reverse host=NET0 0=216.239.32.0-216.239.32.255,8.8.8.0/24 -x ignore:code=3 -x ignore:fgrep!=google.com -x ignore:fgrep=216-239-
 run dns_forward name=MOD0.microsoft.com 0=SRV qtype=SRV -x ignore:code=3 --auto-progress 15
+
+run snmp_login host=$UNIX community=publiRANGE0 0=lower:a-f
+run snmp_login host=$UNIX community=public version=3 user=userRANGE0 0=int:0-5 auth_key=whatever
+run snmp_login host=$UNIX community=public version=3 user=user3 auth_proto=sha auth_key=authPasRANGE0 0=lower:q-v
+run snmp_login host=$UNIX community=public version=3 user=user3 auth_proto=sha auth_key=authPass priv_proto=aes priv_key=privPasRANGE0 0=lower:q-v
+
+if [[ ! -z $VPN ]]; then
+  run ike_enum host=$VPN transform=MOD0 0=TRANS aggressive=RANGE1 1=int:0-1 -x ignore:fgrep=NO-PROPOSAL
+fi
 
 run unzip_pass zipfile=enc.zip password=PasswordRANGE0 0=int:0-9
 run keystore_pass keystore=keystore.jks password=PasswordRANGE0 0=int:0-9

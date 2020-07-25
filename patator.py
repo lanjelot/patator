@@ -2931,7 +2931,7 @@ class LDAP_login:
       code = p.returncode
 
     mesg = (out + err).strip()
-    trace = '[out]\n%s\n[err]\n%s' % (out, err)
+    trace = '%s\n[out]\n%s\n[err]\n%s\n' % (' '.join(cmd), out, err)
 
     return self.Response(code, mesg, timing, trace)
 
@@ -4179,7 +4179,7 @@ class RDP_login:
       err = 'OK'
 
     mesg = (out + err).strip()
-    trace = '[out]\n%s\n[err]\n%s' % (out, err)
+    trace = '%s\n[out]\n%s\n[err]\n%s\n' % (' '.join(cmd), out, err)
 
     return self.Response(code, mesg, timing, trace)
 
@@ -4681,7 +4681,13 @@ class DNS_forward:
 
 # SNMP {{{
 try:
-  from pysnmp.entity.rfc3413.oneliner import cmdgen
+  from pysnmp.hlapi import getCmd, SnmpEngine, CommunityData, UsmUserData
+  from pysnmp.hlapi import UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
+  from pysnmp.hlapi import usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol, usmHMAC384SHA512AuthProtocol
+  from pysnmp.hlapi import usmDESPrivProtocol, usmAesCfb128Protocol
+
+  SNMP_AUTHPROTO = {'md5': usmHMACMD5AuthProtocol, 'sha': usmHMACSHAAuthProtocol, 'sha512': usmHMAC384SHA512AuthProtocol}
+  SNMP_PRIVPROTO = {'des': usmDESPrivProtocol, 'aes': usmAesCfb128Protocol}
 except ImportError:
   notfound.append('pysnmp')
 
@@ -4703,13 +4709,12 @@ class SNMP_login:
     ('host', 'target host'),
     ('port', 'target port [161]'),
     ('version', 'SNMP version to use [2|3|1]'),
-    #('security_name', 'SNMP v1/v2 username, for most purposes it can be any arbitrary string [test-agent]'),
     ('community', 'SNMPv1/2c community names to test [public]'),
-    ('user', 'SNMPv3 usernames to test [myuser]'),
-    ('auth_key', 'SNMPv3 pass-phrases to test [my_password]'),
-    #('priv_key', 'SNMP v3 secret key for encryption'), # see http://pysnmp.sourceforge.net/docs/4.x/index.html#UsmUserData
-    #('auth_protocol', ''),
-    #('priv_protocol', ''),
+    ('user', 'SNMPv3 usernames to test [op5user]'),
+    ('auth_key', 'SNMPv3 passwords to test [authPass]'),
+    ('auth_proto', 'SNMPv3 authentication protocol [md5|sha|sha512]'),
+    ('priv_key', 'SNMPv3 encryption key'),
+    ('priv_proto', 'SNMPv3 encryption protocol [des|aes]'),
     ('timeout', 'seconds to wait for a response [1]'),
     ('retries', 'number of successive request retries [2]'),
     )
@@ -4717,32 +4722,48 @@ class SNMP_login:
 
   Response = Response_Base
 
-  def execute(self, host, port=None, version='2', community='public', user='myuser', auth_key='my_password', timeout='1', retries='2'):
-    if version in ('1', '2'):
-      security_model = cmdgen.CommunityData('test-agent', community, 0 if version == '1' else 1)
+  def execute(self, host, port=None, version='2', community='public', user='op5user', auth_key='authPass', auth_proto='md5', priv_key='', priv_proto='des', timeout='1', retries='2'):
+    if version in ('1', '2', '2c'):
+      security_model = CommunityData(community, mpModel=0 if version == '1' else 1)
 
     elif version == '3':
-      security_model = cmdgen.UsmUserData(user, auth_key) # , priv_key)
-      if len(auth_key) < 8:
-        return self.Response('1', 'SNMPv3 requires passphrases to be at least 8 characters long')
+      if auth_proto not in SNMP_AUTHPROTO:
+        raise ValueError('Unsupported SNMPv3 auth protocol %r' % auth_proto)
+      if priv_proto not in SNMP_PRIVPROTO:
+        raise ValueError('Unsupported SNMPv3 priv protocol %r' % priv_proto)
+
+      if len(auth_key) < 8 or priv_key and len(priv_key) < 8:
+        return self.Response('1', 'SNMPv3 requires passwords to be at least 8 characters long')
+
+      kwargs = dict(authKey=auth_key, authProtocol=SNMP_AUTHPROTO[auth_proto])
+      if priv_key:
+        kwargs.update(dict(privKey=priv_key, privProtocol=SNMP_PRIVPROTO[priv_proto]))
+
+      security_model = UsmUserData(user, **kwargs)
 
     else:
       raise ValueError('Incorrect SNMP version %r' % version)
 
     with Timing() as timing:
-      errorIndication, errorStatus, errorIndex, varBinds = cmdgen.CommandGenerator().getCmd(
-        security_model,
-        cmdgen.UdpTransportTarget((host, int(port or 161)), timeout=int(timeout), retries=int(retries)),
-        (1, 3, 6, 1, 2, 1, 1, 1, 0)
+      errorIndication, errorStatus, errorIndex, varBinds = next(
+        getCmd(
+          SnmpEngine(),
+          security_model,
+          UdpTransportTarget((host, int(port or 161)), timeout=int(timeout), retries=int(retries)),
+          ContextData(),
+          ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysDescr', 0))) #(1, 3, 6, 1, 2, 1, 1, 1, 0)
         )
 
-    code = '%d-%d' % (errorStatus, errorIndex)
-    if not errorIndication:
-      mesg = '%s' % varBinds
-    else:
+    if errorIndication:
       mesg = '%s' % errorIndication
+    elif errorStatus:
+      mesg = '%s' % (errorStatus.prettyPrint())
+      if errorIndex > 0:
+        mesg += ' %s' % varBinds[int(errorIndex) - 1][0]
+    else:
+      mesg = ''.join(' = '.join([x.prettyPrint() for x in varBind]) for varBind in varBinds)
 
-    return self.Response(code, mesg, timing)
+    return self.Response(int(errorStatus), mesg, timing)
 
 # }}}
 
@@ -4856,7 +4877,7 @@ class IKE_enum:
       out, err = map(B, p.communicate())
       code = p.returncode
 
-    trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
+    trace = '%s\n[out]\n%s\n[err]\n%s\n' % (' '.join(cmd), out, err)
     logger.debug('trace: %r' % trace)
 
     has_sa = 'SA=(' in out
@@ -4907,7 +4928,7 @@ class Unzip_pass:
       code = p.returncode
 
     mesg = out.strip()
-    trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
+    trace = '%s\n[out]\n%s\n[err]\n%s\n' % (' '.join(cmd), out, err)
 
     return self.Response(code, mesg, timing, trace)
 
@@ -4944,7 +4965,7 @@ class Keystore_pass:
       code = p.returncode
 
     mesg = out.strip()
-    trace = '%s\n[out]\n%s\n[err]\n%s' % (cmd, out, err)
+    trace = '%s\n[out]\n%s\n[err]\n%s\n' % (' '.join(cmd), out, err)
 
     return self.Response(code, mesg, timing, trace)
 

@@ -19,6 +19,7 @@ Currently it supports the following modules:
 * pop_passd      : Brute-force poppassd (not POP3)
 * imap_login     : Brute-force IMAP
 * ldap_login     : Brute-force LDAP
+* dcom_login     : Brute-force DCOM
 * smb_login      : Brute-force SMB
 * smb_lookupsid  : Brute-force SMB SID-lookup
 * rlogin_login   : Brute-force rlogin

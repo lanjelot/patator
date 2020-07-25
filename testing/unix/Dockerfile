@@ -96,6 +96,11 @@ RUN apt-get update && apt-get install -y samba \
   && { for i in {3..5}; do echo -e "Password$i\nPassword$i" | smbpasswd -a "user$i"; done; } \
   && sed -ie 's,map to guest =,#map to guest =,' /etc/samba/smb.conf
 
+RUN apt-get update && apt-get install -y snmpd snmp \
+  && sed -ie 's,agentAddress  udp:127.0.0.1:161,agentAddress  udp:161,' /etc/snmp/snmpd.conf \
+  && echo 'createUser user3 SHA authPass AES privPass' >> /var/lib/snmp/snmpd.conf \
+  && echo 'rouser user3 priv .1' >> /etc/snmp/snmpd.conf
+
 RUN echo -e "echo Starting services\n\
 service vsftpd start\n\
 service ssh start\n\
@@ -112,6 +117,7 @@ socat tcp-l:4444,fork,reuseaddr exec:\"echo -e 'W\xe1\xc0me'\" &\n\
 cp -v /root/enc.zip /root/keystore.jks /root/enc.db /root/umbraco_users.pw /opt/patator/\n\
 su - vncuser -c 'vncserver -rfbport 5900'\n\
 service smbd start\n\
+service snmpd start\n\
 tail -f /dev/null\n" > /usr/local/sbin/start-all-services.sh
 
 CMD ["bash", "/usr/local/sbin/start-all-services.sh"]

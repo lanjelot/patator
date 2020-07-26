@@ -14,9 +14,9 @@ apt-get install -y tmux git wget build-essential vim
 apt-get install -y libcurl4-openssl-dev python3-dev libssl-dev # pycurl
 apt-get install -y ldap-utils # ldapsearch
 apt-get install -y libmariadbclient-dev # mysqlclient-python
+apt-get install -y libpq-dev # psycopg2
 apt-get install -y ike-scan unzip default-jdk
 apt-get install -y libsqlite3-dev libsqlcipher-dev # pysqlcipher
-apt-get install -y libpq-dev # psycopg2
 
 # cx_oracle
 apt-get install -y libaio1 wget unzip

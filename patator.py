@@ -18,7 +18,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
 __twitter__ = 'https://twitter.com/lanjelot'
-__version__ = '0.8-dev'
+__version__ = '0.9'
 __license__ = 'GPLv2'
 __pyver__   = '%d.%d.%d' % sys.version_info[0:3]
 __banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
@@ -609,6 +609,13 @@ unzip_pass zipfile=file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
 CHANGELOG
 ---------
 
+* v0.9 2020/07/26
+  - fixed encoding bugs
+  - new Dockerfile
+  - new --groups and --auto-progress options
+  - fixed various issues reported on Github
+  - new testing env with docker-compose
+
 * v0.8 2020/03/22
   - new switches (-R, --csv, --xml, --hits)
   - new pathasis option for http_fuzz
@@ -669,7 +676,6 @@ TODO
 ----
   * new option -e ns like in Medusa (not likely to be implemented due to design)
   * replace dnspython|paramiko|IPy with a better module (scapy|libssh2|netaddr... ?) // https://netaddr.readthedocs.org/en/latest/tutorial_01.html
-  * use impacket/enum_lookupsids to automatically get the sid
 '''
 
 # }}}
@@ -2860,8 +2866,11 @@ class Finger_lookup:
 # }}}
 
 # DCOM {{{
-from impacket.dcerpc.v5.dcomrt import DCOMConnection
-from impacket.dcerpc.v5.dcom import wmi
+try:
+  from impacket.dcerpc.v5.dcomrt import DCOMConnection
+  from impacket.dcerpc.v5.dcom import wmi
+except ImportError:
+  notfound.append('impacket')
 
 class DCOM_login:
   '''Brute-force DCOM'''

@@ -969,13 +969,13 @@ PY3 = sys.version_info >= (3,)
 
 if PY3:
   from queue import Empty, Full
-  from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl, quote_plus
+  from urllib.parse import quote, urlencode, urlparse, urlunparse, quote_plus, unquote
   from io import StringIO
   from sys import maxsize as maxint
 else:
   from Queue import Empty, Full
-  from urllib import quote, urlencode, quote_plus
-  from urlparse import urlparse, urlunparse, parse_qsl
+  from urllib import quote, urlencode, quote_plus, unquote
+  from urlparse import urlparse, urlunparse
   from cStringIO import StringIO
   from sys import maxint
 
@@ -1375,6 +1375,27 @@ def flatten(l):
       r.extend(map(ppstr, x))
     else:
       r.append(ppstr(x))
+  return r
+
+def parse_query(qs, keep_blank_values=False, encoding='utf-8', errors='replace'):
+  '''Same as urllib.parse.parse_qsl but without replacing '+' with ' '
+  '''
+  pairs = [s2 for s1 in qs.split('&') for s2 in s1.split(';')]
+  r = []
+
+  for name_value in pairs:
+    if not name_value:
+      continue
+    nv = name_value.split('=', 1)
+    if len(nv) != 2:
+      if keep_blank_values:
+        nv.append('')
+      else:
+        continue
+    if len(nv[1]) or keep_blank_values:
+      name = unquote(nv[0], encoding=encoding, errors=errors)
+      value = unquote(nv[1], encoding=encoding, errors=errors)
+      r.append((name, value))
   return r
 
 # }}}
@@ -3978,8 +3999,8 @@ class HTTP_fuzz(TCP_Cache):
 
     if auto_urlencode == '1':
       path = quote(path)
-      query = urlencode(parse_qsl(query, True))
-      body = urlencode(parse_qsl(body, True))
+      query = urlencode(parse_query(query, True))
+      body = urlencode(parse_query(body, True))
 
     if port:
       host = '%s:%s' % (host, port)

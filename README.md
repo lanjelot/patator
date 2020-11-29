@@ -51,6 +51,15 @@ Please donate if you like this project! :)
 
 Many thanks! [@lanjelot](https://twitter.com/lanjelot)
 
+## Install
+
+```
+git clone https://github.com/lanjelot/patator.git
+docker build -t patator patator/
+git clone https://github.com/danielmiessler/SecLists.git
+docker run -it --rm -v $PWD/SecLists/Passwords:/mnt patator dummy_test data=FILE0 0=/mnt/richelieu-french-top5000.txt
+```
+
 ## Usage Examples
 
 * FTP : Enumerating users denied login in `vsftpd/userlist`

@@ -1406,7 +1406,8 @@ class Controller:
   builtin_actions = (
     ('ignore', 'do not report'),
     ('retry', 'try payload again'),
-    ('free', 'dismiss future similar payloads'),
+    ('skip', 'skip keyword value'),
+    ('free', 'skip parameter value'),
     ('quit', 'terminate execution now'),
     )
 
@@ -1587,6 +1588,7 @@ Please read the README inside for more examples and usage information.
     self.ns = manager.Namespace()
     self.ns.actions = {}
     self.ns.free_list = []
+    self.ns.skip_list = []
     self.ns.paused = False
     self.ns.quit_now = False
     self.ns.start_time = 0
@@ -1745,12 +1747,10 @@ Please read the README inside for more examples and usage information.
           actions[action] = opts
     return actions
 
-  def check_free(self, payload):
-    # free_list: 'host=10.0.0.1', 'user=anonymous', 'host=10.0.0.7,user=test', ...
-    for m in self.ns.free_list:
-      args = m.split(',', 1)
-      for arg in args:
-        k, v = arg.split('=', 1)
+  def should_free(self, payload):
+    # free_list: [[('host', '10.0.0.1')], [('user', 'anonymous')], [('host', '10.0.0.7'),('user','test')], ...
+    for l in self.ns.free_list:
+      for k, v in l:
         if payload[k] != v:
           break
       else:
@@ -1759,8 +1759,23 @@ Please read the README inside for more examples and usage information.
     return False
 
   def register_free(self, payload, opts):
-    self.ns.free_list += [','.join('%s=%s' % (k, payload[k]) for k in opts.split('+'))]
+    self.ns.free_list += [[(k, payload[k]) for k in opts.split('+')]]
     logger.debug('free_list updated: %s' % self.ns.free_list)
+
+  def should_skip(self, prod):
+    # skip_list: [[(0, '10.0.0.1')], [(1, 'anonymous')], [(0, '10.0.0.7'), (1, 'test')], ...
+    for l in self.ns.skip_list:
+      for k, v in l:
+        if prod[k] != v:
+          break
+      else:
+        return True
+
+    return False
+
+  def register_skip(self, prod, opts):
+    self.ns.skip_list += [[(k, prod[k]) for k in map(int, opts.split('+'))]]
+    logger.debug('skip_list updated: %s' % self.ns.skip_list)
 
   def fire(self):
     logger.info('Starting %s at %s' % (__banner__, strftime('%Y-%m-%d %H:%M %Z', localtime())))
@@ -2058,7 +2073,13 @@ Please read the README inside for more examples and usage information.
       logger.debug('product: %s' % prod)
       prod_str = ':'.join(prod)
 
-      if self.check_free(payload):
+      if self.should_free(payload):
+        logger.debug('skipping')
+        report_queue.put(('skip', prod_str, None, 0))
+        continue
+
+      if self.should_skip(prod):
+        logger.debug('skipping')
         report_queue.put(('skip', prod_str, None, 0))
         continue
 
@@ -2116,6 +2137,10 @@ Please read the README inside for more examples and usage information.
 
         if 'free' in actions:
           self.register_free(payload, actions['free'])
+          break
+
+        if 'skip' in actions:
+          self.register_skip(prod, actions['skip'])
           break
 
         if 'fail' in actions:

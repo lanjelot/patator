@@ -175,15 +175,14 @@ python           |                | http://www.python.org/                      
 * Shortcuts (optional)
 ln -s path/to/patator.py /usr/bin/ftp_login
 ln -s path/to/patator.py /usr/bin/http_fuzz
-so on ...
+etc.
 
 
 USAGE
 -----
 
-$ python patator.py <module> -h
-or
-$ <module> -h  (if you created the shortcuts)
+$ python patator.py <module> -h # or
+$ <module> -h                   # if shortcuts were created
 
 There are global options and module options:
   - all global options start with - or --
@@ -192,6 +191,9 @@ There are global options and module options:
 All module options are fuzzable:
 ---------
 ./module host=FILE0 port=FILE1 foobar=FILE2.google.FILE3 0=hosts.txt 1=ports.txt 2=foo.txt 3=bar.txt
+
+If a module option starts with the @ character, data will be loaded from the given filename.
+$ ./http_fuzz raw_request=@req.txt 0=vhosts.txt 1=uagents.txt
 
 The keywords (FILE, COMBO, NET, ...) act as place-holders. They indicate the type of wordlist
 and where to replace themselves with the actual words to test.
@@ -214,7 +216,7 @@ $ ./module host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passw
 10.0.0.2 root password
 ...
 
-While a smarter way might be:
+While a more effective order might be:
 ---------
 $ ./module host=FILE2 user=FILE1 password=FILE0 2=hosts.txt 1=logins.txt 0=passwords.txt
 10.0.0.1 root password
@@ -242,9 +244,6 @@ The numbers of every keyword given on the command line must be specified.
 Use ',' to iterate over the cartesian product of sets and use ':' to iterate
 over sets simultaneously.
 
-If the value of a module option starts with the @ character, the rest should be
-a filename. The contents of the file will be loaded into the option:
-./module raw_request=@req.txt 0=vhosts.txt 1=uagents.txt
 
 * Keywords
 
@@ -256,13 +255,13 @@ Scan subnets to just grab version banners.
 ---------
 ./module host=NET0 0=10.0.1.0/24,10.0.2.0/24,10.0.3.128-10.0.3.255
 
-Fuzzing a parameter by iterating over a range of values.
+Fuzz a parameter by iterating over a range of values.
 ---------
 ./module param=RANGE0 0=hex:0x00-0xffff
 ./module param=RANGE0 0=int:0-500
 ./module param=RANGE0 0=lower:a-zzz
 
-Fuzzing a parameter by iterating over the output of an external program.
+Fuzz a parameter by iterating over the output of an external program.
 ---------
 ./module param=PROG0 0='john -stdout -i'
 ./module param=PROG0 0='mp64.bin ?l?l?l',$(mp64.bin --combination ?l?l?l) # http://hashcat.net/wiki/doku.php?id=maskprocessor
@@ -270,19 +269,29 @@ Fuzzing a parameter by iterating over the output of an external program.
 
 * Actions & Conditions
 
-Use the -x option to do specific actions upon receiving expected results. For example:
+Use the -x option to do specific actions upon receiving specific responses. For example:
 
-To ignore responses with status code 200 *AND* a size within a specific range.
+Ignore responses with status code 200 *AND* a size within a specific range.
 ---------
 ./module host=10.0.0.1 user=FILE0 -x ignore:code=200,size=57-74
 
-To ignore responses with status code 500 *OR* containing "Internal error".
+Ignore responses with status code 500 *OR* containing "Internal error".
 ---------
 ./module host=10.0.0.1 user=FILE0 -x ignore:code=500 -x ignore:fgrep='Internal error'
 
 Remember that conditions are ANDed within the same -x option, use multiple -x options to
 specify ORed conditions.
 
+
+* Actions skip and free
+
+Stop testing the same value from keyword #0 after a valid combination is found.
+---------
+./module data=FILE0.FILE1 -x skip=0:fgrep=Success
+
+Stop testing the same combination after a valid match is found.
+---------
+./module data=FILE0.FILE1 data2=RANGE2 -x free=data:fgrep=Success
 
 * Failures
 
@@ -300,7 +309,7 @@ failed payload to the user with the logging level "FAIL".
 
 * Brute-force authentication. Do not report wrong passwords.
 ---------
-ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:mesg='Login incorrect.'
+$ ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:mesg='Login incorrect.'
 
 NB0. If you get errors like "500 OOPS: priv_sock_get_cmd", use -x ignore,reset,retry:code=500
      in order to retry the last login/password using a new TCP connection. Odd servers like vsftpd
@@ -311,18 +320,18 @@ NB1. If you get errors like "too many connections from your IP address", try dec
 
 * Same as before, but stop testing a user after his password is found.
 ---------
-ftp_login ... -x free=user:code=0
+$ ftp_login ... -x free=user:code=0
 
 
 * Find anonymous FTP servers on a subnet.
 ---------
-ftp_login host=NET0 user=anonymous password=test@example.com 0=10.0.0.0/24
+$ ftp_login host=NET0 user=anonymous password=test@example.com 0=10.0.0.0/24
 
 }}}
 {{{ SSH
 * Brute-force authentication with password same as login (aka single mode). Do not report wrong passwords.
 ---------
-ssh_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:mesg='Authentication failed.'
+$ ssh_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:mesg='Authentication failed.'
 
 NB. If you get errors like "Error reading SSH protocol banner ... Connection reset by peer",
     try decreasing the number of threads, the server may be enforcing a maximum
@@ -331,12 +340,12 @@ NB. If you get errors like "Error reading SSH protocol banner ... Connection res
 
 * Brute-force several hosts and stop testing a host after a valid password is found.
 ---------
-ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt -x free=host:code=0
+$ ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt -x free=host:code=0
 
 
 * Same as previous, but stop testing a user on a host after his password is found.
 ---------
-ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt -x free=host+user:code=0
+$ ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt -x free=host+user:code=0
 
 }}}
 {{{ Telnet
@@ -345,10 +354,10 @@ ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwo
   (a) Enter login after first prompt is detected, enter password after second prompt.
   (b) The regex to detect the login and password prompts.
   (c) Reconnect when we get no login prompt back (max number of tries reached or successful login).
-------------                    (a)
-telnet_login host=10.0.0.1 inputs='FILE0\nFILE1' 0=logins.txt 1=passwords.txt
- prompt_re='tux login:|Password:' -x reset:egrep!='Login incorrect.+tux login:'
- (b)                             (c)
+------------                 (a)
+$ telnet_login host=10.0.0.1 inputs='FILE0\nFILE1' 0=logins.txt 1=passwords.txt \
+    prompt_re='tux login:|Password:' -x reset:egrep!='Login incorrect.+tux login:'
+    (b)                              (c)
 
 NB. If you get errors like "telnet connection closed", try decreasing the number of threads,
     the server may be enforcing a maximum number of concurrent connections.
@@ -358,22 +367,21 @@ NB. If you get errors like "telnet connection closed", try decreasing the number
 
 * Enumerate valid users using the VRFY command.
   (a) Do not report invalid recipients.
-  (b) Do not report when the server shuts us down with "421 too many errors",
-      reconnect and resume testing.
----------                                               (a)
-smtp_vrfy host=10.0.0.1 user=FILE0 0=logins.txt -x ignore:fgrep='User unknown in local
- recipient table' -x ignore,reset,retry:code=421
-                             (b)
+  (b) Do not report when the server shuts us down with "421 too many errors", reconnect and resume testing.
+---------                                         (a)
+$ smtp_vrfy host=10.0.0.1 user=FILE0 0=logins.txt -x ignore:fgrep='User unknown in local recipient table' \
+    -x ignore,reset,retry:code=421
+    (b)
 
 * Use the RCPT TO command in case the VRFY command is not available.
 ---------
-smtp_rcpt host=10.0.0.1 user=FILE0@localhost 0=logins.txt helo='ehlo mx.fb.com' mail_from=root
+$ smtp_rcpt host=10.0.0.1 user=FILE0@localhost 0=logins.txt helo='ehlo mx.fb.com' mail_from=root
 
 
 * Brute-force authentication.
   (a) Send a fake hostname (by default your host fqdn is sent)
-------------             (a)
-smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE1 0=logins.txt 1=passwords.txt
+---------                  (a)
+$ smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE1 0=logins.txt 1=passwords.txt
 
 }}}
 {{{ HTTP
@@ -383,10 +391,10 @@ smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE
   (b) Follow redirects.
   (c) Do not report 404 errors.
   (d) Retry on 500 errors.
----------                                             (a)
-http_fuzz url=http://localhost/FILE0 0=words.txt header='Cookie: SESSID=A2FD8B2DA4'
- follow=1 -x ignore:code=404 -x ignore,retry:code=500
- (b)            (c)                  (d)
+---------                                          (a)
+$ http_fuzz url=http://localhost/FILE0 0=words.txt header='Cookie: SESSID=A2FD8B2DA4' \
+    follow=1 -x ignore:code=404 -x ignore,retry:code=500
+    (b)      (c)                (d)
 
 NB. You may be able to go 10 times faster using webef (http://www.hsc.fr/ressources/outils/webef/).
     It is the fastest HTTP brute-forcer I know, yet at the moment it still lacks useful features
@@ -396,60 +404,61 @@ NB. You may be able to go 10 times faster using webef (http://www.hsc.fr/ressour
   (a) Use POST requests.
   (b) Follow redirects using cookies sent by server.
   (c) Ignore failed authentications.
----------                                             (a)         (b)        (b)
-http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST follow=1 accept_cookie=1
- body='pma_username=root&pma_password=FILE0&server=1&lang=en' 0=passwords.txt
- -x ignore:fgrep='Cannot log in to the MySQL server'
-             (c)
+---------                                            (a)         (b)      (b)
+$ http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST follow=1 accept_cookie=1 \
+    body='pma_username=root&pma_password=FILE0&server=1&lang=en' 0=passwords.txt \
+    -x ignore:fgrep='Cannot log in to the MySQL server'
+    (c)
 
 * Scan subnet for directory listings.
   (a) Ignore not matching reponses.
   (b) Save matching responses into directory.
 ---------
-http_fuzz url=http://NET0/FILE1 0=10.0.0.0/24 1=dirs.txt -x ignore:fgrep!='Index of'
- -l /tmp/directory_listings                                             (a)
-      (b)
+$ http_fuzz url=http://NET0/FILE1 0=10.0.0.0/24 1=dirs.txt -x ignore:fgrep!='Index of' \
+    -l /tmp/directory-listings                             (a)
+    (b)
 
 * Brute-force Basic authentication.
   (a) Single mode (login == password).
   (b) Do not report failed login attempts.
 ---------
-http_fuzz url=http://10.0.0.1/manager/html user_pass=FILE0:FILE0 0=logins.txt -x ignore:code=401
-                                                   (a)                                (b)
+$ http_fuzz url=http://10.0.0.1/manager/html user_pass=FILE0:FILE0 0=logins.txt -x ignore:code=401
+                                             (a)                                (b)
 
 * Find hidden virtual hosts.
   (a) Read template from file.
   (b) Fuzz both the Host and User-Agent headers.
+  (c) Stop testing a virtual host name after a valid one is found.
 ---------
-echo -e 'Host: FILE0\nUser-Agent: FILE1' > headers.txt
-http_fuzz url=http://10.0.0.1/ header=@headers.txt 0=vhosts.txt 1=agents.txt
-                                    (a)                       (b)
+$ echo -e 'Host: FILE0\nUser-Agent: FILE1' > headers.txt
+$ http_fuzz url=http://10.0.0.1/ header=@headers.txt 0=vhosts.txt 1=agents.txt -x skip=0:code!=404
+                                 (a)                (b)                           (c)
 
 * Brute-force logon using GET requests.
   (a) Encode everything surrounded by the two tags _@@_ in hexadecimal.
   (b) Ignore HTTP 200 responses with a content size (header+body) within given range
       and that also contain the given string.
   (c) Use a different delimiter string because the comma cannot be escaped.
----------                                                         (a)             (a)
-http_fuzz url='http://10.0.0.1/login?username=admin&password=_@@_FILE0_@@_' -e _@@_:hex
- 0=words.txt -x ignore:'code=200|size=1500-|fgrep=Welcome, unauthenticated user' -X '|'
-                (b)                                                              (c)
+---------                                                                     (a)
+$ http_fuzz url='http://10.0.0.1/login?username=admin&password=_@@_FILE0_@@_' -e _@@_:hex \
+    0=words.txt -x ignore:'code=200|size=1500-|fgrep=Welcome, unauthenticated user' -X '|'
+                (b)                                                                 (c)
 
 * Brute-force logon that enforces two random nonces to be submitted along every POST.
   (a) First, request the page that provides the nonces as hidden input fields.
   (b) Use regular expressions to extract the nonces that are to be submitted along the main request.
 ---------
-http_fuzz url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce1=_N1_&nonce2=_N2_' 0=passwords.txt accept_cookie=1
+$ http_fuzz url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce1=_N1_&nonce2=_N2_' 0=passwords.txt accept_cookie=1 \
  before_urls=http://10.0.0.1/index before_egrep='_N1_:<input type="hidden" name="nonce1" value="(\w+)"|_N2_:name="nonce2" value="(\w+)"'
-           (a)                                (b)
+ (a)                               (b)
 
 * Test the OPTIONS method against a list of URLs.
   (a) Ignore URLs that only allow the HEAD and GET methods.
   (b) Header end of line is '\r\n'.
   (c) Use a different delimiter string because the comma cannot be escaped.
 ---------
-http_fuzz url=FILE0 0=urls.txt method=OPTIONS -x ignore:egrep='^Allow: HEAD, GET\r$' -X '|'
-                                                            (a)                 (b)  (c)
+$ http_fuzz url=FILE0 0=urls.txt method=OPTIONS -x ignore:egrep='^Allow: HEAD, GET\r$' -X '|'
+                                                (a)                               (b)  (c)
 }}}
 {{{ LDAP
 
@@ -457,42 +466,40 @@ http_fuzz url=FILE0 0=urls.txt method=OPTIONS -x ignore:egrep='^Allow: HEAD, GET
   (a) Do not report wrong passwords.
   (b) Talk SSL/TLS to port 636.
 ---------
-ldap_login host=10.0.0.1 binddn='cn=FILE0,dc=example,dc=com' 0=logins.txt bindpw=FILE1 1=passwords.txt
- -x ignore:mesg='ldap_bind: Invalid credentials (49)' ssl=1 port=636
-         (a)                                              (b)
+$ ldap_login host=10.0.0.1 binddn='cn=FILE0,dc=example,dc=com' 0=logins.txt bindpw=FILE1 1=passwords.txt \
+    -x ignore:mesg='ldap_bind: Invalid credentials (49)' ssl=1 port=636
+    (a)                                                  (b)
 }}}
 {{{ SMB
 
 * Brute-force authentication.
 ---------
-smb_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:fgrep=STATUS_LOGON_FAILURE
+$ smb_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:fgrep=STATUS_LOGON_FAILURE
 
-NB. If you suddenly get STATUS_ACCOUNT_LOCKED_OUT errors for an account
-    although it is not the first password you test on this account, then you must
-    have locked it.
-
+NB. If you suddenly get STATUS_ACCOUNT_LOCKED_OUT errors for an account although 
+    it is not the first password you test on this account, then you must have locked it.
 
 * Pass-the-hash.
   (a) Test a list of hosts.
   (b) Test every user (each line := login:rid:LM hash:NT hash).
 ---------
-smb_login host=FILE0 0=hosts.txt user=COMBO10 password_hash=COMBO12:COMBO13 1=pwdump.txt -x ...
-             (a)                                         (b)
+$ smb_login host=FILE0 0=hosts.txt user=COMBO10 password_hash=COMBO12:COMBO13 1=pwdump.txt -x ...
+            (a)                                 (b)
 }}}
 {{{ rlogin
 
 * Brute-force usernames that root might be allowed to login as with no password (eg. a ~/.rhosts file with the line "+ root").
-rlogin_login host=10.0.0.1 luser=root user=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:
+$ rlogin_login host=10.0.0.1 luser=root user=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:
 
 * Brute-force usernames that might be allowed to login as root with no password (eg. a /root/.rhosts file with the line "+ john").
-rlogin_login host=10.0.0.1 user=root luser=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:
+$ rlogin_login host=10.0.0.1 user=root luser=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:
 
 }}}
 {{{ MSSQL
 
 * Brute-force authentication.
 -----------
-mssql_login host=10.0.0.1 user=sa password=FILE0 0=passwords.txt -x ignore:fgrep='Login failed for user'
+$ mssql_login host=10.0.0.1 user=sa password=FILE0 0=passwords.txt -x ignore:fgrep='Login failed for user'
 
 }}}
 {{{ Oracle
@@ -501,7 +508,7 @@ except for the SYS account.
 
 * Brute-force authentication.
 ------------
-oracle_login host=10.0.0.1 user=SYS password=FILE0 0=passwords.txt sid=ORCL -x ignore:code=ORA-01017
+$ oracle_login host=10.0.0.1 user=SYS password=FILE0 0=passwords.txt sid=ORCL -x ignore:code=ORA-01017
 
 NB0. With Oracle 10g XE (Express Edition), you do not need to pass a SID.
 
@@ -510,10 +517,9 @@ NB1. If you get ORA-12516 errors, it may be because you reached the limit of
      more polite. Also you can run "alter system set processes=150 scope=spfile;"
      and restart your database to get rid of this.
 
-
 * Brute-force SID.
 ------------
-oracle_login host=10.0.0.1 sid=FILE0 0=sids.txt -x ignore:code=ORA-12505
+$ oracle_login host=10.0.0.1 sid=FILE0 0=sids.txt -x ignore:code=ORA-12505
 
 NB. Against Oracle9, it may crash (Segmentation fault) as soon as a valid SID is
     found (cx_Oracle bug). Sometimes, the SID gets printed out before the crash,
@@ -524,14 +530,14 @@ NB. Against Oracle9, it may crash (Segmentation fault) as soon as a valid SID is
 
 * Brute-force authentication.
 -----------
-mysql_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:fgrep='Access denied for user'
+$ mysql_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:fgrep='Access denied for user'
 
 }}}
 {{{ PostgresSQL
 
 * Brute-force authentication.
 -----------
-pgsql_login host=10.0.0.1 user=postgres password=FILE0 0=passwords.txt -x ignore:fgrep='password authentication failed'
+$ pgsql_login host=10.0.0.1 user=postgres password=FILE0 0=passwords.txt -x ignore:fgrep='password authentication failed'
 
 }}}
 {{{ VNC
@@ -547,52 +553,52 @@ blacklists the attacker IP address after too many wrong passwords.
   (a) No need to use more than one thread.
   (b) Keep retrying the same password when we are blacklisted by the server.
   (c) Exit execution as soon as a valid password is found.
----------                                               (a)
-vnc_login host=10.0.0.1 password=FILE0 0=passwords.txt --threads 1
- -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0
-        (b)                                 (b)                 (c)
+---------                                                (a)
+$ vnc_login host=10.0.0.1 password=FILE0 0=passwords.txt --threads 1 \
+    -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0
+    (b)                                      (b)              (c)
 }}}
 {{{ DNS
 
 * Brute-force subdomains.
   (a) Ignore NXDOMAIN responses (rcode 3).
 -----------
-dns_forward name=FILE0.google.com 0=names.txt -x ignore:code=3
-                                              (a)
+$ dns_forward name=FILE0.google.com 0=names.txt -x ignore:code=3
+                                                (a)
 * Brute-force domain with every possible TLDs.
 -----------
-dns_forward name=google.MOD0 0=TLD -x ignore:code=3
+$ dns_forward name=google.MOD0 0=TLD -x ignore:code=3
 
 * Brute-force SRV records.
 -----------
-dns_forward name=MOD0.microsoft.com 0=SRV qtype=SRV -x ignore:code=3
+$ dns_forward name=MOD0.microsoft.com 0=SRV qtype=SRV -x ignore:code=3
 
 * Grab the version of several hosts.
 -----------
-dns_forward server=FILE0 0=hosts.txt name=version.bind qtype=txt qclass=ch
+$ dns_forward server=FILE0 0=hosts.txt name=version.bind qtype=txt qclass=ch
 
 * Reverse lookup several networks.
   (a) Ignore names that do not contain 'google.com'.
   (b) Ignore generic PTR records.
 -----------
-dns_reverse host=NET0 0=216.239.32.0-216.239.47.255,8.8.8.0/24 -x ignore:code=3 -x ignore:fgrep!=google.com -x ignore:fgrep=216-239-
-                                                                                (a)                         (b)
+$ dns_reverse host=NET0 0=216.239.32.0-216.239.47.255,8.8.8.0/24 -x ignore:code=3 -x ignore:fgrep!=google.com -x ignore:fgrep=216-239-
+                                                                                  (a)                         (b)
 }}}
 {{{ SNMP
 
 * SNMPv1/2 : Find valid community names.
 ----------
-snmp_login host=10.0.0.1 community=FILE0 0=names.txt -x ignore:mesg='No SNMP response received before timeout'
+$ snmp_login host=10.0.0.1 community=FILE0 0=names.txt -x ignore:mesg='No SNMP response received before timeout'
 
 
 * SNMPv3 : Find valid usernames.
 ----------
-snmp_login host=10.0.0.1 version=3 user=FILE0 0=logins.txt -x ignore:mesg=unknownUserName
+$ snmp_login host=10.0.0.1 version=3 user=FILE0 0=logins.txt -x ignore:mesg=unknownUserName
 
 
 * SNMPv3 : Find valid passwords.
 ----------
-snmp_login host=10.0.0.1 version=3 user=myuser auth_key=FILE0 0=passwords.txt -x ignore:mesg=wrongDigest
+$ snmp_login host=10.0.0.1 version=3 user=myuser auth_key=FILE0 0=passwords.txt -x ignore:mesg=wrongDigest
 
 NB0. If you get "notInTimeWindow" error messages, increase the retries option.
 NB1. SNMPv3 requires passphrases to be at least 8 characters long.
@@ -602,7 +608,7 @@ NB1. SNMPv3 requires passphrases to be at least 8 characters long.
 
 * Brute-force the ZIP file password (cracking older pkzip encryption used to be not supported in JtR).
 ----------
-unzip_pass zipfile=file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
+$ unzip_pass zipfile=file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
 
 }}}
 
@@ -1406,8 +1412,8 @@ class Controller:
   builtin_actions = (
     ('ignore', 'do not report'),
     ('retry', 'try payload again'),
-    ('skip', 'skip keyword value'),
-    ('free', 'skip parameter value'),
+    ('skip', 'stop testing the same keyword value'),
+    ('free', 'stop testing the same option value'),
     ('quit', 'terminate execution now'),
     )
 

@@ -4248,7 +4248,7 @@ class RDP_login:
 
 # VNC {{{
 try:
-  from Crypto.Cipher import DES
+  from Cryptodome.Cipher import DES
 except ImportError:
   notfound.append('pycrypto')
 

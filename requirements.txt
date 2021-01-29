@@ -6,7 +6,7 @@ pyopenssl
 cx_Oracle
 mysqlclient
 psycopg2-binary
-pycrypto
+pycryptodomex
 dnspython
 IPy
 pysnmp

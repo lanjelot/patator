@@ -55,8 +55,8 @@ Many thanks! [@lanjelot](https://twitter.com/lanjelot)
 
 ```
 git clone https://github.com/lanjelot/patator.git
-docker build -t patator patator/
 git clone https://github.com/danielmiessler/SecLists.git
+docker build -t patator patator/
 docker run -it --rm -v $PWD/SecLists/Passwords:/mnt patator dummy_test data=FILE0 0=/mnt/richelieu-french-top5000.txt
 ```
 

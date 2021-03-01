@@ -476,7 +476,7 @@ $ ldap_login host=10.0.0.1 binddn='cn=FILE0,dc=example,dc=com' 0=logins.txt bind
 ---------
 $ smb_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:fgrep=STATUS_LOGON_FAILURE
 
-NB. If you suddenly get STATUS_ACCOUNT_LOCKED_OUT errors for an account although 
+NB. If you suddenly get STATUS_ACCOUNT_LOCKED_OUT errors for an account although
     it is not the first password you test on this account, then you must have locked it.
 
 * Pass-the-hash.
@@ -4832,19 +4832,21 @@ class SNMP_login:
 if not which('ike-scan'):
   notfound.append('ike-scan')
 
-# http://www.iana.org/assignments/ipsec-registry/ipsec-registry.xhtml
+# http://www.iana.org/assignments/ipsec-registry/ipsec-registry.xhtml (except for vendor specifics.) These transforms below are IKEv1 only. IKEv2 is not assessed.
 IKE_ENC   = [('1', 'DES'), ('2', 'IDEA'), ('3', 'BLOWFISH'), ('4', 'RC5'), ('5', '3DES'), ('6', 'CAST'), ('7/128', 'AES128'), ('7/192', 'AES192'), ('7/256', 'AES256'), ('8', 'Camellia')]
+            #('65001', 'Mars'), ('65002', 'RC6'), ('65004', 'Serpent'), ('65005', 'Twofish')]
 IKE_HASH  = [('1', 'MD5'), ('2', 'SHA1'), ('3', 'Tiger'), ('4', 'SHA2-256'), ('5', 'SHA2-384'), ('6', 'SHA2-512')]
-IKE_AUTH  = [('1', 'PSK'), ('2', 'DSS Sig'), ('3', 'RSA Sig'), ('4', 'RSA Enc'), ('5', 'Revised RSA Enc'),
-            #('6', 'EIGAMEL Enc'), ('7', 'Revised EIGAMEL Enc'), ('8', 'ECDSA Sig'), # Reserved
-            #('9', 'ECDSA SHA-256'), ('10', 'ECDSA SHA-384'), ('11', 'ECDSA SHA-512'), # RFC4754
-             ('65001', 'XAUTH'), ('64221', 'Hybrid'), ('64222', 'Hybrid 64222')] #, ('64223', 'Hybrid 64223'), ... ('65002', 'Hybrid 65002') ...
+IKE_AUTH  = [('1', 'PSK'), ('2', 'DSS-Sig'), ('3', 'RSA-Sig'), ('4', 'RSA-Enc'), ('5', 'Revised-RSA-Enc'),
+            ('6', 'EIGAMEL-Enc'), ('7', 'Revised-EIGAMEL-Enc'), #('8', 'ECDSA-Sig'), # Reserved
+            #('9', 'ECDSA-SHA-256'), ('10', 'ECDSA-SHA-384'), ('11', 'ECDSA-SHA-512'), # RFC4754
+            ('128', 'Harkins-CRACK'), # https://tools.ietf.org/html/draft-harkins-ipsec-ike-crack-00.txt
+            ('64221', 'Hybrid-RSA-Sig'), ('64223', 'Hybrid-DSS-Sig'), ('65001', 'XAUTH&PSK')] #, ('65003', 'XAUTH&DSS-Sig'), ('65005', 'XAUTH&RSA-Sig'), ('65007', 'XAUTH&RSA-Enc'), ('65009', 'XAUTH&Revised-RSA-Enc')]
 IKE_GROUP = [('1', 'modp768'), ('2', 'modp1024'), ('5', 'modp1536'),
-            #('3', 'ecc3'), ('4', 'ecc4'), # any implementations?
-            # '6', '7', '8', '9', '10', '11', '12', '13', # only in draft, not RFC
-             ('14', 'modp2048')] #, ('15', 'modp3072'), ('16', 'modp4096'), ('17', 'modp6144'), ('18', 'modp8192')] # RFC3526
-            # '19', '20', '21', '22', '23', '24', '25', '26', # RFC5903
-            # '27', '28', '29', '30', # RFC6932
+            #('3', 'ec2n155'), ('4', 'ec2n185'),
+            # ('6', 'ec2n163'), ('7', 'ec2n163'), ('8', 'ec2n283'), ('9', 'ec2n283'), ('10', 'ec2n409'), ('11', 'ec2n409'), ('12', 'ec2n571'), ('13', 'ec2n571'), # only in draft, not RFC
+            ('14', 'modp2048')] #, ('15', 'modp3072'), ('16', 'modp4096'), ('17', 'modp6144'), ('18', 'modp8192')] # RFC3526
+            # ('19', 'ecp256'), ('20', 'ecp384'), ('21', 'ecp521'), ('22', 'modp1024s160'), ('23', 'modp2048s224'), ('24', 'modp2048s256'), ('25', 'ecp192'), ('26', 'ecp224'), # RFC5903
+            # ('27', 'brainpoolP224r1'), ('28', 'brainpoolP256r1'), ('29', 'brainpoolP384r1'), ('30', 'brainpoolP512r1')] # RFC6932
 
 def generate_transforms():
   lists = list(map(lambda l: [i[0] for i in l], [IKE_ENC, IKE_HASH, IKE_AUTH, IKE_GROUP]))

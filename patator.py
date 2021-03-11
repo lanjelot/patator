@@ -2062,7 +2062,7 @@ Please read the README inside for more examples and usage information.
             payload[k] = payload[k].replace('NET%d' % i, prod[i])
         elif t == 'COMBO':
           for j, k in keys:
-            payload[k] = payload[k].replace('COMBO%d%d' % (i, j), prod[i].split(self.combo_delim, len(keys)-1)[j])
+            payload[k] = payload[k].replace('COMBO%d%d' % (i, j), prod[i].split(self.combo_delim)[j])
         elif t == 'MOD':
           for k in keys:
             payload[k] = payload[k].replace('MOD%d' % i, prod[i])
@@ -5127,8 +5127,8 @@ class TCP_fuzz:
     fp = socket.create_connection((host, port), int(timeout))
     if ssl != '0':
       fp = wrap_socket(fp)
-    fp.send(unhexlify(data))
-    #fp.send(b(data))
+    #fp.send(unhexlify(data))
+    fp.send(b(data))
     with Timing() as timing:
       resp = fp.recv(1024)
     fp.close()

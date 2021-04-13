@@ -4833,7 +4833,7 @@ if not which('ike-scan'):
   notfound.append('ike-scan')
 
 # http://www.iana.org/assignments/ipsec-registry/ipsec-registry.xhtml (except for vendor specifics.) These transforms below are IKEv1 only. IKEv2 is not assessed.
-IKE_ENC   = [('1', 'DES'), ('2', 'IDEA'), ('3', 'BLOWFISH'), ('4', 'RC5'), ('5', '3DES'), ('6', 'CAST'), ('7/128', 'AES128'), ('7/192', 'AES192'), ('7/256', 'AES256'), ('8', 'Camellia')]
+IKE_ENC   = [('1', 'DES'), ('2', 'IDEA'), ('3', 'BLOWFISH'), ('4', 'RC5'), ('5', '3DES'), ('6', 'CAST'), ('7/128', 'AES128'), ('7/192', 'AES192'), ('7/256', 'AES256'), ('8', 'Camellia'),
             ('65001', 'Mars'), ('65002', 'RC6'), ('65004', 'Serpent'), ('65005', 'Twofish')]
 IKE_HASH  = [('1', 'MD5'), ('2', 'SHA1'), ('3', 'Tiger'), ('4', 'SHA2-256'), ('5', 'SHA2-384'), ('6', 'SHA2-512')]
 IKE_AUTH  = [('1', 'PSK'), ('2', 'DSS-Sig'), ('3', 'RSA-Sig'), ('4', 'RSA-Enc'), ('5', 'Revised-RSA-Enc'),

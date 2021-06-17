@@ -714,7 +714,7 @@ class Logger:
     self.send('setLevel', level)
 
   def warn(self, msg):
-    self.send('warn', msg)
+    self.send('warning', msg)
 
   def info(self, msg):
     self.send('info', msg)

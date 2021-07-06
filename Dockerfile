@@ -46,7 +46,8 @@ RUN cmake -DCMAKE_BUILD_TYPE=Debug -DWITH_SSE2=ON . && cmake --build . && cmake 
 
 WORKDIR /opt/patator
 COPY ./requirements.txt ./
-RUN python3 -m pip install -r requirements.txt
+RUN python3 -m pip install --upgrade pip \
+  && python3 -m pip install -r requirements.txt
 
 RUN sed -e '/cx_Oracle/d' -e 's,pysqlcipher3,pysqlcipher,' requirements.txt | python2 -m pip install -r /dev/stdin
 

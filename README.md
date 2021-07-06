@@ -139,11 +139,11 @@ Tested against `phpMyAdmin 4.2.7.1`.
 
 + 10.0.0.1:500 (Main Mode)
     Encryption       Hash             Auth       Group
-    ---------- ----------       ----------	----------
+    ---------- ----------       ----------  ----------
           3DES        MD5              PSK    modp1024
-          3DES        MD5        XAUTH&PSK	  modp1024
-        AES128       SHA1              PSK 	  modp1024
-        AES128       SHA1        XAUTH&PSK	  modp1024
+          3DES        MD5        XAUTH&PSK    modp1024
+        AES128       SHA1              PSK    modp1024
+        AES128       SHA1        XAUTH&PSK    modp1024
 
 + 10.0.0.1:500 (Aggressive Mode)
     Encryption       Hash             Auth       Group
@@ -151,7 +151,7 @@ Tested against `phpMyAdmin 4.2.7.1`.
           3DES        MD5              PSK    modp1024
           3DES        MD5        XAUTH&PSK    modp1024
         AES128       SHA1              PSK    modp1024
-        AES128       SHA1        XAUTH&PSK	  modp1024
+        AES128       SHA1        XAUTH&PSK    modp1024
 16:53:11 patator    INFO - Hits/Done/Skip/Fail/Size: 8/3840/0/0/3840, Avg: 284 r/s, Time: 0h 0m 13s
 ```
 

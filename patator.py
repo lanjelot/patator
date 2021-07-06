@@ -2062,7 +2062,7 @@ Please read the README inside for more examples and usage information.
             payload[k] = payload[k].replace('NET%d' % i, prod[i])
         elif t == 'COMBO':
           for j, k in keys:
-            payload[k] = payload[k].replace('COMBO%d%d' % (i, j), prod[i].split(self.combo_delim, len(keys)-1)[j])
+            payload[k] = payload[k].replace('COMBO%d%d' % (i, j), prod[i].split(self.combo_delim, max(j for j, _ in keys))[j])
         elif t == 'MOD':
           for k in keys:
             payload[k] = payload[k].replace('MOD%d' % i, prod[i])

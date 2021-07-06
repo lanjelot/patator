@@ -120,7 +120,7 @@ $ grep AllowNoPassword /tmp/qsdf/72_200\:13215\:0\:0.351.txt
 
 Tested against `phpMyAdmin 4.2.7.1`.
 
-* IKE : Enumerate transforms supported by VPN peer
+* IKEv1 : Enumerate transforms supported by VPN peer
 
 ```
 # ike_enum host=10.0.0.1 transform=MOD0 0=TRANS aggressive=RANGE1 1=int:0-1 -x ignore:fgrep='NO-PROPOSAL'
@@ -129,29 +129,29 @@ Tested against `phpMyAdmin 4.2.7.1`.
 16:52:58 patator    INFO - code  size    time | candidate                          |   num | mesg
 16:52:58 patator    INFO - -----------------------------------------------------------------------------
 16:53:03 patator    INFO - 0     70     0.034 | 5,1,1,2:0                          |  1539 | Handshake returned: Enc=3DES Hash=MD5 Group=2:modp1024 Auth=PSK (Main)
-16:53:03 patator    INFO - 0     72     0.031 | 5,1,65001,2:0                      |  1579 | Handshake returned: Enc=3DES Hash=MD5 Group=2:modp1024 Auth=XAUTH (Main)
+16:53:03 patator    INFO - 0     72     0.031 | 5,1,65001,2:0                      |  1579 | Handshake returned: Enc=3DES Hash=MD5 Group=2:modp1024 Auth=XAUTH&PSK (Main)
 16:53:03 patator    INFO - 0     76     0.033 | 5,1,1,2:1                          |  1540 | Handshake returned: Enc=3DES Hash=MD5 Group=2:modp1024 Auth=PSK (Aggressive)
-16:53:03 patator    INFO - 0     78     0.034 | 5,1,65001,2:1                      |  1580 | Handshake returned: Enc=3DES Hash=MD5 Group=2:modp1024 Auth=XAUTH (Aggressive)
+16:53:03 patator    INFO - 0     78     0.034 | 5,1,65001,2:1                      |  1580 | Handshake returned: Enc=3DES Hash=MD5 Group=2:modp1024 Auth=XAUTH&PSK (Aggressive)
 16:53:06 patator    INFO - 0     84     0.034 | 7/128,2,1,2:0                      |  2371 | Handshake returned: Enc=AES KeyLength=128 Hash=SHA1 Group=2:modp1024 Auth=PSK (Main)
 16:53:06 patator    INFO - 0     90     0.033 | 7/128,2,1,2:1                      |  2372 | Handshake returned: Enc=AES KeyLength=128 Hash=SHA1 Group=2:modp1024 Auth=PSK (Aggressive)
-16:53:06 patator    INFO - 0     86     0.034 | 7/128,2,65001,2:0                  |  2411 | Handshake returned: Enc=AES KeyLength=128 Hash=SHA1 Group=2:modp1024 Auth=XAUTH (Main)
-16:53:06 patator    INFO - 0     92     0.035 | 7/128,2,65001,2:1                  |  2412 | Handshake returned: Enc=AES KeyLength=128 Hash=SHA1 Group=2:modp1024 Auth=XAUTH (Aggressive)
+16:53:06 patator    INFO - 0     86     0.034 | 7/128,2,65001,2:0                  |  2411 | Handshake returned: Enc=AES KeyLength=128 Hash=SHA1 Group=2:modp1024 Auth=XAUTH&PSK (Main)
+16:53:06 patator    INFO - 0     92     0.035 | 7/128,2,65001,2:1                  |  2412 | Handshake returned: Enc=AES KeyLength=128 Hash=SHA1 Group=2:modp1024 Auth=XAUTH&PSK (Aggressive)
 
 + 10.0.0.1:500 (Main Mode)
-    Encryption       Hash         Auth      Group
-    ---------- ----------   ---------- ----------
-          3DES        MD5          PSK   modp1024
-          3DES        MD5        XAUTH   modp1024
-        AES128       SHA1          PSK   modp1024
-        AES128       SHA1        XAUTH   modp1024
+    Encryption       Hash             Auth       Group
+    ---------- ----------       ----------	----------
+          3DES        MD5              PSK    modp1024
+          3DES        MD5        XAUTH&PSK	  modp1024
+        AES128       SHA1              PSK 	  modp1024
+        AES128       SHA1        XAUTH&PSK	  modp1024
 
 + 10.0.0.1:500 (Aggressive Mode)
-    Encryption       Hash         Auth      Group
-    ---------- ----------   ---------- ----------
-          3DES        MD5          PSK   modp1024
-          3DES        MD5        XAUTH   modp1024
-        AES128       SHA1          PSK   modp1024
-        AES128       SHA1        XAUTH   modp1024
+    Encryption       Hash             Auth       Group
+    ---------- ----------       ----------  ----------
+          3DES        MD5              PSK    modp1024
+          3DES        MD5        XAUTH&PSK    modp1024
+        AES128       SHA1              PSK    modp1024
+        AES128       SHA1        XAUTH&PSK	  modp1024
 16:53:11 patator    INFO - Hits/Done/Skip/Fail/Size: 8/3840/0/0/3840, Avg: 284 r/s, Time: 0h 0m 13s
 ```
 

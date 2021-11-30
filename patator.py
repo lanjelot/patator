@@ -3535,7 +3535,7 @@ class MySQL_login:
 
     try:
       with Timing() as timing:
-        fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password, connect_timeout=int(timeout))
+        fp = _mysql.connect(host=host, port=int(port), user=user, password=password, connect_timeout=int(timeout))
 
       resp = '0', fp.get_server_info()
 

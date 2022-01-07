@@ -2230,7 +2230,7 @@ Please read the README inside for more examples and usage information.
 
         command = msvcrt.getche()
         if command == 'x':
-          command += raw_input()
+          command += input()
 
       else:
         i, _, _ = select([sys.stdin], [], [], .1)

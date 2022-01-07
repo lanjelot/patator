@@ -119,7 +119,7 @@ FEATURES
 
     - Iteration over the joined wordlists can be done in any order
 
-  * Save every response (along with request) to seperate log files for later reviewing
+  * Save every response (along with request) to separate log files for later reviewing
 
 
 INSTALL
@@ -411,7 +411,7 @@ $ http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST follow=1 accept
     (c)
 
 * Scan subnet for directory listings.
-  (a) Ignore not matching reponses.
+  (a) Ignore not matching responses.
   (b) Save matching responses into directory.
 ---------
 $ http_fuzz url=http://NET0/FILE1 0=10.0.0.0/24 1=dirs.txt -x ignore:fgrep!='Index of' \
@@ -533,7 +533,7 @@ NB. Against Oracle9, it may crash (Segmentation fault) as soon as a valid SID is
 $ mysql_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:fgrep='Access denied for user'
 
 }}}
-{{{ PostgresSQL
+{{{ PostgreSQL
 
 * Brute-force authentication.
 -----------
@@ -541,7 +541,7 @@ $ pgsql_login host=10.0.0.1 user=postgres password=FILE0 0=passwords.txt -x igno
 
 }}}
 {{{ VNC
-Some VNC servers have built-in anti-bruteforce functionnality that temporarily
+Some VNC servers have built-in anti-bruteforce functionality that temporarily
 blacklists the attacker IP address after too many wrong passwords.
  - RealVNC-4.1.3 or TightVNC-1.3.10 for example, allow 5 failed attempts and
    then enforce a 10 second delay. For each subsequent failed attempt that
@@ -656,7 +656,7 @@ CHANGELOG
 * v0.4 2012/11/02
   - new modules: smb_lookupsid, finger_lookup, pop_login, imap_login, vmauthd_login
   - improved connection cache
-  - improved usage, user can now act upon specific reponses (eg. stop brute-forcing host if down, or stop testing login if password found)
+  - improved usage, user can now act upon specific responses (eg. stop brute-forcing host if down, or stop testing login if password found)
   - improved dns brute-forcing presentation
   - switched to dnspython which is not limited to the IN class (eg. can now scan for {hostname,version}.bind)
   - rewrote itertools.product to avoid memory over-consumption when using large wordlists

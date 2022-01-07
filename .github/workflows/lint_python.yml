@@ -9,7 +9,7 @@ jobs:
       - run: pip install --upgrade pip wheel
       - run: pip install bandit black codespell flake8 flake8-2020 flake8-bugbear
                          flake8-comprehensions isort mypy pytest pyupgrade safety
-      - run: bandit --recursive --skip B101 . || true  # B101 is assert statements
+      - run: bandit --recursive --skip B107,B108,B303,B304,B311,B312,B321,B401,B402,B404,B406,B504,B603 .
       - run: black --check . || true
       - run: codespell --ignore-words-list="lsat,ressources"
       - run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics

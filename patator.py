@@ -1627,8 +1627,8 @@ Please read the README inside for more examples and usage information.
         else:
           if v.startswith('@'):
             p = expand_path(v[1:])
-            with open(p) as f:
-              v = f.read()
+            with open(p, 'rb') as f:
+              v = B(f.read())
 
           kargs.append((k, v))
 

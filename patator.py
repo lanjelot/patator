@@ -3962,7 +3962,9 @@ class HTTP_fuzz(TCP_Cache):
     fp.setopt(pycurl.TIMEOUT, int(timeout))
     fp.setopt(pycurl.PROXY, proxy)
     fp.setopt(pycurl.PROXYTYPE, proxy_type)
-    fp.setopt(pycurl.RESOLVE, [resolve])
+
+    if resolve:
+      fp.setopt(pycurl.RESOLVE, [resolve])
 
     def noop(buf): pass
     fp.setopt(pycurl.WRITEFUNCTION, noop)

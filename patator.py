@@ -932,7 +932,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
       results += [('candidate', candidate), ('num', num), ('mesg', str(resp)), ('target', resp.str_target())]
 
       if typ == 'fail':
-        logger.warning(None, extra=dict(results))
+        logger.error(None, extra=dict(results))
       else:
         logger.info(None, extra=dict(results))
 

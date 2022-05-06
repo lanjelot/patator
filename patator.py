@@ -799,7 +799,7 @@ class MsgFilter(logging.Filter):
     else:
       return 1
 
-def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xml_file, hits_file):
+def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xml_file, hits_file, quiet):
 
   ignore_ctrlc()
 
@@ -810,12 +810,26 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
     logging._levelNames[logging.ERROR] = 'FAIL'
     encoding = None
 
-  handler_out = logging.StreamHandler()
+  # handler for DEBUG, INFO, and WARNING,  level
+  handler_out = logging.StreamHandler(sys.stdout)
   handler_out.setFormatter(TXTFormatter(indicatorsfmt))
+  if quiet:
+    # filter out anything going to stdout
+    handler_out.addFilter(lambda record: record.levelno <= -1)
+  else:
+    # filter to only ERROR or lower to stdout
+    handler_out.addFilter(lambda record: record.levelno <= logging.ERROR)
+
+  # handler for CRITICAL error
+  handler_err = logging.StreamHandler(sys.stderr)
+  handler_err.setFormatter(TXTFormatter(indicatorsfmt))
+  handler_err.setLevel(logging.CRITICAL)
+
 
   logger = logging.getLogger('patator')
   logger.setLevel(logging.DEBUG)
   logger.addHandler(handler_out)
+  logger.addHandler(handler_err)
 
   names = [name for name, _ in indicatorsfmt] + ['candidate', 'num', 'mesg']
 
@@ -918,7 +932,7 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
       results += [('candidate', candidate), ('num', num), ('mesg', str(resp)), ('target', resp.str_target())]
 
       if typ == 'fail':
-        logger.error(None, extra=dict(results))
+        logger.warning(None, extra=dict(results))
       else:
         logger.info(None, extra=dict(results))
 
@@ -1536,6 +1550,7 @@ Please read the README inside for more examples and usage information.
     opt_grp.add_option('--groups', dest='groups', default='', metavar='', help="default is to iterate over the cartesian product of all payload sets, use this option to iterate over sets simultaneously instead (aka pitchfork), see syntax inside (default is '0,1..n')")
 
     log_grp = OptionGroup(parser, 'Logging')
+    log_grp.add_option('-q', dest='quiet', action='store_true', default=False, help="suppress non-critical-error output")
     log_grp.add_option('-l', dest='log_dir', metavar='DIR', help="save output and response data into DIR ")
     log_grp.add_option('-L', dest='auto_log', metavar='SFX', help="automatically save into DIR/yyyy-mm-dd/hh:mm:ss_SFX (DIR defaults to '/tmp/patator')")
     log_grp.add_option('-R', dest='runtime_file', metavar='FILE', help="save output to FILE")
@@ -1602,7 +1617,7 @@ Please read the README inside for more examples and usage information.
 
     log_queue = multiprocessing.Queue()
 
-    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log, opts.assume_yes), opts.runtime_file, opts.csv_file, opts.xml_file, opts.hits_file))
+    logsvc = multiprocessing.Process(name='LogSvc', target=process_logs, args=(log_queue, module.Response.indicatorsfmt, argv, build_logdir(opts.log_dir, opts.auto_log, opts.assume_yes), opts.runtime_file, opts.csv_file, opts.xml_file, opts.hits_file, opts.quiet))
     logsvc.daemon = True
     logsvc.start()
 

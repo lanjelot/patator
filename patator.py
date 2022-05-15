@@ -1420,7 +1420,7 @@ class Controller:
   available_encodings = {
     'hex': (lambda s: B(hexlify(s)), 'encode in hexadecimal'),
     'unhex': (lambda s: B(unhexlify(s)), 'decode from hexadecimal'),
-    'b64': (b64encode, 'encode in base64'),
+    'b64': (lambda s: b64encode(s).decode('utf8'), 'encode in base64'),
     'md5': (md5hex, 'hash in md5'),
     'sha1': (sha1hex, 'hash in sha1'),
     'url': (quote_plus, 'url encode'),
@@ -2074,7 +2074,7 @@ Please read the README inside for more examples and usage information.
             payload[k] = payload[k].replace('PROG%d' % i, prod[i])
 
       for k, m, e in self.enc_keys:
-        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(b(m.group(1))).decode("utf8"), payload[k])
+        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(b(m.group(1))), payload[k])
 
       logger.debug('product: %s' % prod)
       prod_str = ':'.join(prod)

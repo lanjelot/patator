@@ -2074,7 +2074,7 @@ Please read the README inside for more examples and usage information.
             payload[k] = payload[k].replace('PROG%d' % i, prod[i])
 
       for k, m, e in self.enc_keys:
-        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(b(m.group(1))), payload[k])
+        payload[k] = re.sub(r'{0}(.+?){0}'.format(m), lambda m: e(b(m.group(1))).decode("utf8"), payload[k])
 
       logger.debug('product: %s' % prod)
       prod_str = ':'.join(prod)

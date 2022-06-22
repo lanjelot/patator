@@ -1420,7 +1420,7 @@ class Controller:
   available_encodings = {
     'hex': (lambda s: B(hexlify(s)), 'encode in hexadecimal'),
     'unhex': (lambda s: B(unhexlify(s)), 'decode from hexadecimal'),
-    'b64': (b64encode, 'encode in base64'),
+    'b64': (lambda s: B(b64encode(b(s))), 'encode in base64'),
     'md5': (md5hex, 'hash in md5'),
     'sha1': (sha1hex, 'hash in sha1'),
     'url': (quote_plus, 'url encode'),

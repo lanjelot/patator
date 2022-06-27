@@ -899,8 +899,8 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
     pname, action, args = queue.get()
 
     if action == 'quit':
-      if log_dir:
-        with open(os.path.join(log_dir, 'RESULTS.xml'), 'a') as f:
+      if xml_file or log_dir:
+        with open(results_xml, 'a') as f:
           f.write('</results>\n<stop utc=%s local=%s/>\n</root>\n' % (xmlquoteattr(strfutctime()), xmlquoteattr(strflocaltime())))
       break
 

@@ -2593,6 +2593,7 @@ class SSH_login(TCP_Cache):
     ('password', 'passwords to test'),
     ('auth_type', 'type of password authentication to use [password|keyboard-interactive|auto]'),
     ('keyfile', 'file with RSA, DSA or ECDSA private key to test'),
+    ('command', 'Command to execute'),
     )
   available_options += TCP_Cache.available_options
 
@@ -2604,8 +2605,8 @@ class SSH_login(TCP_Cache):
 
     return TCP_Connection(fp, fp.remote_version)
 
-  def execute(self, host, port='22', user=None, password=None, auth_type='password', keyfile=None, persistent='1'):
-
+  def execute(self, host, port='22', user=None, password=None, auth_type='password', keyfile=None, persistent='1',command=None):
+    response_ssh=""
     try:
       with Timing() as timing:
         fp, banner = self.bind(host, port, user)
@@ -2632,11 +2633,19 @@ class SSH_login(TCP_Cache):
 
             else:
               raise ValueError('Incorrect auth_type %r' % auth_type)
-
       logger.debug('No error')
       code, mesg = '0', banner
 
+
+      if fp.is_authenticated() and command is not None:
+        if response_ssh=="":
+          channel = fp.open_session()
+          channel.exec_command(command)
+          response_ssh = channel.recv(1024)
+          response_ssh=" "+response_ssh.decode("utf-8").strip()
+
       self.reset()
+
 
     except paramiko.AuthenticationException as e:
       logger.debug('AuthenticationException: %s' % e)
@@ -2645,8 +2654,8 @@ class SSH_login(TCP_Cache):
     if persistent == '0':
       self.reset()
 
-    return self.Response(code, mesg, timing)
-
+    
+    return self.Response(code, mesg+response_ssh , timing)
 # }}}
 
 # Telnet {{{

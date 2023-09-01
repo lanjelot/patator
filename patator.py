@@ -2571,7 +2571,7 @@ except ImportError:
   notfound.append('paramiko')
 
 def load_keyfile(keyfile):
-  for cls in (paramiko.RSAKey, paramiko.DSSKey, paramiko.ECDSAKey):
+  for cls in (paramiko.RSAKey, paramiko.DSSKey, paramiko.ECDSAKey, paramiko.Ed25519Key):
     try:
       return cls.from_private_key_file(keyfile)
     except paramiko.SSHException:
@@ -2592,7 +2592,7 @@ class SSH_login(TCP_Cache):
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
     ('auth_type', 'type of password authentication to use [password|keyboard-interactive|auto]'),
-    ('keyfile', 'file with RSA, DSA or ECDSA private key to test'),
+    ('keyfile', 'file with RSA, DSA, ECDSA or ED25519 private key to test'),
     )
   available_options += TCP_Cache.available_options
 

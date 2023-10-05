@@ -1,19 +1,19 @@
 #!/bin/bash
 
-if ! type docker-compose &>/dev/null; then
-  echo 'docker-compose is required'
+if ! docker compose version &>/dev/null; then
+  echo 'docker compose is required'
   exit 1
 fi
+
+docker compose up -d --build
 
 case "$1" in
   python2|python3)
     PYTHON=$1
     ;;
   *)
-    docker-compose up -d --build
-
     $0 python3
-    $0 python2
+    # $0 python2
 
     exit 0
   ;;
@@ -31,7 +31,7 @@ run()
 {
   echo
   echo "$ $@"
-  docker-compose run --no-deps --rm --entrypoint "$PYTHON patator.py" patator "$@"
+  docker compose run --no-deps --rm --entrypoint "$PYTHON patator.py" patator "$@"
 }
 
 echo

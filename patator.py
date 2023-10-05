@@ -2754,6 +2754,7 @@ class SMTP_Base(TCP_Cache):
         resp = fp.helo(name)
 
     if not starttls == '0':
+      fp._host = host
       resp = fp.starttls()
 
     return TCP_Connection(fp, resp)
@@ -3569,7 +3570,11 @@ class MySQL_query(TCP_Cache):
   Response = Response_Base
 
   def connect(self, host, port, user, password):
-    fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password) # db=db
+    if PY3:
+      fp = _mysql.connect(host=host, port=int(port), user=user, password=password) # db=db
+    else:
+      fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password)
+
     return TCP_Connection(fp)
 
   def execute(self, host, port='3306', user='', password='', query='select @@version'):
@@ -4690,8 +4695,10 @@ class DNS_reverse:
     with Timing() as timing:
       response = dns_query(server, int(timeout), protocol, dns.reversename.from_address(host), qtype='PTR', qclass='IN')
 
-    code = response.rcode()
-    status = dns.rcode.to_text(code)
+    rcode = response.rcode()
+    code = int(rcode)
+    status = dns.rcode.to_text(rcode)
+
     rrs = [[host, c, t, d] for _, _, c, t, d in [rr.to_text().split(' ', 4) for rr in response.answer]]
 
     mesg = '%s %s' % (status, ''.join('[%s]' % ' '.join(rr) for rr in rrs))
@@ -4732,8 +4739,10 @@ class DNS_forward:
     with Timing() as timing:
       response = dns_query(server, int(timeout), protocol, name, qtype=qtype, qclass=qclass)
 
-    code = response.rcode()
-    status = dns.rcode.to_text(code)
+    rcode = response.rcode()
+    code = int(rcode)
+    status = dns.rcode.to_text(rcode)
+
     rrs = [[n, c, t, d] for n, _, c, t, d in [rr.to_text().split(' ', 4) for rr in response.answer + response.additional + response.authority]]
 
     mesg = '%s %s' % (status, ''.join('[%s]' % ' '.join(rr) for rr in rrs))

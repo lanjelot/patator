@@ -2650,7 +2650,10 @@ class SSH_login(TCP_Cache):
 # }}}
 
 # Telnet {{{
-from telnetlib import Telnet
+try:
+  from telnetlib import Telnet
+except ImportError:
+  notfound.append('telnetlib')
 
 class Telnet_login(TCP_Cache):
   '''Brute-force Telnet'''
@@ -5229,6 +5232,7 @@ modules = [
 
 dependencies = {
   'paramiko': [('ssh_login',), 'http://www.paramiko.org/', '2.7.1'],
+  'telnetlib': [('telnet_login',), 'telnetlib was removed in Python 3.13'],
   'pycurl': [('http_fuzz', 'rdp_gateway'), 'http://pycurl.io/', '7.43.0'],
   'libcurl': [('http_fuzz', 'rdp_gateway'), 'https://curl.haxx.se/', '7.58.0'],
   'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.4'],

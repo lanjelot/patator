@@ -2754,6 +2754,7 @@ class SMTP_Base(TCP_Cache):
         resp = fp.helo(name)
 
     if not starttls == '0':
+      fp._host = host
       resp = fp.starttls()
 
     return TCP_Connection(fp, resp)
@@ -3569,7 +3570,11 @@ class MySQL_query(TCP_Cache):
   Response = Response_Base
 
   def connect(self, host, port, user, password):
-    fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password) # db=db
+    if PY3:
+      fp = _mysql.connect(host=host, port=int(port), user=user, password=password) # db=db
+    else:
+      fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password)
+
     return TCP_Connection(fp)
 
   def execute(self, host, port='3306', user='', password='', query='select @@version'):
@@ -4231,20 +4236,22 @@ class RDP_login:
 
   def execute(self, host, port='3389', user=None, password=None):
 
-    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert-ignore', '+auth-only', '/sec:nla', '/log-level:error']
+    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/tls:seclevel:0', '+auth-only', '/sec:nla', '/log-level:error']
 
     with Timing() as timing:
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
       out, err = map(B, p.communicate())
       code = p.returncode
 
+    mesg = []
+    m = re.search(' Authentication only, exit status (\d+)', err)
+    if m:
+      mesg.append(('exit', m.group(1)))
     m = re.search(' (ERR.+?) ', err)
     if m:
-      err = m.group(1)
-    elif 'Authentication only, exit status 0' in err:
-      err = 'OK'
+      mesg.append(('err', m.group(1)))
 
-    mesg = (out + err).strip()
+    mesg = ', '.join([f'{k}: {v}' for k, v in mesg])
     trace = '%s\n[out]\n%s\n[err]\n%s\n' % (' '.join(cmd), out, err)
 
     return self.Response(code, mesg, timing, trace)
@@ -4690,8 +4697,10 @@ class DNS_reverse:
     with Timing() as timing:
       response = dns_query(server, int(timeout), protocol, dns.reversename.from_address(host), qtype='PTR', qclass='IN')
 
-    code = response.rcode()
-    status = dns.rcode.to_text(code)
+    rcode = response.rcode()
+    code = int(rcode)
+    status = dns.rcode.to_text(rcode)
+
     rrs = [[host, c, t, d] for _, _, c, t, d in [rr.to_text().split(' ', 4) for rr in response.answer]]
 
     mesg = '%s %s' % (status, ''.join('[%s]' % ' '.join(rr) for rr in rrs))
@@ -4732,8 +4741,10 @@ class DNS_forward:
     with Timing() as timing:
       response = dns_query(server, int(timeout), protocol, name, qtype=qtype, qclass=qclass)
 
-    code = response.rcode()
-    status = dns.rcode.to_text(code)
+    rcode = response.rcode()
+    code = int(rcode)
+    status = dns.rcode.to_text(rcode)
+
     rrs = [[n, c, t, d] for n, _, c, t, d in [rr.to_text().split(' ', 4) for rr in response.answer + response.additional + response.authority]]
 
     mesg = '%s %s' % (status, ''.join('[%s]' % ' '.join(rr) for rr in rrs))

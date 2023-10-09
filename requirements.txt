@@ -9,6 +9,6 @@ psycopg2-binary
 pycryptodomex
 dnspython
 IPy
-pysnmp
-pyasn1
+pysnmp==4.4.12
+pyasn1==0.4.8
 pysqlcipher3

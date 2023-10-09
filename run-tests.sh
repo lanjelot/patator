@@ -1,28 +1,25 @@
 #!/bin/bash
 
-if ! type docker-compose &>/dev/null; then
-  echo 'docker-compose is required'
+if ! docker compose version &>/dev/null; then
+  echo 'docker compose is required'
   exit 1
 fi
+
+docker compose up -d --build
 
 case "$1" in
   python2|python3)
     PYTHON=$1
     ;;
   *)
-    docker-compose up -d --build
-
-    $0 python3
-    $0 python2
-
-    exit 0
+    PYTHON='python3'
   ;;
 esac
 
 UNIX='unix'
 ORACLE='oracle'
 MSSQL='mssql'
-WIN10='' # vagrant add senglin/win-7-enterprise
+WIN10='' # 192.168.1.5 # vagrant add senglin/win-7-enterprise
 VPN=''   #
 
 LOGS='-l ./asdf -y --hits ./hits.txt'
@@ -31,7 +28,7 @@ run()
 {
   echo
   echo "$ $@"
-  docker-compose run --no-deps --rm --entrypoint "$PYTHON patator.py" patator "$@"
+  docker compose run --no-deps --rm --entrypoint "$PYTHON patator.py" patator "$@"
 }
 
 echo
@@ -70,7 +67,7 @@ if [[ ! -z $WIN10 ]]; then
   run dcom_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
 
   xhost +si:localuser:root
-    run rdp_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
+  run rdp_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
   xhost -si:localuser:root
 fi
 

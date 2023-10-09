@@ -18,7 +18,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
 __twitter__ = 'https://twitter.com/lanjelot'
-__version__ = '0.9'
+__version__ = '1.0'
 __license__ = 'GPLv2'
 __pyver__   = '%d.%d.%d' % sys.version_info[0:3]
 __banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
@@ -614,6 +614,10 @@ $ unzip_pass zipfile=file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
 
 CHANGELOG
 ---------
+
+* v1.0 2023/10/09
+  - updated Dockerfile to ubuntu-22.04
+  - fixed bugs
 
 * v0.9 2020/07/26
   - fixed encoding bugs

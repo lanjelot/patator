@@ -18,7 +18,7 @@ __email__   = 'patator@hsc.fr'
 __url__     = 'http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
 __twitter__ = 'https://twitter.com/lanjelot'
-__version__ = '1.0'
+__version__ = '1.1-dev'
 __license__ = 'GPLv2'
 __pyver__   = '%d.%d.%d' % sys.version_info[0:3]
 __banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
@@ -4243,7 +4243,7 @@ class RDP_login:
 
   def execute(self, host, port='3389', user=None, password=None):
 
-    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/tls:seclevel:0', '+auth-only', '/sec:nla', '/log-level:error']
+    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/tls-seclevel:0', '+auth-only', '/sec:nla', '/log-level:error']
 
     with Timing() as timing:
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

@@ -147,7 +147,7 @@ cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/           
 --------------------------------------------------------------------------------------------------
 mysqlclient      | MySQL          | https://github.com/PyMySQL/mysqlclient-python      |   1.4.6 |
 --------------------------------------------------------------------------------------------------
-xfreerdp         | RDP (NLA)      | https://github.com/FreeRDP/FreeRDP/                |   1.2.0 |
+xfreerdp3        | RDP (NLA)      | https://github.com/FreeRDP/FreeRDP/                |   3.8.0 |
 --------------------------------------------------------------------------------------------------
 psycopg          | PostgreSQL     | http://initd.org/psycopg/                          |   2.8.4 |
 --------------------------------------------------------------------------------------------------
@@ -4221,8 +4221,8 @@ class AJP_fuzz(TCP_Cache):
 # }}}
 
 # RDP {{{
-if not which('xfreerdp'):
-  notfound.append('xfreerdp')
+if not which('xfreerdp3'):
+  notfound.append('xfreerdp3')
 
 class RDP_login:
   '''Brute-force RDP (NLA)'''
@@ -4243,7 +4243,7 @@ class RDP_login:
 
   def execute(self, host, port='3389', user=None, password=None):
 
-    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/tls-seclevel:0', '+auth-only', '/sec:nla', '/log-level:error']
+    cmd = ['xfreerdp3', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/tls-seclevel:0', '+auth-only', '/sec:nla', '/log-level:error']
 
     with Timing() as timing:
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -5256,7 +5256,7 @@ dependencies = {
   'pyopenssl': [('mssql_login',), 'https://pyopenssl.org/', '19.1.0'],
   'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '7.3.0'],
   'mysqlclient': [('mysql_login',), 'https://github.com/PyMySQL/mysqlclient-python', '1.4.6'],
-  'xfreerdp': [('rdp_login',), 'https://github.com/FreeRDP/FreeRDP.git', '1.2.0-beta1'],
+  'xfreerdp3': [('rdp_login',), 'https://github.com/FreeRDP/FreeRDP.git', '3.8.0'],
   'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.8.4'],
   'pycrypto': [('smb_login', 'smb_lookupsid', 'mssql_login', 'vnc_login',), 'http://www.dlitz.net/software/pycrypto/', '2.6.1'],
   'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/', '1.16.0'],

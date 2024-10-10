@@ -972,7 +972,7 @@ import signal
 import ctypes
 import glob
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
-from ssl import wrap_socket
+from ssl import SSLContext
 from binascii import hexlify, unhexlify
 
 PY3 = sys.version_info >= (3,)
@@ -3424,7 +3424,7 @@ class LineReceiver:
     banner = self.getresp()
 
     if ssl:
-      self.sock = wrap_socket(self.sock)
+      self.sock = SSLContext().wrap_socket(sock=self.sock)
 
     return banner # welcome banner
 
@@ -5151,7 +5151,7 @@ class TCP_fuzz:
   def execute(self, host, port, data='', timeout='2', ssl='0'):
     fp = socket.create_connection((host, port), int(timeout))
     if ssl != '0':
-      fp = wrap_socket(fp)
+      fp = SSLContext().wrap_socket(sock=fp)
     fp.send(unhexlify(data))
     #fp.send(b(data))
     with Timing() as timing:

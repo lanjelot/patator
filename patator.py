@@ -2238,7 +2238,7 @@ Please read the README inside for more examples and usage information.
 
       else:
         i, _, _ = select([sys.stdin], [], [], .1)
-        if not i:
+        if not i or not sys.stdin.isatty():
           return None
         command = i[0].readline().strip()
 

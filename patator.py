@@ -2927,8 +2927,10 @@ class Finger_lookup:
 
 # DCOM {{{
 try:
-  from impacket.dcerpc.v5.dcomrt import DCOMConnection
-  from impacket.dcerpc.v5.dcom import wmi
+  from impacket.dcerpc.v5 import transport
+  from impacket.uuid import uuidtup_to_bin
+  from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_AUTHN_LEVEL_NONE, RPC_C_AUTHN_WINNT, DCERPCException, rpc_status_codes
+  from impacket.dcerpc.v5.ndr import NDRCALL
 except ImportError:
   notfound.append('impacket')
 
@@ -2936,28 +2938,53 @@ class DCOM_login:
   '''Brute-force DCOM'''
 
   usage_hints = (
-    """%prog host=10.0.0.1 user='admin' password=FILE0 0=passwords.txt""",
+    """%prog host=10.0.0.1 port=49667 uuid=12345678-1234-ABCD-EF00-0123456789AB ver=1.0 user='admin' password=FILE0 0=passwords.txt (authtype=0/9/10/14/16/68/255 authlevel=1/2/3/4/5/6)""",
     )
 
   available_options = (
     ('host', 'target host'),
+    ('port', 'target port'),
+    ('uuid', 'UUID of RPC interface'),
+    ('ver', 'version of RPC interface'),
+    ('opnum', 'opnum of RPC interface'),
+    ('syntax', 'transfer syntax of RPC interface'),
+    ('domain', 'domains to test'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
-    ('domain', 'domains to test'),
+    ('lmhash', 'LM-hash to test'),
+    ('nthash', 'NT-hash to test'),
+    ('aeskey', 'AES-hash to test'),
+    ('tgt', 'TGT-ticket to test'),
+    ('tgs', 'TGS-ticket to test'),
+    ('authtype', 'auth type (security provider)'),
+    ('authlevel', 'auth level'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, user='', password='', domain=''):
-    dcom = DCOMConnection(host, user, password, domain)
+  def execute(self, host, port, uuid, ver, opnum='0', syntax='8a885d04-1ceb-11c9-9fe8-08002b104860:2.0', domain='', user='', password='', lmhash='', nthash='', aeskey=None, tgt=None, tgs=None, authtype=RPC_C_AUTHN_WINNT, authlevel=RPC_C_AUTHN_LEVEL_PKT_PRIVACY):
+    stringBinding = r'ncacn_ip_tcp:%s[%s]' % (host,port)
+    rpctransport = transport.DCERPCTransportFactory(stringBinding)
+    dce = rpctransport.get_dce_rpc()
+    dce.set_auth_type(int(authtype))
+    if user or password or lmhash or nthash or aeskey or tgt or tgs:
+      dce.set_credentials(user, password, domain, lmhash, nthash, aeskey, tgt, tgs)
+      dce.set_auth_level(int(authlevel))
+    else:
+      dce.set_auth_level(RPC_C_AUTHN_LEVEL_NONE)
+    timing = 0
     try:
+      dce.connect()
       with Timing() as timing:
-        iInterface = dcom.CoCreateInstanceEx(wmi.CLSID_WbemLevel1Login,wmi.IID_IWbemLevel1Login)
-        code, mesg = 0, 'OK'
-    except Exception as e:
-      code, mesg = 1, e.error_string
-    dcom.disconnect()
+        dce.bind(uuidtup_to_bin((uuid,ver)), transfer_syntax=syntax.split(":"))
+        dce.call(int(opnum), NDRCALL())
+        res = dce.recv()
+        code, mesg = 0, 'none'
+    except DCERPCException as e:
+      mesg = e.error_string
+      code = [key for key, val in rpc_status_codes.items() if val == mesg][0] if [key for key, val in rpc_status_codes.items() if val == mesg] else -1
+    dce.disconnect()
     return self.Response(code, mesg, timing)
 
 # }}}

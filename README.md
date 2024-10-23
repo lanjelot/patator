@@ -31,6 +31,7 @@ Currently it supports the following modules:
 * rdp_login      : Brute-force RDP (NLA)
 * pgsql_login    : Brute-force PostgreSQL
 * vnc_login      : Brute-force VNC
+* cs_login       : Brute-force Cobalt Strike Team Server
 * dns_forward    : Brute-force DNS
 * dns_reverse    : Brute-force DNS (reverse lookup subnets)
 * ike_enum       : Enumerate IKE transforms

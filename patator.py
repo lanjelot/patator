@@ -59,6 +59,7 @@ Currently it supports the following modules:
   * rdp_login      : Brute-force RDP (NLA)
   + pgsql_login    : Brute-force PostgreSQL
   + vnc_login      : Brute-force VNC
+  + cs_login       : Brute-force Cobalt Strike Team Server
 
   + dns_forward    : Forward DNS lookup
   + dns_reverse    : Reverse DNS lookup
@@ -557,6 +558,15 @@ blacklists the attacker IP address after too many wrong passwords.
 $ vnc_login host=10.0.0.1 password=FILE0 0=passwords.txt --threads 1 \
     -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0
     (b)                                      (b)              (c)
+}}}
+{{{ CS
+
+* Brute-force Cobalt Strike Team Server authentication.
+
+---------
+
+cs_login host=10.0.0.1 password=FILE0 0=rockyou.txt -t 1 -x 'quit:code=0'
+
 }}}
 {{{ DNS
 
@@ -4431,6 +4441,50 @@ class VNC_login:
 
 # }}}
 
+# CS {{{
+try:
+  import ssl, struct
+except ImportError:
+  notfound.append('ssl or struct')
+
+class CS_login:
+  '''Brute-force CS'''
+
+  usage_hints = (
+    '''%prog host=10.0.0.1 password=FILE0 0=rockyou.txt -t 1 -x 'quit:code=0' ''',
+    )
+
+  available_options = (
+    ('host', 'target host'),
+    ('port', 'target port [50050]'),
+    ('password', 'passwords to test'),
+    ('timeout', 'seconds to wait for a response [10]')
+    )
+  available_actions = ()
+
+  Response = Response_Base
+
+  def execute(self, host, port=50050, password=None, timeout='10'):
+    with Timing() as timing:
+      s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      s.settimeout(int(timeout))
+      ss = ssl.wrap_socket(s, ssl_version=ssl.PROTOCOL_TLSv1_2)
+      addr = (host, int(port))
+      ss.connect(addr)
+      password_len = struct.pack('b', len(password))
+      req = b'\x00\x00\xbe\xef' + password_len + password.encode('utf8') + b'A' * 255
+      ss.send(req)
+      r1 = ss.recv(1)
+      r2 = ss.recv(1)
+      r3 = ss.recv(1)
+      ss.close()
+      if(r3 == b'\xca'):
+        code, mesg = 0, 'OK'
+      else:
+        code, mesg = 1, 'CS auth failed'
+    return self.Response(code, mesg, timing)
+# }}}
+
 # DNS {{{
 try:
   import dns.rdatatype
@@ -5257,6 +5311,7 @@ modules = [
   ('rdp_login', (Controller, RDP_login)),
   ('pgsql_login', (Controller, Pgsql_login)),
   ('vnc_login', (Controller, VNC_login)),
+  ('cs_login', (Controller, CS_login)),
 
   ('dns_forward', (Controller_DNS, DNS_forward)),
   ('dns_reverse', (Controller_DNS, DNS_reverse)),

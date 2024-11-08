@@ -449,7 +449,7 @@ $ http_fuzz url='http://10.0.0.1/login?username=admin&password=_@@_FILE0_@@_' -e
   (b) Use regular expressions to extract the nonces that are to be submitted along the main request.
 ---------
 $ http_fuzz url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce1=_N1_&nonce2=_N2_' 0=passwords.txt accept_cookie=1 \
- before_urls=http://10.0.0.1/index before_egrep='_N1_:<input type="hidden" name="nonce1" value="(\w+)"|_N2_:name="nonce2" value="(\w+)"'
+ before_urls=http://10.0.0.1/index before_egrep='_N1_:<input type="hidden" name="nonce1" value="(\\w+)"|_N2_:name="nonce2" value="(\\w+)"'
  (a)                               (b)
 
 * Test the OPTIONS method against a list of URLs.
@@ -2655,7 +2655,11 @@ class SSH_login(TCP_Cache):
 
 # Telnet {{{
 try:
-  from telnetlib import Telnet
+  # the following three lines suppress deprecation warnings for telnetlib in python3.13
+  import warnings
+  with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    from telnetlib import Telnet
 except ImportError:
   notfound.append('telnetlib')
 
@@ -2671,7 +2675,7 @@ class Telnet_login(TCP_Cache):
     ('host', 'target host'),
     ('port', 'target port [23]'),
     ('inputs', 'list of values to input'),
-    ('prompt_re', 'regular expression to match prompts [\w+:]'),
+    ('prompt_re', 'regular expression to match prompts [\\w+:]'),
     ('timeout', 'seconds to wait for a response and for prompt_re to match received data [20]'),
     )
   available_options += TCP_Cache.available_options
@@ -2684,7 +2688,7 @@ class Telnet_login(TCP_Cache):
 
     return TCP_Connection(fp)
 
-  def execute(self, host, port='23', inputs=None, prompt_re='\w+:', timeout='20', persistent='0'):
+  def execute(self, host, port='23', inputs=None, prompt_re='\\w+:', timeout='20', persistent='0'):
 
     with Timing() as timing:
       fp, _ = self.bind(host, port, timeout=timeout)
@@ -3385,7 +3389,7 @@ class Rlogin_login(TCP_Cache):
     ('luser', 'client username [root]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
-    ('prompt_re', 'regular expression to match prompts [\w+:]'),
+    ('prompt_re', 'regular expression to match prompts [\\w+:]'),
     ('timeout', 'seconds to wait for a response and for prompt_re to match received data [10]'),
     )
   available_options += TCP_Cache.available_options
@@ -3407,7 +3411,7 @@ class Rlogin_login(TCP_Cache):
 
     return TCP_Connection(fp)
 
-  def execute(self, host, port='513', luser='root', user='', password=None, prompt_re='\w+:', timeout='10', persistent='0'):
+  def execute(self, host, port='513', luser='root', user='', password=None, prompt_re='\\w+:', timeout='10', persistent='0'):
 
     fp, _ = self.bind(host, port, timeout=int(timeout))
 
@@ -4278,7 +4282,7 @@ class RDP_login:
       code = p.returncode
 
     mesg = []
-    m = re.search(' Authentication only, exit status (\d+)', err)
+    m = re.search(' Authentication only, exit status (\\d+)', err)
     if m:
       mesg.append(('exit', m.group(1)))
     m = re.search(' (ERR.+?) ', err)
@@ -4995,7 +4999,7 @@ class IKE_enum:
 
     has_sa = 'SA=(' in out
     if has_sa:
-      mesg = 'Handshake returned: %s (%s)' % (re.search('SA=\((.+) LifeType', out).group(1), re.search('\t(.+) Mode Handshake returned', out).group(1))
+      mesg = 'Handshake returned: %s (%s)' % (re.search('SA=\\((.+) LifeType', out).group(1), re.search('\t(.+) Mode Handshake returned', out).group(1))
     else:
       try:
         mesg = out.strip().split('\n')[1].split('\t')[-1]

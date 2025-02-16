@@ -13,12 +13,11 @@ long_description = "Patator was written out of frustration from using Hydra, Med
 
 setup(
     name="patator",
-    version="1.0",
+    version="1.1",
     description="multi-purpose brute-forcer",
     long_description=long_description,
     url="https://github.com/lanjelot/patator",
     author="Sebastien Macke",
-    author_email="patator@hsc.fr",
     license="GPLv2",
 
     classifiers=[

@@ -14,7 +14,7 @@ import sys
 __author__  = 'Sebastien Macke'
 __url__     = 'http://web.archive.org/web/20240120232843/http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
-__version__ = '1.1-dev'
+__version__ = '1.1'
 __license__ = 'GPLv2'
 __pyver__   = '%d.%d.%d' % sys.version_info[0:3]
 __banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
@@ -3570,7 +3570,7 @@ class RDP_login:
 try:
   from Cryptodome.Cipher import DES
 except ImportError:
-  notfound.append('pycrypto')
+  notfound.append('pycryptodomex')
 
 class VNC_Error(Exception):
   pass

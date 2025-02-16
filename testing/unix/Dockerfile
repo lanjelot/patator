@@ -140,7 +140,6 @@ service postgresql start\n\
 sh /usr/local/sbin/start-tomcat.sh\n\
 socat tcp-l:106,fork,reuseaddr exec:/usr/sbin/poppassd &\n\
 socat tcp-l:4444,fork,reuseaddr exec:\"echo -e 'W\xe1\xc0me'\" &\n\
-cp -v /root/enc.zip /root/keystore.jks /root/enc.db /root/umbraco_users.pw /opt/patator/\n\
 su - vncuser -c 'vncserver -rfbport 5900'\n\
 service smbd start\n\
 service snmpd start\n\

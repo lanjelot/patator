@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2012 Sebastien MACKE
-#
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License version 2, as published by the
 # Free Software Foundation
@@ -14,681 +12,12 @@
 import sys
 
 __author__  = 'Sebastien Macke'
-__email__   = 'patator@hsc.fr'
-__url__     = 'http://www.hsc.fr/ressources/outils/patator/'
+__url__     = 'http://web.archive.org/web/20240120232843/http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
-__twitter__ = 'https://twitter.com/lanjelot'
 __version__ = '1.1-dev'
 __license__ = 'GPLv2'
 __pyver__   = '%d.%d.%d' % sys.version_info[0:3]
 __banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
-
-# README {{{
-'''
-INTRODUCTION
-------------
-
-* What ?
-
-Patator is a multi-purpose brute-forcer, with a modular design and a flexible usage.
-
-Currently it supports the following modules:
-  + ftp_login      : Brute-force FTP
-  + ssh_login      : Brute-force SSH
-  + telnet_login   : Brute-force Telnet
-  + smtp_login     : Brute-force SMTP
-  + smtp_vrfy      : Enumerate valid users using SMTP VRFY
-  + smtp_rcpt      : Enumerate valid users using SMTP RCPT TO
-  + finger_lookup  : Enumerate valid users using Finger
-  + http_fuzz      : Brute-force HTTP
-  + rdp_gateway    : Brute-force RDP Gateway
-  + ajp_fuzz       : Brute-force AJP
-  + pop_login      : Brute-force POP3
-  + pop_passd      : Brute-force poppassd (http://netwinsite.com/poppassd/)
-  + imap_login     : Brute-force IMAP4
-  + ldap_login     : Brute-force LDAP
-  + dcom_login     : Brute-force DCOM
-  + smb_login      : Brute-force SMB
-  + smb_lookupsid  : Brute-force SMB SID-lookup
-  + rlogin_login   : Brute-force rlogin
-  + vmauthd_login  : Brute-force VMware Authentication Daemon
-  + mssql_login    : Brute-force MSSQL
-  + oracle_login   : Brute-force Oracle
-  + mysql_login    : Brute-force MySQL
-  + mysql_query    : Brute-force MySQL queries
-  * rdp_login      : Brute-force RDP (NLA)
-  + pgsql_login    : Brute-force PostgreSQL
-  + vnc_login      : Brute-force VNC
-
-  + dns_forward    : Forward DNS lookup
-  + dns_reverse    : Reverse DNS lookup
-  + snmp_login     : Brute-force SNMP v1/2/3
-  + ike_enum       : Enumerate IKE transforms
-
-  + unzip_pass     : Brute-force the password of encrypted ZIP files
-  + keystore_pass  : Brute-force the password of Java keystore files
-  + sqlcipher_pass : Brute-force the password of SQLCipher-encrypted databases
-  + umbraco_crack  : Crack Umbraco HMAC-SHA1 password hashes
-
-  + tcp_fuzz       : Fuzz TCP services
-  + dummy_test     : Testing module
-
-Future modules to be implemented:
-  - rdp_login w/no NLA
-
-The name "Patator" comes from https://www.youtube.com/watch?v=9sF9fTALhVA
-
-* Why ?
-
-Basically, I got tired of using Medusa, Hydra, Ncrack, Metasploit auxiliary modules, Nmap NSE scripts and the like because:
-  - they either do not work or are not reliable (got me false negatives several times in the past)
-  - they are not flexible enough (how to iterate over all wordlists, fuzz any module parameter)
-  - they lack useful features (display progress or pause during execution)
-
-
-FEATURES
---------
-  * No false negatives, as it is the user that decides what results to ignore based on:
-      + status code of response
-      + size of response
-      + matching string or regex in response data
-      + ... see --help
-
-  * Modular design
-      + not limited to network modules (eg. the unzip_pass module)
-      + not limited to brute-forcing (eg. remote exploit testing, or vulnerable version probing)
-
-  * Interactive runtime
-      + show progress during execution (press Enter)
-      + pause/unpause execution (press p)
-      + increase/decrease verbosity
-      + add new actions & conditions during runtime (eg. to exclude more types of response from showing)
-      + ... press h to see all available interactive commands
-
-  * Use persistent connections (ie. will test several passwords until the server disconnects)
-
-  * Multi-threaded
-
-  * Flexible user input
-    - Any module parameter can be fuzzed:
-      + use the FILE keyword to iterate over a file
-      + use the COMBO keyword to iterate over a combo file
-      + use the NET keyword to iterate over every hosts of a network subnet
-      + use the RANGE keyword to iterate over hexadecimal, decimal or alphabetical ranges
-      + use the PROG keyword to iterate over the output of an external program
-
-    - Iteration over the joined wordlists can be done in any order
-
-  * Save every response (along with request) to separate log files for later reviewing
-
-
-INSTALL
--------
-
-* Dependencies (best tested versions)
-
-                 |  Required for  |                        URL                         | Version |
---------------------------------------------------------------------------------------------------
-paramiko         | SSH            | http://www.lag.net/paramiko/                       |   2.7.1 |
---------------------------------------------------------------------------------------------------
-pycurl           | HTTP           | http://pycurl.sourceforge.net/                     |  7.43.0 |
---------------------------------------------------------------------------------------------------
-libcurl          | HTTP           | https://curl.haxx.se/                              |  7.58.0 |
---------------------------------------------------------------------------------------------------
-ajpy             | AJP            | https://github.com/hypn0s/AJPy/                    |   0.0.4 |
---------------------------------------------------------------------------------------------------
-openldap         | LDAP           | http://www.openldap.org/                           |  2.4.45 |
---------------------------------------------------------------------------------------------------
-impacket         | SMB, MSSQL     | https://github.com/CoreSecurity/impacket           |  0.9.20 |
---------------------------------------------------------------------------------------------------
-pyOpenSSL        | impacket       | https://pyopenssl.org/                             |  19.1.0 |
---------------------------------------------------------------------------------------------------
-cx_Oracle        | Oracle         | http://cx-oracle.sourceforge.net/                  |   7.3.0 |
---------------------------------------------------------------------------------------------------
-mysqlclient      | MySQL          | https://github.com/PyMySQL/mysqlclient-python      |   1.4.6 |
---------------------------------------------------------------------------------------------------
-xfreerdp         | RDP (NLA)      | https://github.com/FreeRDP/FreeRDP/                |   1.2.0 |
---------------------------------------------------------------------------------------------------
-psycopg          | PostgreSQL     | http://initd.org/psycopg/                          |   2.8.4 |
---------------------------------------------------------------------------------------------------
-pycrypto         | VNC, impacket  | http://www.dlitz.net/software/pycrypto/            |   2.6.1 |
---------------------------------------------------------------------------------------------------
-dnspython        | DNS            | http://www.dnspython.org/                          |  1.16.0 |
---------------------------------------------------------------------------------------------------
-IPy              | NET keyword    | https://github.com/haypo/python-ipy                |     1.0 |
---------------------------------------------------------------------------------------------------
-pysnmp           | SNMP           | http://pysnmp.sourceforge.net/                     |  4.4.12 |
---------------------------------------------------------------------------------------------------
-pyasn1           | SNMP, impacket | http://sourceforge.net/projects/pyasn1/            |   0.4.8 |
---------------------------------------------------------------------------------------------------
-ike-scan         | IKE            | http://www.nta-monitor.com/tools-resources/        |     1.9 |
---------------------------------------------------------------------------------------------------
-unzip            | ZIP passwords  | http://www.info-zip.org/                           |     6.0 |
---------------------------------------------------------------------------------------------------
-Java             | keystore files | http://www.oracle.com/technetwork/java/javase/     |       6 |
---------------------------------------------------------------------------------------------------
-pysqlcipher3     | SQLCipher      | https://github.com/rigglemania/pysqlcipher3        |   1.0.3 |
---------------------------------------------------------------------------------------------------
-python           |                | http://www.python.org/                             |     3.6 |
---------------------------------------------------------------------------------------------------
-
-* Shortcuts (optional)
-ln -s path/to/patator.py /usr/bin/ftp_login
-ln -s path/to/patator.py /usr/bin/http_fuzz
-etc.
-
-
-USAGE
------
-
-$ python patator.py <module> -h # or
-$ <module> -h                   # if shortcuts were created
-
-There are global options and module options:
-  - all global options start with - or --
-  - all module options are of the form option=value
-
-All module options are fuzzable:
----------
-./module host=FILE0 port=FILE1 foobar=FILE2.google.FILE3 0=hosts.txt 1=ports.txt 2=foo.txt 3=bar.txt
-
-If a module option starts with the @ character, data will be loaded from the given filename.
-$ ./http_fuzz raw_request=@req.txt 0=vhosts.txt 1=uagents.txt
-
-The keywords (FILE, COMBO, NET, ...) act as place-holders. They indicate the type of wordlist
-and where to replace themselves with the actual words to test.
-
-Each keyword is numbered in order to:
-  - match the corresponding wordlist
-  - and indicate in what order to iterate over all the wordlists
-
-For example, this would be the classic order:
----------
-$ ./module host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt
-10.0.0.1 root password
-10.0.0.1 root 123456
-10.0.0.1 root qsdfghj
-... (trying all passwords before testing next login)
-10.0.0.1 admin password
-10.0.0.1 admin 123456
-10.0.0.1 admin qsdfghj
-... (trying all logins before testing next host)
-10.0.0.2 root password
-...
-
-While a more effective order might be:
----------
-$ ./module host=FILE2 user=FILE1 password=FILE0 2=hosts.txt 1=logins.txt 0=passwords.txt
-10.0.0.1 root password
-10.0.0.2 root password
-10.0.0.1 admin password
-10.0.0.2 admin password
-10.0.0.1 root 123456
-10.0.0.2 root 123456
-10.0.0.1 admin 123456
-...
-
-By default Patator iterates over the cartesian product of all payload sets. Use
-the --groups option to iterate over sets simultaneously instead. For example to
-distribute all payloads among identical servers:
----------
-$ ./module name=FILE0.FILE1 resolver=FILE2 0=names.txt 1=domains.txt 2=ips.txt --groups 0,1:2
-ftp.abc.fr 8.8.8.8
-ftp.xyz.fr 8.8.4.4
-git.abc.fr 8.8.8.8
-git.xyz.fr 8.8.4.4
-www.abc.fr 8.8.8.8
-www.xyz.fr 8.8.4.4
-
-The numbers of every keyword given on the command line must be specified.
-Use ',' to iterate over the cartesian product of sets and use ':' to iterate
-over sets simultaneously.
-
-
-* Keywords
-
-Brute-force a list of hosts with a file containing combo entries (each line => login:password).
----------
-./module host=FILE0 user=COMBO10 password=COMBO11 0=hosts.txt 1=combos.txt
-
-Scan subnets to just grab version banners.
----------
-./module host=NET0 0=10.0.1.0/24,10.0.2.0/24,10.0.3.128-10.0.3.255
-
-Fuzz a parameter by iterating over a range of values.
----------
-./module param=RANGE0 0=hex:0x00-0xffff
-./module param=RANGE0 0=int:0-500
-./module param=RANGE0 0=lower:a-zzz
-
-Fuzz a parameter by iterating over the output of an external program.
----------
-./module param=PROG0 0='john -stdout -i'
-./module param=PROG0 0='mp64.bin ?l?l?l',$(mp64.bin --combination ?l?l?l) # http://hashcat.net/wiki/doku.php?id=maskprocessor
-
-
-* Actions & Conditions
-
-Use the -x option to do specific actions upon receiving specific responses. For example:
-
-Ignore responses with status code 200 *AND* a size within a specific range.
----------
-./module host=10.0.0.1 user=FILE0 -x ignore:code=200,size=57-74
-
-Ignore responses with status code 500 *OR* containing "Internal error".
----------
-./module host=10.0.0.1 user=FILE0 -x ignore:code=500 -x ignore:fgrep='Internal error'
-
-Remember that conditions are ANDed within the same -x option, use multiple -x options to
-specify ORed conditions.
-
-
-* Actions skip and free
-
-Stop testing the same value from keyword #0 after a valid combination is found.
----------
-./module data=FILE0.FILE1 -x skip=0:fgrep=Success
-
-Stop testing the same combination after a valid match is found.
----------
-./module data=FILE0.FILE1 data2=RANGE2 -x free=data:fgrep=Success
-
-* Failures
-
-During execution, failures may happen, such as a TCP connect timeout for
-example. By definition a failure is an exception that the module does not expect,
-and as a result the exception is caught upstream by the controller.
-
-Such exceptions, or failures, are not immediately reported to the user, the
-controller will retry 4 more times (see --max-retries) before reporting the
-failed payload to the user with the logging level "FAIL".
-
-
-* Read carefully the following examples to get a good understanding of how patator works.
-{{{ FTP
-
-* Brute-force authentication. Do not report wrong passwords.
----------
-$ ftp_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:mesg='Login incorrect.'
-
-NB0. If you get errors like "500 OOPS: priv_sock_get_cmd", use -x ignore,reset,retry:code=500
-     in order to retry the last login/password using a new TCP connection. Odd servers like vsftpd
-     return this when they shut down the TCP connection (ie. max login attempts reached).
-
-NB1. If you get errors like "too many connections from your IP address", try decreasing the number of
-     threads, the server may be enforcing a maximum number of concurrent connections.
-
-* Same as before, but stop testing a user after his password is found.
----------
-$ ftp_login ... -x free=user:code=0
-
-
-* Find anonymous FTP servers on a subnet.
----------
-$ ftp_login host=NET0 user=anonymous password=test@example.com 0=10.0.0.0/24
-
-}}}
-{{{ SSH
-* Brute-force authentication with password same as login (aka single mode). Do not report wrong passwords.
----------
-$ ssh_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:mesg='Authentication failed.'
-
-NB. If you get errors like "Error reading SSH protocol banner ... Connection reset by peer",
-    try decreasing the number of threads, the server may be enforcing a maximum
-    number of concurrent connections (eg. MaxStartups in OpenSSH).
-
-
-* Brute-force several hosts and stop testing a host after a valid password is found.
----------
-$ ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt -x free=host:code=0
-
-
-* Same as previous, but stop testing a user on a host after his password is found.
----------
-$ ssh_login host=FILE0 user=FILE1 password=FILE2 0=hosts.txt 1=logins.txt 2=passwords.txt -x free=host+user:code=0
-
-}}}
-{{{ Telnet
-
-* Brute-force authentication.
-  (a) Enter login after first prompt is detected, enter password after second prompt.
-  (b) The regex to detect the login and password prompts.
-  (c) Reconnect when we get no login prompt back (max number of tries reached or successful login).
-------------                 (a)
-$ telnet_login host=10.0.0.1 inputs='FILE0\nFILE1' 0=logins.txt 1=passwords.txt \
-    prompt_re='tux login:|Password:' -x reset:egrep!='Login incorrect.+tux login:'
-    (b)                              (c)
-
-NB. If you get errors like "telnet connection closed", try decreasing the number of threads,
-    the server may be enforcing a maximum number of concurrent connections.
-
-}}}
-{{{ SMTP
-
-* Enumerate valid users using the VRFY command.
-  (a) Do not report invalid recipients.
-  (b) Do not report when the server shuts us down with "421 too many errors", reconnect and resume testing.
----------                                         (a)
-$ smtp_vrfy host=10.0.0.1 user=FILE0 0=logins.txt -x ignore:fgrep='User unknown in local recipient table' \
-    -x ignore,reset,retry:code=421
-    (b)
-
-* Use the RCPT TO command in case the VRFY command is not available.
----------
-$ smtp_rcpt host=10.0.0.1 user=FILE0@localhost 0=logins.txt helo='ehlo mx.fb.com' mail_from=root
-
-
-* Brute-force authentication.
-  (a) Send a fake hostname (by default your host fqdn is sent)
----------                  (a)
-$ smtp_login host=10.0.0.1 helo='ehlo its.me.com' user=FILE0@dom.com password=FILE1 0=logins.txt 1=passwords.txt
-
-}}}
-{{{ HTTP
-
-* Find hidden web resources.
-  (a) Use a specific header.
-  (b) Follow redirects.
-  (c) Do not report 404 errors.
-  (d) Retry on 500 errors.
----------                                          (a)
-$ http_fuzz url=http://localhost/FILE0 0=words.txt header='Cookie: SESSID=A2FD8B2DA4' \
-    follow=1 -x ignore:code=404 -x ignore,retry:code=500
-    (b)      (c)                (d)
-
-NB. You may be able to go 10 times faster using webef (http://www.hsc.fr/ressources/outils/webef/).
-    It is the fastest HTTP brute-forcer I know, yet at the moment it still lacks useful features
-    that will prevent you from performing the following attacks.
-
-* Brute-force phpMyAdmin logon.
-  (a) Use POST requests.
-  (b) Follow redirects using cookies sent by server.
-  (c) Ignore failed authentications.
----------                                            (a)         (b)      (b)
-$ http_fuzz url=http://10.0.0.1/phpmyadmin/index.php method=POST follow=1 accept_cookie=1 \
-    body='pma_username=root&pma_password=FILE0&server=1&lang=en' 0=passwords.txt \
-    -x ignore:fgrep='Cannot log in to the MySQL server'
-    (c)
-
-* Scan subnet for directory listings.
-  (a) Ignore not matching responses.
-  (b) Save matching responses into directory.
----------
-$ http_fuzz url=http://NET0/FILE1 0=10.0.0.0/24 1=dirs.txt -x ignore:fgrep!='Index of' \
-    -l /tmp/directory-listings                             (a)
-    (b)
-
-* Brute-force Basic authentication.
-  (a) Single mode (login == password).
-  (b) Do not report failed login attempts.
----------
-$ http_fuzz url=http://10.0.0.1/manager/html user_pass=FILE0:FILE0 0=logins.txt -x ignore:code=401
-                                             (a)                                (b)
-
-* Find hidden virtual hosts.
-  (a) Read template from file.
-  (b) Fuzz both the Host and User-Agent headers.
-  (c) Stop testing a virtual host name after a valid one is found.
----------
-$ echo -e 'Host: FILE0\nUser-Agent: FILE1' > headers.txt
-$ http_fuzz url=http://10.0.0.1/ header=@headers.txt 0=vhosts.txt 1=agents.txt -x skip=0:code!=404
-                                 (a)                (b)                           (c)
-
-* Brute-force logon using GET requests.
-  (a) Encode everything surrounded by the two tags _@@_ in hexadecimal.
-  (b) Ignore HTTP 200 responses with a content size (header+body) within given range
-      and that also contain the given string.
-  (c) Use a different delimiter string because the comma cannot be escaped.
----------                                                                     (a)
-$ http_fuzz url='http://10.0.0.1/login?username=admin&password=_@@_FILE0_@@_' -e _@@_:hex \
-    0=words.txt -x ignore:'code=200|size=1500-|fgrep=Welcome, unauthenticated user' -X '|'
-                (b)                                                                 (c)
-
-* Brute-force logon that enforces two random nonces to be submitted along every POST.
-  (a) First, request the page that provides the nonces as hidden input fields.
-  (b) Use regular expressions to extract the nonces that are to be submitted along the main request.
----------
-$ http_fuzz url=http://10.0.0.1/login method=POST body='user=admin&pass=FILE0&nonce1=_N1_&nonce2=_N2_' 0=passwords.txt accept_cookie=1 \
- before_urls=http://10.0.0.1/index before_egrep='_N1_:<input type="hidden" name="nonce1" value="(\\w+)"|_N2_:name="nonce2" value="(\\w+)"'
- (a)                               (b)
-
-* Test the OPTIONS method against a list of URLs.
-  (a) Ignore URLs that only allow the HEAD and GET methods.
-  (b) Header end of line is '\r\n'.
-  (c) Use a different delimiter string because the comma cannot be escaped.
----------
-$ http_fuzz url=FILE0 0=urls.txt method=OPTIONS -x ignore:egrep='^Allow: HEAD, GET\r$' -X '|'
-                                                (a)                               (b)  (c)
-}}}
-{{{ LDAP
-
-* Brute-force authentication.
-  (a) Do not report wrong passwords.
-  (b) Talk SSL/TLS to port 636.
----------
-$ ldap_login host=10.0.0.1 binddn='cn=FILE0,dc=example,dc=com' 0=logins.txt bindpw=FILE1 1=passwords.txt \
-    -x ignore:mesg='ldap_bind: Invalid credentials (49)' ssl=1 port=636
-    (a)                                                  (b)
-}}}
-{{{ SMB
-
-* Brute-force authentication.
----------
-$ smb_login host=10.0.0.1 user=FILE0 password=FILE1 0=logins.txt 1=passwords.txt -x ignore:fgrep=STATUS_LOGON_FAILURE
-
-NB. If you suddenly get STATUS_ACCOUNT_LOCKED_OUT errors for an account although
-    it is not the first password you test on this account, then you must have locked it.
-
-* Pass-the-hash.
-  (a) Test a list of hosts.
-  (b) Test every user (each line := login:rid:LM hash:NT hash).
----------
-$ smb_login host=FILE0 0=hosts.txt user=COMBO10 password_hash=COMBO12:COMBO13 1=pwdump.txt -x ...
-            (a)                                 (b)
-}}}
-{{{ rlogin
-
-* Brute-force usernames that root might be allowed to login as with no password (eg. a ~/.rhosts file with the line "+ root").
-$ rlogin_login host=10.0.0.1 luser=root user=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:
-
-* Brute-force usernames that might be allowed to login as root with no password (eg. a /root/.rhosts file with the line "+ john").
-$ rlogin_login host=10.0.0.1 user=root luser=FILE0 0=logins.txt persistent=0 -x ignore:fgrep=Password:
-
-}}}
-{{{ MSSQL
-
-* Brute-force authentication.
------------
-$ mssql_login host=10.0.0.1 user=sa password=FILE0 0=passwords.txt -x ignore:fgrep='Login failed for user'
-
-}}}
-{{{ Oracle
-Beware, by default in Oracle, accounts are permanently locked out after 10 wrong passwords,
-except for the SYS account.
-
-* Brute-force authentication.
-------------
-$ oracle_login host=10.0.0.1 user=SYS password=FILE0 0=passwords.txt sid=ORCL -x ignore:code=ORA-01017
-
-NB0. With Oracle 10g XE (Express Edition), you do not need to pass a SID.
-
-NB1. If you get ORA-12516 errors, it may be because you reached the limit of
-     concurrent connections or db processes, try using "--rate-limit 0.5 -t 2" to be
-     more polite. Also you can run "alter system set processes=150 scope=spfile;"
-     and restart your database to get rid of this.
-
-* Brute-force SID.
-------------
-$ oracle_login host=10.0.0.1 sid=FILE0 0=sids.txt -x ignore:code=ORA-12505
-
-NB. Against Oracle9, it may crash (Segmentation fault) as soon as a valid SID is
-    found (cx_Oracle bug). Sometimes, the SID gets printed out before the crash,
-    so try running the same command again if it did not.
-
-}}}
-{{{ MySQL
-
-* Brute-force authentication.
------------
-$ mysql_login host=10.0.0.1 user=FILE0 password=FILE0 0=logins.txt -x ignore:fgrep='Access denied for user'
-
-}}}
-{{{ PostgreSQL
-
-* Brute-force authentication.
------------
-$ pgsql_login host=10.0.0.1 user=postgres password=FILE0 0=passwords.txt -x ignore:fgrep='password authentication failed'
-
-}}}
-{{{ VNC
-Some VNC servers have built-in anti-bruteforce functionality that temporarily
-blacklists the attacker IP address after too many wrong passwords.
- - RealVNC-4.1.3 or TightVNC-1.3.10 for example, allow 5 failed attempts and
-   then enforce a 10 second delay. For each subsequent failed attempt that
-   delay is doubled.
- - RealVNC-3.3.7 or UltraVNC allow 6 failed attempts and then enforce a 10
-   second delay between each following attempt.
-
-* Brute-force authentication.
-  (a) No need to use more than one thread.
-  (b) Keep retrying the same password when we are blacklisted by the server.
-  (c) Exit execution as soon as a valid password is found.
----------                                                (a)
-$ vnc_login host=10.0.0.1 password=FILE0 0=passwords.txt --threads 1 \
-    -x retry:fgrep!='Authentication failure' --max-retries -1 -x quit:code=0
-    (b)                                      (b)              (c)
-}}}
-{{{ DNS
-
-* Brute-force subdomains.
-  (a) Ignore NXDOMAIN responses (rcode 3).
------------
-$ dns_forward name=FILE0.google.com 0=names.txt -x ignore:code=3
-                                                (a)
-* Brute-force domain with every possible TLDs.
------------
-$ dns_forward name=google.MOD0 0=TLD -x ignore:code=3
-
-* Brute-force SRV records.
------------
-$ dns_forward name=MOD0.microsoft.com 0=SRV qtype=SRV -x ignore:code=3
-
-* Grab the version of several hosts.
------------
-$ dns_forward server=FILE0 0=hosts.txt name=version.bind qtype=txt qclass=ch
-
-* Reverse lookup several networks.
-  (a) Ignore names that do not contain 'google.com'.
-  (b) Ignore generic PTR records.
------------
-$ dns_reverse host=NET0 0=216.239.32.0-216.239.47.255,8.8.8.0/24 -x ignore:code=3 -x ignore:fgrep!=google.com -x ignore:fgrep=216-239-
-                                                                                  (a)                         (b)
-}}}
-{{{ SNMP
-
-* SNMPv1/2 : Find valid community names.
-----------
-$ snmp_login host=10.0.0.1 community=FILE0 0=names.txt -x ignore:mesg='No SNMP response received before timeout'
-
-
-* SNMPv3 : Find valid usernames.
-----------
-$ snmp_login host=10.0.0.1 version=3 user=FILE0 0=logins.txt -x ignore:mesg=unknownUserName
-
-
-* SNMPv3 : Find valid passwords.
-----------
-$ snmp_login host=10.0.0.1 version=3 user=myuser auth_key=FILE0 0=passwords.txt -x ignore:mesg=wrongDigest
-
-NB0. If you get "notInTimeWindow" error messages, increase the retries option.
-NB1. SNMPv3 requires passphrases to be at least 8 characters long.
-
-}}}
-{{{ Unzip
-
-* Brute-force the ZIP file password (cracking older pkzip encryption used to be not supported in JtR).
-----------
-$ unzip_pass zipfile=file.zip password=FILE0 0=passwords.txt -x ignore:code!=0
-
-}}}
-
-CHANGELOG
----------
-
-* v1.0 2023/10/09
-  - updated Dockerfile to ubuntu-22.04
-  - fixed bugs
-
-* v0.9 2020/07/26
-  - fixed encoding bugs
-  - new Dockerfile
-  - new --groups and --auto-progress options
-  - fixed various issues reported on Github
-  - new testing env with docker-compose
-
-* v0.8 2020/03/22
-  - new switches (-R, --csv, --xml, --hits)
-  - new pathasis option for http_fuzz
-  - new rdp_gateway module
-  - fixed various issues reported on Github
-
-* v0.7 2017/12/14
-  - added Python3 support
-  - added Windows support
-  - new --timeout and --allow-ignore-failures options
-  - switched to multiprocesses instead of threads (for --timeout to work on Windows)
-  - new modules: ike_enum, rdp_login, ajp_fuzz, sqlcipher_pass
-  - more info added to XML output
-  - fixed many bugs
-
-* v0.6 2014/08/25
-  - added CSV and XML output formats
-  - added module execution time column
-  - improved RANGE keyword
-  - new modules: rlogin_login, umbrack_crack
-  - minor bug fixes/improvements in http_fuzz and smb_login
-  - added more TLDs to dns_forward
-
-* v0.5 2013/07/05
-  - new modules: mysql_query, tcp_fuzz
-  - new RANGE and PROG keywords (supersedes the reading from stdin feature)
-  - switched to impacket for mssql_login
-  - output more intuitive
-  - fixed connection cache
-  - minor bug fixes
-
-* v0.4 2012/11/02
-  - new modules: smb_lookupsid, finger_lookup, pop_login, imap_login, vmauthd_login
-  - improved connection cache
-  - improved usage, user can now act upon specific responses (eg. stop brute-forcing host if down, or stop testing login if password found)
-  - improved dns brute-forcing presentation
-  - switched to dnspython which is not limited to the IN class (eg. can now scan for {hostname,version}.bind)
-  - rewrote itertools.product to avoid memory over-consumption when using large wordlists
-  - can now read wordlist from stdin
-  - added timeout option to most of the network brute-forcing modules
-  - added SSL and/or TLS support to a few modules
-  - before_egrep now allows more than one expression (ie. useful when more than one random nonce needs to be submitted)
-  - fixed numerous bugs
-
-* v0.3 2011/12/16
-    - minor bugs fixed in http_fuzz
-    - option -e better implemented
-    - better warnings about missing dependencies
-
-* v0.2 2011/12/01
-    - new smtp_login module
-    - several bugs fixed
-
-* v0.1 2011/11/25 : Public release
-
-
-TODO
-----
-  * new option -e ns like in Medusa (not likely to be implemented due to design)
-  * replace dnspython|paramiko|IPy with a better module (scapy|libssh2|netaddr... ?) // https://netaddr.readthedocs.org/en/latest/tutorial_01.html
-'''
-
-# }}}
 
 # logging {{{
 class Logger:
@@ -743,10 +72,7 @@ class TXTFormatter(logging.Formatter):
       else:
         fmt = '%(asctime)s %(name)-7s %(levelname)7s - %(message)s'
 
-    if PY3:
-      self._style._fmt = fmt
-    else:
-      self._fmt = fmt
+    self._style._fmt = fmt
 
     pp = {}
     for k, v in record.__dict__.items():
@@ -807,12 +133,8 @@ def process_logs(queue, indicatorsfmt, argv, log_dir, runtime_file, csv_file, xm
 
   ignore_ctrlc()
 
-  if PY3:
-    logging._levelToName[logging.ERROR] = 'FAIL'
-    encoding = 'latin1'
-  else:
-    logging._levelNames[logging.ERROR] = 'FAIL'
-    encoding = None
+  logging._levelToName[logging.ERROR] = 'FAIL'
+  encoding = 'latin1'
 
   handler_out = logging.StreamHandler()
   handler_out.setFormatter(TXTFormatter(indicatorsfmt))
@@ -971,47 +293,28 @@ import multiprocessing
 import signal
 import ctypes
 import glob
+import asyncio
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from ssl import SSLContext
 from binascii import hexlify, unhexlify
+from html import unescape as html_unescape
+from queue import Empty, Full
+from urllib.parse import quote, urlencode, urlparse, urlunparse, quote_plus, unquote
+from io import StringIO
+from sys import maxsize as maxint
 
-PY3 = sys.version_info >= (3,)
-
-if PY3:
-  from queue import Empty, Full
-  from urllib.parse import quote, urlencode, urlparse, urlunparse, quote_plus, unquote
-  from io import StringIO
-  from sys import maxsize as maxint
-else:
-  from Queue import Empty, Full
-  from urllib import quote, urlencode, quote_plus, unquote
-  from urlparse import urlparse, urlunparse
-  from cStringIO import StringIO
-  from sys import maxint
-
-if PY3:  # http://python3porting.com/problems.html
-  def b(x):
-    if isinstance(x, bytes):
-      return x
-    else:
-      return x.encode('ISO-8859-1', errors='ignore')
-
-  def B(x):
-    if isinstance(x, str):
-      return x
-    else:
-      return x.decode('ISO-8859-1', errors='ignore')
-else:
-  def b(x):
+def b(x):
+  if isinstance(x, bytes):
     return x
+  else:
+    return x.encode('ISO-8859-1', errors='ignore')
 
-  def B(x):
+def B(x):
+  if isinstance(x, str):
     return x
+  else:
+    return x.decode('ISO-8859-1', errors='ignore')
 
-try:
-   input = raw_input
-except NameError:
-   pass
 
 notfound = []
 try:
@@ -1021,14 +324,11 @@ except ImportError:
   has_ipy = False
   notfound.append('IPy')
 
-try:
-  # Python 3.4+
-  if sys.platform.startswith('win'):
-    import multiprocessing.popen_spawn_win32 as forking
-  else:
-    import multiprocessing.popen_fork as forking
-except ImportError:
-  import multiprocessing.forking as forking
+
+if sys.platform.startswith('win'):
+  import multiprocessing.popen_spawn_win32 as forking
+else:
+  import multiprocessing.popen_fork as forking
 
 if sys.platform.startswith('win'):
   # First define a modified version of Popen.
@@ -1135,25 +435,13 @@ def repr23(s):
   if all(True if 0x20 <= ord(c) < 0x7f else False for c in s):
     return s
 
-  if PY3:
-    return repr(s.encode('latin1'))[1:]
-  else:
-    return repr(s)
+  return repr(s.encode('latin1'))[1:]
 
 def md5hex(plain):
   return hashlib.md5(plain).hexdigest()
 
 def sha1hex(plain):
   return hashlib.sha1(plain).hexdigest()
-
-def html_unescape(s):
-  if PY3:
-    import html
-    return html.unescape(s)
-  else:
-    from HTMLParser import HTMLParser
-    h = HTMLParser()
-    return h.unescape(s)
 
 def count_lines(filename):
   with open(filename, 'rb') as f:
@@ -1168,7 +456,7 @@ def count_lines(filename):
 
     return lines
 
-# I rewrote itertools.product to avoid memory over-consumption when using large wordlists
+# rewrote itertools.product to avoid memory over-consumption when using large wordlists
 def product(xs, *rest):
   if len(rest) == 0:
     for x in xs:
@@ -1388,7 +676,8 @@ def flatten(l):
   return r
 
 def parse_query(qs, keep_blank_values=False, encoding='utf-8', errors='replace'):
-  '''Same as urllib.parse.parse_qsl but without replacing '+' with ' '
+  '''
+  Same as urllib.parse.parse_qsl but without replacing '+' with ' '
   '''
   pairs = [s2 for s1 in qs.split('&') for s2 in s1.split(';')]
   r = []
@@ -2491,10 +1780,7 @@ class TCP_Cache:
 
 # FTP {{{
 from ftplib import FTP, Error as FTP_Error
-try:
-  from ftplib import FTP_TLS # only available since python 2.7
-except ImportError:
-  notfound.append('python')
+from ftplib import FTP_TLS
 
 class FTP_login(TCP_Cache):
   '''Brute-force FTP'''
@@ -2561,12 +1847,7 @@ class FTP_login(TCP_Cache):
 # }}}
 
 # SSH {{{
-try:
-  from logging import NullHandler # only available since python 2.7
-except ImportError:
-  class NullHandler(logging.Handler):
-    def emit(self, record):
-      pass
+from logging import NullHandler
 
 try:
   import paramiko
@@ -2655,11 +1936,7 @@ class SSH_login(TCP_Cache):
 
 # Telnet {{{
 try:
-  # the following three lines suppress deprecation warnings for telnetlib in python3.13
-  import warnings
-  with warnings.catch_warnings():
-    warnings.simplefilter("ignore", DeprecationWarning)
-    from telnetlib import Telnet
+  from telnetlib import Telnet
 except ImportError:
   notfound.append('telnetlib')
 
@@ -2726,7 +2003,7 @@ class Telnet_login(TCP_Cache):
 # }}}
 
 # SMTP {{{
-from smtplib import SMTP, SMTP_SSL, SMTPException, SMTPResponseException
+from smtplib import SMTP, SMTP_SSL, SMTPResponseException
 
 class SMTP_Base(TCP_Cache):
 
@@ -2967,8 +2244,13 @@ class DCOM_login:
 
   Response = Response_Base
 
-  def execute(self, host, port, uuid, ver, opnum='0', syntax='8a885d04-1ceb-11c9-9fe8-08002b104860:2.0', domain='', user='', password='', lmhash='', nthash='', aeskey=None, tgt=None, tgs=None, authtype=RPC_C_AUTHN_WINNT, authlevel=RPC_C_AUTHN_LEVEL_PKT_PRIVACY):
-    stringBinding = r'ncacn_ip_tcp:%s[%s]' % (host,port)
+  def execute(self, host, port, uuid, ver, opnum='0', syntax='8a885d04-1ceb-11c9-9fe8-08002b104860:2.0', domain='', user='', password='', lmhash='', nthash='', aeskey=None, tgt=None, tgs=None, authtype=None, authlevel=None):
+    if authtype is None:
+      authtype = RPC_C_AUTHN_WINNT
+    if authlevel is None:
+      authlevel = RPC_C_AUTHN_LEVEL_PKT_PRIVACY
+
+    stringBinding = f'ncacn_ip_tcp:{host}[{port}]'
     rpctransport = transport.DCERPCTransportFactory(stringBinding)
     dce = rpctransport.get_dce_rpc()
     dce.set_auth_type(int(authtype))
@@ -3208,10 +2490,7 @@ from poplib import POP3, POP3_SSL, error_proto as pop_error
 
 class POP_Connection(TCP_Connection):
   def close(self):
-    if PY3:
-      self.fp.close()
-    else:
-      self.fp.quit()
+    self.fp.close()
 
 class POP_login(TCP_Cache):
   '''Brute-force POP3'''
@@ -3574,10 +2853,7 @@ class MySQL_login:
 
     try:
       with Timing() as timing:
-        if PY3:
-          fp = _mysql.connect(host=host, port=int(port), user=user, password=password, connect_timeout=int(timeout))
-        else:
-          fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password, connect_timeout=int(timeout))
+        fp = _mysql.connect(host=host, port=int(port), user=user, password=password, connect_timeout=int(timeout))
 
       resp = '0', fp.get_server_info()
 
@@ -3608,10 +2884,7 @@ class MySQL_query(TCP_Cache):
   Response = Response_Base
 
   def connect(self, host, port, user, password):
-    if PY3:
-      fp = _mysql.connect(host=host, port=int(port), user=user, password=password) # db=db
-    else:
-      fp = _mysql.connect(host=host, port=int(port), user=user, passwd=password)
+    fp = _mysql.connect(host=host, port=int(port), user=user, password=password) # db=db
 
     return TCP_Connection(fp)
 
@@ -3638,7 +2911,7 @@ try:
   from impacket import tds
   from impacket.tds import TDS_ERROR_TOKEN, TDS_LOGINACK_TOKEN
 except ImportError:
-  notfound.append('pyopenssl')
+  notfound.append('impacket')
 
 class MSSQL_login:
   '''Brute-force MSSQL'''
@@ -3834,10 +3107,7 @@ class Response_HTTP(Response_Base):
     ('clen', 'match Content-Length header (N or N-M or N- or -N)'),
     )
 
-try:
-  from http.server import BaseHTTPRequestHandler
-except ImportError:
-  from BaseHTTPServer import BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler
 
 class HTTPRequestParser(BaseHTTPRequestHandler):
   def __init__(self, fd):
@@ -4203,7 +3473,7 @@ class AJP_fuzz(TCP_Cache):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.connect((host, int(port)))
-    stream = sock.makefile('rb', None if PY3 else 0)
+    stream = sock.makefile('rb', None)
 
     return AJP_Connection((sock, stream))
 
@@ -4273,8 +3543,8 @@ class RDP_login:
   Response = Response_Base
 
   def execute(self, host, port='3389', user=None, password=None):
-
-    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/tls-seclevel:0', '+auth-only', '/sec:nla', '/log-level:error']
+    # caution: xfreerdp option order matters
+    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/sec:nla', '/tls:seclevel:0', '+auth-only', '/log-level:error']
 
     with Timing() as timing:
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -4394,10 +3664,7 @@ class VNC:
           btgt = btgt | (1 << 7-i)
       newkey.append(btgt)
 
-    if PY3:
-      return bytes(newkey)
-    else:
-      return ''.join(chr(c) for c in newkey)
+    return bytes(newkey)
 
 class VNC_login:
   '''Brute-force VNC'''
@@ -4796,20 +4063,13 @@ class DNS_forward:
 
 # SNMP {{{
 try:
-  from pysnmp.hlapi import getCmd, SnmpEngine, CommunityData, UsmUserData
-  from pysnmp.hlapi import UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
-  from pysnmp.hlapi import usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol, usmHMAC384SHA512AuthProtocol
-  from pysnmp.hlapi import usmDESPrivProtocol, usmAesCfb128Protocol
+  from pysnmp.hlapi.v3arch.asyncio import SnmpEngine, get_cmd, CommunityData, UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
+  from pysnmp.hlapi.v3arch import auth
 
-  SNMP_AUTHPROTO = {'md5': usmHMACMD5AuthProtocol, 'sha': usmHMACSHAAuthProtocol, 'sha512': usmHMAC384SHA512AuthProtocol}
-  SNMP_PRIVPROTO = {'des': usmDESPrivProtocol, 'aes': usmAesCfb128Protocol}
+  SNMP_AUTHPROTO = {'md5': auth.usmHMACMD5AuthProtocol, 'sha': auth.usmHMACSHAAuthProtocol, 'sha512': auth.usmHMAC384SHA512AuthProtocol}
+  SNMP_PRIVPROTO = {'des': auth.usmDESPrivProtocol, 'aes': auth.usmAesCfb128Protocol}
 except ImportError:
   notfound.append('pysnmp')
-
-try:
-  import pyasn1
-except ImportError:
-  notfound.append('pyasn1')
 
 class SNMP_login:
   '''Brute-force SNMP v1/2/3'''
@@ -4852,22 +4112,20 @@ class SNMP_login:
 
       kwargs = dict(authKey=auth_key, authProtocol=SNMP_AUTHPROTO[auth_proto])
       if priv_key:
-        kwargs.update(dict(privKey=priv_key, privProtocol=SNMP_PRIVPROTO[priv_proto]))
+        kwargs |= dict(privKey=priv_key, privProtocol=SNMP_PRIVPROTO[priv_proto])
 
-      security_model = UsmUserData(user, **kwargs)
+      security_model = auth.UsmUserData(user, **kwargs)
 
     else:
       raise ValueError('Incorrect SNMP version %r' % version)
 
     with Timing() as timing:
-      errorIndication, errorStatus, errorIndex, varBinds = next(
-        getCmd(
-          SnmpEngine(),
-          security_model,
-          UdpTransportTarget((host, int(port or 161)), timeout=int(timeout), retries=int(retries)),
-          ContextData(),
-          ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysDescr', 0))) #(1, 3, 6, 1, 2, 1, 1, 1, 0)
-        )
+      errorIndication, errorStatus, errorIndex, varBinds  = asyncio.run(self.async_cmd(
+        host,
+        int(port or 161),
+        security_model,
+        timeout=int(timeout),
+        retries=int(retries)))
 
     if errorIndication:
       mesg = '%s' % errorIndication
@@ -4879,6 +4137,22 @@ class SNMP_login:
       mesg = ''.join(' = '.join([x.prettyPrint() for x in varBind]) for varBind in varBinds)
 
     return self.Response(int(errorStatus), mesg, timing)
+
+  async def async_cmd(self, host, port, security_model, timeout, retries):
+    snmp_engine = SnmpEngine()
+
+    iterator = get_cmd(
+        snmp_engine,
+        security_model,
+        await UdpTransportTarget.create((host, port), timeout=timeout, retries=retries),
+        ContextData(),
+        ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysDescr', 0))
+    )
+
+    errorIndication, errorStatus, errorIndex, varBinds = await iterator
+    snmp_engine.close_dispatcher()
+
+    return errorIndication, errorStatus, errorIndex, varBinds
 
 # }}}
 
@@ -4999,7 +4273,7 @@ class IKE_enum:
 
     has_sa = 'SA=(' in out
     if has_sa:
-      mesg = 'Handshake returned: %s (%s)' % (re.search('SA=\\((.+) LifeType', out).group(1), re.search('\t(.+) Mode Handshake returned', out).group(1))
+      mesg = 'Handshake returned: %s (%s)' % (re.search(r'SA=\((.+) LifeType', out).group(1), re.search(r'\t(.+) Mode Handshake returned', out).group(1))
     else:
       try:
         mesg = out.strip().split('\n')[1].split('\t')[-1]
@@ -5090,10 +4364,7 @@ class Keystore_pass:
 
 # SQLCipher {{{
 try:
-  if PY3:
-    from pysqlcipher3 import dbapi2 as sqlcipher
-  else:
-    from pysqlcipher import dbapi2 as sqlcipher
+  from pysqlcipher3 import dbapi2 as sqlcipher
 except ImportError:
   notfound.append('pysqlcipher')
 
@@ -5277,28 +4548,26 @@ modules = [
   ]
 
 dependencies = {
-  'paramiko': [('ssh_login',), 'http://www.paramiko.org/', '2.7.1'],
-  'telnetlib': [('telnet_login',), 'telnetlib was removed in Python 3.13', '<= 3.12'],
-  'pycurl': [('http_fuzz', 'rdp_gateway'), 'http://pycurl.io/', '7.43.0'],
-  'libcurl': [('http_fuzz', 'rdp_gateway'), 'https://curl.haxx.se/', '7.58.0'],
-  'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.4'],
-  'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.4.45'],
-  'impacket': [('smb_login', 'smb_lookupsid', 'dcom_login', 'mssql_login'), 'https://github.com/CoreSecurity/impacket', '0.9.20'],
-  'pyopenssl': [('mssql_login',), 'https://pyopenssl.org/', '19.1.0'],
-  'cx_Oracle': [('oracle_login',), 'http://cx-oracle.sourceforge.net/', '7.3.0'],
-  'mysqlclient': [('mysql_login',), 'https://github.com/PyMySQL/mysqlclient-python', '1.4.6'],
-  'xfreerdp': [('rdp_login',), 'https://github.com/FreeRDP/FreeRDP.git', '1.2.0-beta1'],
-  'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.8.4'],
-  'pycrypto': [('smb_login', 'smb_lookupsid', 'mssql_login', 'vnc_login',), 'http://www.dlitz.net/software/pycrypto/', '2.6.1'],
-  'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/', '1.16.0'],
-  'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy', '1.0'],
-  'pysnmp': [('snmp_login',), 'http://pysnmp.sf.net/', '4.4.12'],
-  'pyasn1': [('smb_login', 'smb_lookupsid', 'mssql_login', 'snmp_login'), 'http://sourceforge.net/projects/pyasn1/', '0.4.8'],
-  'ike-scan': [('ike_enum',), 'http://www.nta-monitor.com/tools-resources/security-tools/ike-scan', '1.9'],
-  'unzip': [('unzip_pass',), 'http://www.info-zip.org/', '6.0'],
-  'java': [('keystore_pass',), 'http://www.oracle.com/technetwork/java/javase/', '6'],
+  'paramiko': [('ssh_login',), 'http://www.paramiko.org/', '3.5.1'],
+  'telnetlib': [('telnet_login',), 'https://pypi.org/project/telnetlib-313-and-up/', '3.13.1'],
+  'pycurl': [('http_fuzz', 'rdp_gateway'), 'http://pycurl.io/', '7.45.4'],
+  'libcurl': [('http_fuzz', 'rdp_gateway'), 'https://curl.haxx.se/', '7.88.1'],
+  'ajpy': [('ajp_fuzz',), 'https://github.com/hypn0s/AJPy/', '0.0.5'],
+  'openldap': [('ldap_login',), 'http://www.openldap.org/', '2.5.13'],
+  'impacket': [('smb_login', 'smb_lookupsid', 'dcom_login', 'mssql_login'), 'https://github.com/fortra/impacket', '0.12.0'],
+  'cx_Oracle': [('oracle_login',), 'https://oracle.github.io/python-cx_Oracle/', '8.3.0'],
+  'mysqlclient': [('mysql_login',), 'https://github.com/PyMySQL/mysqlclient', '2.2.7'],
+  'xfreerdp': [('rdp_login',), 'https://github.com/FreeRDP/FreeRDP.git', '3.12.0'],
+  'psycopg': [('pgsql_login',), 'http://initd.org/psycopg/', '2.9.10'],
+  'pycryptodomex': [('smb_login', 'smb_lookupsid', 'mssql_login', 'vnc_login',), 'https://github.com/Legrandin/pycryptodome/', '3.21.0'],
+  'dnspython': [('dns_reverse', 'dns_forward'), 'http://www.dnspython.org/', '2.7.0'],
+  'IPy': [('dns_reverse', 'dns_forward'), 'https://github.com/haypo/python-ipy', '1.1'],
+  'pysnmp': [('snmp_login',), 'https://github.com/lextudio/pysnmp', '7.1.16'],
+  'ike-scan': [('ike_enum',), 'http://www.nta-monitor.com/tools-resources/security-tools/ike-scan', '1.9.5'],
+  'unzip': [('unzip_pass',), 'https://infozip.sourceforge.net/UnZip.html', '6.0'],
+  'java': [('keystore_pass',), 'https://wiki.debian.org/Java/', '17.0.14'],
   'pysqlcipher': [('sqlcipher_pass',), 'https://github.com/rigglemania/pysqlcipher3', '1.0.3'],
-  'python': [('ftp_login',), 'Patator requires Python 3.6 or above and may still work on Python 2.'],
+  'python': [('ftp_login',), 'Patator requires Python 3.13.2'],
   }
 
 # }}}

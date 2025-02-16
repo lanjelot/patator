@@ -7,19 +7,10 @@ fi
 
 docker compose up -d --build
 
-case "$1" in
-  python2|python3)
-    PYTHON=$1
-    ;;
-  *)
-    PYTHON='python3'
-  ;;
-esac
-
 UNIX='unix'
 ORACLE='oracle'
 MSSQL='mssql'
-WIN10='' # 192.168.1.5 # vagrant add senglin/win-7-enterprise
+WIN10='' # Windows 10 Enterprise (senglin vagrant)
 VPN=''   #
 
 LOGS='-l ./asdf -y --hits ./hits.txt'
@@ -28,11 +19,13 @@ run()
 {
   echo
   echo "$ $@"
-  docker compose run --no-deps --rm --entrypoint "$PYTHON patator.py" patator "$@"
+  docker compose run --no-deps --rm patator "$@"
 }
 
-echo
-echo ">>> $PYTHON"
+docker compose cp unix:/root/enc.zip .
+docker compose cp unix:/root/keystore.jks .
+docker compose cp unix:/root/enc.db .
+docker compose cp unix:/root/umbraco_users.pw  .
 
 run ftp_login host=$UNIX
 run ftp_login host=$UNIX user=userRANGE0 password=PasswordRANGE0 0=int:0-9
@@ -64,11 +57,8 @@ run smb_login host=$UNIX user=userRANGE0 password=PasswordRANGE0 0=int:0-9
 if [[ ! -z $WIN10 ]]; then
   run smb_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
   run smb_lookupsid host=$WIN10 user=vagrant password=vagrant rid=RANGE0 0=int:500-2000 -x ignore:code=1
-  run dcom_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
 
-  xhost +si:localuser:root
   run rdp_login host=$WIN10 user=vagranRANGE0 password=vagranRANGE0 0=lower:r-v
-  xhost -si:localuser:root
 fi
 
 run pop_login host=$UNIX
@@ -129,3 +119,4 @@ echo -e 'wrong pass\np\x1fssw\x09rd' > user9.pass
 run ssh_login host=unix user=user9 password=FILE0 0=user9.pass
 
 rm -f dummy.txt user9.pass
+rm -f enc.zip keystore.jks enc.db umbraco_users.pw

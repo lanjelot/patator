@@ -1,14 +1,13 @@
-paramiko
-pycurl
-ajpy
-impacket
-pyopenssl
-cx_Oracle
-mysqlclient
-psycopg2-binary
-pycryptodomex
-dnspython
-IPy
-pysnmp==4.4.12
-pyasn1==0.4.8
-pysqlcipher3
+paramiko==3.5.1
+pycurl==7.45.4
+ajpy==0.0.5
+impacket==0.12.0
+cx_Oracle==8.3.0
+mysqlclient==2.2.7
+psycopg2-binary==2.9.10
+pycryptodomex==3.21.0
+dnspython==2.7.0
+IPy==1.1
+pysnmp==7.1.16
+telnetlib-313-and-up==3.13.1
+# pysqlcipher3

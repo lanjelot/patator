@@ -1,9 +1,8 @@
-version: "3"
 services:
   unix:
     build: testing/unix
     image: patator-unix-testing
-#   ports:
+#    ports:
 #      - "21:21"
 #      - "22:22"
 #      - "23:23"
@@ -27,8 +26,8 @@ services:
 #      - "8009:8009"
 #      - "8080:8080"
 #      - "161:161/udp"
-    volumes:
-      - .:/opt/patator
+    # volumes:
+    #   - .:/opt/patator
 
   oracle:
     image: oracleinanutshell/oracle-xe-11g

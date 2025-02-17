@@ -46,8 +46,13 @@ The name "Patator" comes from [this](https://www.youtube.com/watch?v=9sF9fTALhVA
 Patator is NOT script-kiddie friendly, please read the below and the [wiki](https://github.com/lanjelot/patator/wiki) before reporting.
 
 Please donate if you like this project! :)
+<div align="center">
+    
+| PayPal | Bitcoin |
+| -------- | ------- |
+| [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=SB36VJH4EM5WG&lc=AU&item_name=lanjelot&item_number=patator&currency_code=AUD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)| [![bitcoin](donate/donate-bitcoin.png)](https://raw.githubusercontent.com/lanjelot/patator/master/donate/bitcoin-address.txt) |
 
-[![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=SB36VJH4EM5WG&lc=AU&item_name=lanjelot&item_number=patator&currency_code=AUD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHosted)
+</div>
 
 Many thanks! [@lanjelot](https://twitter.com/lanjelot)
 

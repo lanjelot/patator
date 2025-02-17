@@ -43,7 +43,7 @@ Currently it supports the following modules:
 
 The name "Patator" comes from [this](https://www.youtube.com/watch?v=9sF9fTALhVA).
 
-Patator is NOT script-kiddie friendly, please read the full README inside [patator.py](patator.py) before reporting.
+Patator is NOT script-kiddie friendly, please read the below and the [wiki](https://github.com/lanjelot/patator/wiki) before reporting.
 
 Please donate if you like this project! :)
 

@@ -54,5 +54,5 @@ services:
     environment:
       - DISPLAY
     volumes:
-      - .:/opt/patator
+      - ./src/patator/:/opt/patator/
       - /tmp/.X11-unix:/tmp/.X11-unix

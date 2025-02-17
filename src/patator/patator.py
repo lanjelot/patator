@@ -14,10 +14,10 @@ import sys
 __author__  = 'Sebastien Macke'
 __url__     = 'http://web.archive.org/web/20240120232843/http://www.hsc.fr/ressources/outils/patator/'
 __git__     = 'https://github.com/lanjelot/patator'
-__version__ = '1.1'
+__version__ = '1.1.0'
 __license__ = 'GPLv2'
 __pyver__   = '%d.%d.%d' % sys.version_info[0:3]
-__banner__  = 'Patator %s (%s) with python-%s' % (__version__, __git__, __pyver__)
+__banner__  = 'Patator %s (%s) with Python-%s' % (__version__, __git__, __pyver__)
 
 # logging {{{
 class Logger:
@@ -4573,18 +4573,16 @@ dependencies = {
 # }}}
 
 # main {{{
-if __name__ == '__main__':
-  multiprocessing.freeze_support()
-
-  def show_usage():
-    print(__banner__)
-    print('''Usage: patator.py module --help
+def show_usage():
+  print(__banner__)
+  print('''Usage: patator.py module --help
 
 Available modules:
 %s''' % '\n'.join('  + %-13s : %s' % (k, v[1].__doc__) for k, v in modules))
 
-    sys.exit(2)
+  sys.exit(2)
 
+def cli():
   available = dict(modules)
   name = os.path.basename(sys.argv[0]).lower()
 
@@ -4619,6 +4617,9 @@ Available modules:
   powder = ctrl(module, [name] + sys.argv[1:])
   powder.fire()
 
+if __name__ == '__main__':
+  multiprocessing.freeze_support()
+  cli()
 # }}}
 
 # vim: ts=2 sw=2 sts=2 et fdm=marker bg=dark

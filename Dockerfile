@@ -56,5 +56,5 @@ RUN apt-get update \
  && pip install -U IPython \
  && echo 'set bg=dark' > /root/.vimrc
 
-COPY ./patator.py ./
+COPY ./src/patator/patator.py ./
 ENTRYPOINT ["python3", "./patator.py"]

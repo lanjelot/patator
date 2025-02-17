@@ -1,0 +1,46 @@
+[build-system]
+requires = ['hatchling']
+build-backend = 'hatchling.build'
+
+[tool.hatch.version]
+path = 'src/patator/patator.py'
+
+[project]
+name = 'patator'
+dynamic = ['version']
+authors = [
+  { name='Sebastien Macke' },
+]
+description = 'Multi-purpose brute-forcer'
+keywords = ['pentest', 'brute force', 'password attack']
+readme = 'README.md'
+requires-python = '>=3.13'
+dependencies = [
+  'paramiko',
+  'pycurl',
+  'ajpy',
+  'impacket',
+  'cx_Oracle',
+  'mysqlclient',
+  'psycopg2-binary',
+  'pycryptodomex',
+  'dnspython',
+  'IPy',
+  'pysnmp',
+  'telnetlib-313-and-up'
+]
+classifiers = [
+    'Programming Language :: Python :: 3',
+    'Operating System :: OS Independent',
+    'Programming Language :: Python :: 3',
+    'Topic :: Security',
+]
+license = 'GPL-2.0-or-later'
+license-files = ['LICEN[CS]E*']
+
+[project.urls]
+Homepage = 'https://github.com/lanjelot/patator'
+Issues = 'https://github.com/lanjelot/patator/issues'
+
+[project.scripts]
+patator = 'patator.patator:cli'

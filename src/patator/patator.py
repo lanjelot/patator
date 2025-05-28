@@ -3308,7 +3308,7 @@ class HTTP_fuzz(TCP_Cache):
     fp.setopt(pycurl.VERBOSE, 1)
 
     if user_pass:
-      fp.setopt(pycurl.USERPWD, user_pass)
+      fp.setopt(pycurl.USERPWD, user_pass.encode('utf-8'))
       if auth_type == 'basic':
         fp.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_BASIC)
       elif auth_type == 'digest':
@@ -3355,7 +3355,7 @@ class HTTP_fuzz(TCP_Cache):
       host = '%s:%s' % (host, port)
 
     url = urlunparse((scheme, host, path, params, query, fragment))
-    self.perform_fp(fp, method, url, header, body)
+    self.perform_fp(fp, method, url, header, body.encode('utf-8'))
 
     target = {}
     target['ip'] = fp.getinfo(pycurl.PRIMARY_IP)

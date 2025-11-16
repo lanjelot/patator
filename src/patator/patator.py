@@ -3537,14 +3537,17 @@ class RDP_login:
     ('port', 'target port [3389]'),
     ('user', 'usernames to test'),
     ('password', 'passwords to test'),
+    ('domain', 'domain for the user'),
     )
   available_actions = ()
 
   Response = Response_Base
 
-  def execute(self, host, port='3389', user=None, password=None):
+  def execute(self, host, port='3389', user=None, password=None, domain=None):
     # caution: xfreerdp option order matters
-    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/sec:nla', '/tls:seclevel:0', '+auth-only', '/log-level:error']
+    cmd = ['xfreerdp', '/v:%s:%d' % (host, int(port)), '/u:%s' % user, '/p:%s' % password, '/cert:ignore', '/sec:nla', '/tls-seclevel:0', '+auth-only', '/log-level:error']
+    if domain is not None:
+      cmd.append('/d:%s' % domain)
 
     with Timing() as timing:
       p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

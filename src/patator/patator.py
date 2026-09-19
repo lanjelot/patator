@@ -328,6 +328,7 @@ except ImportError:
 if sys.platform.startswith('win'):
   import multiprocessing.popen_spawn_win32 as forking
 else:
+  multiprocessing.set_start_method('fork', force=True)
   import multiprocessing.popen_fork as forking
 
 if sys.platform.startswith('win'):

@@ -10,3 +10,4 @@ dnspython==2.7.0
 IPy==1.1
 pysnmp==7.1.16
 telnetlib-313-and-up==3.13.1
+pyspnego==0.11.2

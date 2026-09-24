@@ -283,7 +283,7 @@ from itertools import islice, cycle
 import string
 import random
 from decimal import Decimal
-from base64 import b64encode
+from base64 import b64encode, b64decode
 from datetime import timedelta, datetime
 import socket
 import subprocess
@@ -3071,8 +3071,19 @@ try:
     # PRIMARY_PORT available since libcurl-7.21.0 and all PROXY_* since libcurl-7.18
     # PRIMARY_PORT and all PROXY_* available since pycurl-7.19.5.1
     notfound.append('libcurl')
+
+  # Some libcurl builds are compiled without NTLM (CURLE_NOT_BUILT_IN / error 4).
+  # When that is the case we fall back to a pure-Python NTLM handshake (pyspnego).
+  CURL_HAS_NTLM = bool(pycurl.version_info()[4] & (1 << 4))  # CURL_VERSION_NTLM
 except ImportError:
   notfound.append('pycurl')
+  CURL_HAS_NTLM = False
+
+try:
+  import spnego as _spnego
+except ImportError:
+  _spnego = None
+  # only required for the native NTLM fallback; do not hard-fail the whole tool
 
 class Response_HTTP(Response_Base):
 
@@ -3186,7 +3197,7 @@ class HTTP_fuzz(TCP_Cache):
     ('auto_urlencode', 'automatically perform URL-encoding [1|0]'),
     ('pathasis', 'retain sequences of /../ or /./ [0|1]'),
     ('user_pass', 'username and password for HTTP authentication (user:pass)'),
-    ('auth_type', 'type of HTTP authentication [basic | digest | ntlm]'),
+    ('auth_type', 'type of HTTP authentication [basic | digest | ntlm | ntlm-native]'),
     ('follow', 'follow any Location redirect [0|1]'),
     ('max_follow', 'redirection limit [5]'),
     ('accept_cookie', 'save received cookies to issue them in future requests [0|1]'),
@@ -3238,6 +3249,58 @@ class HTTP_fuzz(TCP_Cache):
     fp.setopt(pycurl.HTTPHEADER, headers)
 
     fp.perform()
+
+  @staticmethod
+  def _ntlm_handshake(fp, method, url, header, body, user_pass, response=None):
+    '''Pure-Python NTLM for libcurl builds compiled without NTLM (CURLE_NOT_BUILT_IN, error 4).
+
+    Runs the standard two-legged NTLM handshake over a single fresh keep-alive connection
+    (NTLM authenticates the TCP connection, not the request), computing the Type-1/Type-3
+    tokens with pyspnego. A brand-new connection is forced per attempt and its reuse is
+    forbidden afterwards so a previously authenticated connection cannot leak in and produce
+    a false positive. Returns True if the authenticated request was sent, or False if the
+    server offered no NTLM challenge (in which case the first response stands as the result).
+    '''
+    if _spnego is None:
+      raise NotImplementedError("auth_type=ntlm-native requires the 'pyspnego' package (pip install pyspnego)")
+
+    username, _, password = user_pass.partition(':')  # DOMAIN\\user or user@domain handled by pyspnego
+
+    client = _spnego.client(username, password, protocol='ntlm')
+    negotiate = client.step()  # Type-1
+
+    fp.setopt(pycurl.FRESH_CONNECT, 1)
+    fp.setopt(pycurl.FORBID_REUSE, 0)
+
+    challenge = []
+    fp.setopt(pycurl.HEADERFUNCTION, lambda buf: challenge.append(B(buf)))
+
+    hdr1 = header + '\nAuthorization: NTLM %s' % B(b64encode(negotiate))
+    HTTP_fuzz.perform_fp(fp, method, url, hdr1, body)
+
+    fp.setopt(pycurl.HEADERFUNCTION, lambda buf: None)
+
+    m = re.search(r'(?im)^WWW-Authenticate:\s*NTLM\s+([A-Za-z0-9+/=]+)\s*$', ''.join(challenge))
+    if not m:
+      # server did not offer an NTLM challenge; the first response is the result
+      fp.setopt(pycurl.FRESH_CONNECT, 0)
+      return False
+
+    authenticate = client.step(b64decode(m.group(1)))  # Type-3
+
+    # reuse the just-opened (half-authenticated) connection for the final leg, then forbid
+    # its reuse so it is not carried into the next credential attempt
+    fp.setopt(pycurl.FRESH_CONNECT, 0)
+    fp.setopt(pycurl.FORBID_REUSE, 1)
+
+    # keep only the authenticated response for scoring; the 401 stays in the full trace
+    if response is not None:
+      response.seek(0)
+      response.truncate(0)
+
+    hdr3 = header + '\nAuthorization: NTLM %s' % B(b64encode(authenticate))
+    HTTP_fuzz.perform_fp(fp, method, url, hdr3, body)
+    return True
 
   def execute(self, url=None, host=None, port='', scheme='http', path='/', params='', query='', fragment='', body='',
     header='', method='GET', auto_urlencode='1', pathasis='0', user_pass='', auth_type='basic',
@@ -3307,6 +3370,7 @@ class HTTP_fuzz(TCP_Cache):
     fp.setopt(pycurl.DEBUGFUNCTION, debug_func)
     fp.setopt(pycurl.VERBOSE, 1)
 
+    ntlm_native = False
     if user_pass:
       fp.setopt(pycurl.USERPWD, user_pass)
       if auth_type == 'basic':
@@ -3314,7 +3378,13 @@ class HTTP_fuzz(TCP_Cache):
       elif auth_type == 'digest':
         fp.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_DIGEST)
       elif auth_type == 'ntlm':
-        fp.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_NTLM)
+        # auto-fall back to the pure-Python handshake when this libcurl lacks NTLM
+        if CURL_HAS_NTLM:
+          fp.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_NTLM)
+        else:
+          ntlm_native = True
+      elif auth_type == 'ntlm-native':
+        ntlm_native = True
       else:
         raise ValueError('Incorrect auth_type %r' % auth_type)
 
@@ -3355,7 +3425,10 @@ class HTTP_fuzz(TCP_Cache):
       host = '%s:%s' % (host, port)
 
     url = urlunparse((scheme, host, path, params, query, fragment))
-    self.perform_fp(fp, method, url, header, body)
+    if ntlm_native:
+      self._ntlm_handshake(fp, method, url, header, body, user_pass, response=response)
+    else:
+      self.perform_fp(fp, method, url, header, body)
 
     target = {}
     target['ip'] = fp.getinfo(pycurl.PRIMARY_IP)

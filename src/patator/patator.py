@@ -1804,10 +1804,14 @@ class FTP_login(TCP_Cache):
 
   def connect(self, host, port, tls, timeout):
 
+    # latin-1 maps every byte to a character, so a server that puts non-UTF-8
+    # bytes in its replies no longer raises UnicodeDecodeError from getresp().
+    # With the default utf-8 one such reply made every attempt fail before the
+    # status code could be read. ASCII replies decode identically.
     if tls == '0':
-      fp = FTP(timeout=int(timeout))
+      fp = FTP(timeout=int(timeout), encoding='latin-1')
     else:
-      fp = FTP_TLS(timeout=int(timeout))
+      fp = FTP_TLS(timeout=int(timeout), encoding='latin-1')
 
     banner = fp.connect(host, int(port))
 
@@ -1834,8 +1838,8 @@ class FTP_login(TCP_Cache):
       logger.debug('No error: %r' % resp)
       self.reset()
 
-    except FTP_Error as e:
-      logger.debug('FTP_Error: %s' % e)
+    except (FTP_Error, UnicodeDecodeError) as e:
+      logger.debug('%s: %s' % (type(e).__name__, e))
       resp = str(e)
 
     if persistent == '0':

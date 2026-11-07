@@ -1,4 +1,4 @@
-paramiko==3.5.1
+paramiko==5.0.0
 pycurl==7.45.4
 ajpy==0.0.5
 impacket==0.12.0

@@ -6,7 +6,7 @@ cx_Oracle==8.3.0
 mysqlclient==2.2.7
 psycopg2-binary==2.9.10
 pycryptodomex==3.21.0
-dnspython==2.7.0
+dnspython==2.9.2
 IPy==1.1
 pysnmp==7.1.16
 telnetlib-313-and-up==3.13.1
